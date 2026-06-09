@@ -31,25 +31,21 @@ GET /v1/sentiment/{ticker}
 ```json
 {
   "ticker": "AAPL",
-  "score": 72.4,
-  "sub_indices": {
-    "market": 78.2,
-    "narrative": 65.3,
-    "influencer": 71.0,
-    "macro": 80.1
-  },
-  "layers": 4,
-  "missing_layers": [],
-  "timestamp": "2026-05-16T14:30:00Z"
+  "score": 72,
+  "label": "Bullish",
+  "confidence": 81,
+  "timestamp": "2026-05-16T14:30:00Z",
+  "cache_age_seconds": 480,
+  "market_hours": { "is_open": true, "next_open": "...", "last_close": "..." }
 }
 ```
 
-**Additional fields on Pro tier:** `score_raw`, `ema_obs_count`
+**Pro tier** (requires `?detail=full`) adds `score_raw`, `ema_obs_count`, `sub_indices`, `missing_layers`, `divergence`, `top_drivers`, `explanation`, `freshness`, and `confidence_flags`.
 
 ### Get sentiment history (Pro)
 
 ```bash
-GET /v1/sentiment/{ticker}/history?days=30&interval=1d
+GET /v1/sentiment/{ticker}/history?days=30&interval=daily
 ```
 
 **Response:**
@@ -342,7 +338,7 @@ A `.env.example` listing every variable is on the Phase-5 Group B to-do list. Th
 | `LOG_LEVEL` | optional | Default `INFO` |
 | `LOG_FORMAT` | optional | `json` (Railway) or `text` (local) |
 
-API authentication uses bearer tokens (`Authorization: Bearer sk-sm-…`); keys are stored as SHA-256 hashes in the `api_keys` table. Tier is either `free` (10 req/min, basic fields) or `pro` (120 req/min, sub-indices + drivers + explanation + `score_raw`). Keys are minted via `python3 tools/generate_keys.py` — the plaintext key is printed once at creation and never recoverable from the DB.
+API authentication uses bearer tokens (`Authorization: Bearer sk-sm-…`); keys are stored as SHA-256 hashes in the `api_keys` table. Tier is either `free` (10 req/min, basic fields) or `pro` (120 req/min, full breakdown via `?detail=full`: sub-indices + drivers + explanation + `score_raw`). Keys are minted via `python3 scripts/tools/generate_keys.py` — the plaintext key is printed once at creation and never recoverable from the DB.
 
 ---
 
@@ -358,7 +354,7 @@ GET /v1/status                         — last-run timestamps per job
 GET /health                            — liveness + tier echo
 ```
 
-A free-tier response carries `ticker`, `score`, `label`, `confidence`, `timestamp`, `cache_age_seconds`. A pro-tier response also includes `sub_indices`, `score_raw`, `divergence`, `top_drivers`, `explanation`, `freshness`, `confidence_flags`, and `missing_layers`. The full Pydantic schemas live in [`api/response/schemas.py`](api/response/schemas.py).
+A free-tier response carries `ticker`, `score`, `label`, `confidence`, `timestamp`, `cache_age_seconds`, and `market_hours`. A pro-tier response (returned only when `?detail=full` is set on a Pro key — otherwise the summary body is served) also includes `score_raw`, `ema_obs_count`, `sub_indices`, `missing_layers`, `divergence`, `top_drivers`, `explanation`, `freshness`, and `confidence_flags`. The full Pydantic schemas live in [`api/response/schemas.py`](api/response/schemas.py).
 
 ---
 
@@ -435,12 +431,11 @@ Production runs on [Railway](https://railway.app/) with nixpacks (`railway.toml`
 Post-deploy steps for a fresh Railway environment:
 
 ```bash
-psql $DATABASE_URL < migrations.sql
-for f in migrations/00{5..8}_*.sql; do psql $DATABASE_URL < "$f"; done
+for f in scripts/migrations/0*.sql; do psql $DATABASE_URL < "$f"; done
 
-DATABASE_URL=$RAILWAY_URL python3 tools/seed_company_names.py
-DATABASE_URL=$RAILWAY_URL python3 tools/seed_sectors.py
-DATABASE_URL=$RAILWAY_URL python3 tools/generate_keys.py  # prints plaintext keys once
+DATABASE_URL=$RAILWAY_URL python3 scripts/tools/seed_company_names.py
+DATABASE_URL=$RAILWAY_URL python3 scripts/tools/seed_sectors.py
+DATABASE_URL=$RAILWAY_URL python3 scripts/tools/generate_keys.py  # prints plaintext keys once
 ```
 
 ---

@@ -32,8 +32,9 @@ Returns the latest pre-computed sentiment score for a US-listed equity ticker.
 | Parameter | Type | Location | Required | Description |
 |---|---|---|---|---|
 | ticker | string | path | yes | US equity ticker symbol e.g. AAPL |
-| detail | string | query | no | `summary` (default) or `full` — full requires Pro tier |
-| refresh | boolean | query | no | If true, queues a background refresh and returns current cached score |
+| detail | string | query | no | `summary` (default) or `full` — `full` requires Pro tier |
+
+> **Note:** Scores are pre-computed by the background pipeline. There is no on-demand refresh — the API only serves the latest cached score. A Pro key that omits `detail=full` receives the same summary body as the Free tier; the sub-indices, drivers, and explanation are only returned when `detail=full` is set.
 
 **Free Tier Response**
 
@@ -49,7 +50,12 @@ curl -H "Authorization: Bearer sk-sm-your-key" \
   "label": "Bullish",
   "confidence": 81,
   "timestamp": "2026-04-24T14:32:00Z",
-  "cache_age_seconds": 480
+  "cache_age_seconds": 480,
+  "market_hours": {
+    "is_open": true,
+    "next_open": "2026-04-27T14:30:00Z",
+    "last_close": "2026-04-24T21:00:00Z"
+  }
 }
 ```
 
@@ -64,14 +70,17 @@ curl -H "Authorization: Bearer sk-sm-your-key" \
 {
   "ticker": "AAPL",
   "score": 72,
+  "score_raw": 70,
+  "ema_obs_count": 143,
   "label": "Bullish",
   "confidence": 81,
   "sub_indices": {
-    "market": 78,
-    "narrative": 69,
-    "influencer": 80,
-    "macro": 61
+    "market": 78.0,
+    "narrative": 69.0,
+    "influencer": 80.0,
+    "macro": 61.0
   },
+  "missing_layers": [],
   "divergence": "aligned",
   "top_drivers": [
     {
@@ -79,16 +88,14 @@ curl -H "Authorization: Bearer sk-sm-your-key" \
       "description": "Insider purchased 12,000 shares",
       "direction": "bullish",
       "magnitude": 0.8,
-      "source_layer": "influencer",
-      "confidence": 0.9
+      "source_layer": "influencer"
     },
     {
       "signal": "RSI(14)",
       "description": "RSI(14) = 71.2 (overbought)",
       "direction": "bearish",
       "magnitude": 0.45,
-      "source_layer": "market",
-      "confidence": 0.78
+      "source_layer": "market"
     }
   ],
   "explanation": "Sentiment is primarily driven by strong insider conviction. Near-term technical conditions show mild overbought pressure.",
@@ -100,9 +107,16 @@ curl -H "Authorization: Bearer sk-sm-your-key" \
   },
   "confidence_flags": [],
   "timestamp": "2026-04-24T14:32:00Z",
-  "cache_age_seconds": 480
+  "cache_age_seconds": 480,
+  "market_hours": {
+    "is_open": true,
+    "next_open": "2026-04-27T14:30:00Z",
+    "last_close": "2026-04-24T21:00:00Z"
+  }
 }
 ```
+
+Pro-tier fields beyond the Free set: `score_raw` (unsmoothed composite), `ema_obs_count` (EMA update counter), `sub_indices`, `missing_layers`, `divergence`, `top_drivers`, `explanation`, `freshness`, and `confidence_flags`. Each driver has exactly `signal`, `description`, `direction`, `magnitude`, and `source_layer` — there is no per-driver `confidence`.
 
 ---
 
@@ -131,14 +145,16 @@ curl -H "Authorization: Bearer sk-sm-your-key" \
     {
       "timestamp": "2026-04-23T14:30:00Z",
       "score": 68,
+      "score_raw": 66,
       "label": "Bullish",
       "confidence": 79,
       "sub_indices": {
-        "market": 71,
-        "narrative": 65,
-        "influencer": 74,
-        "macro": 58
-      }
+        "market": 71.0,
+        "narrative": 65.0,
+        "influencer": 74.0,
+        "macro": 58.0
+      },
+      "missing_layers": []
     }
   ]
 }
@@ -160,9 +176,14 @@ curl -H "Authorization: Bearer sk-sm-your-key" \
 ```json
 {
   "universe_size": 502,
-  "tickers": ["A", "AA", "AAPL", "ABBV", "..."]
+  "tickers": [
+    { "ticker": "AAPL", "name": "Apple Inc.", "sector": "Information Technology" },
+    { "ticker": "ABBV", "name": "AbbVie Inc.", "sector": "Health Care" }
+  ]
 }
 ```
+
+Each entry is an object with `ticker`, `name` (company name, may be `null` if not yet seeded), and `sector` (GICS sector, may be `null`).
 
 ---
 
@@ -179,12 +200,17 @@ curl https://sentimentapi-p.up.railway.app/v1/status
 ```json
 {
   "status": "operational",
+  "market_is_open": true,
   "last_market_run": "2026-04-24T14:30:00Z",
   "last_narrative_run": "2026-04-24T14:00:00Z",
   "last_influencer_run": "2026-04-24T08:00:00Z",
-  "last_macro_run": "2026-04-24T02:00:00Z"
+  "last_macro_run": "2026-04-24T02:00:00Z",
+  "last_eod_run": "2026-04-23T21:15:00Z",
+  "last_scoring_tick_run": "2026-04-24T14:30:00Z"
 }
 ```
+
+Any `last_*_run` field is `null` if the corresponding job has no recorded run in Redis. This endpoint requires no authentication.
 
 ---
 
@@ -235,10 +261,12 @@ The composite score is built from four independent sub-indices, each scored 0–
 
 | Sub-Index | What It Measures | Sources |
 |---|---|---|
-| market | What money is doing — price momentum, volume, RSI, options positioning | Alpha Vantage, Finnhub |
-| narrative | What the public information environment is saying — news sentiment | Alpha Vantage NEWS_SENTIMENT, Finnhub |
-| influencer | What analysts and insiders are doing — ratings, targets, transactions | SEC EDGAR, Finnhub |
-| macro | Whether the broader market environment is supportive — VIX, sector trends | Alpha Vantage, Finnhub |
+| market | What money is doing — returns, momentum (RSI), order flow, liquidity, short volume | yfinance (OHLCV, bid-ask), Polygon (fallback), FINRA REGSHO (short volume); RSI computed locally |
+| narrative | What the public information environment is saying — news sentiment (FinBERT-scored) | Alpha Vantage NEWS_SENTIMENT, Finnhub news |
+| influencer | What analysts and insiders are doing — ratings, targets, EPS estimates, insider transactions | Finnhub (insider transactions, recommendations, price targets, EPS estimates) |
+| macro | Whether the broader market environment is supportive — VIX, sector trends, yield curve | Finnhub / Alpha Vantage (VIX), Alpha Vantage (sector ETFs), FRED (Treasury yields) |
+
+> Options positioning, put/call ratio, short interest, and implied volatility are **not** part of the implemented methodology. The SEC EDGAR Form 4 path was retired (Sprint P3.4); Finnhub is now the sole insider provider.
 
 ---
 
@@ -246,11 +274,13 @@ The composite score is built from four independent sub-indices, each scored 0–
 
 | Value | Meaning |
 |---|---|
-| `aligned` | All layers broadly agree |
+| `aligned` | All layers broadly agree (spread ≤ 20 points) |
 | `moderate_divergence` | Layers show some disagreement (spread > 20 points) |
 | `high_divergence` | Layers strongly disagree (spread > 40 points) — interpret with caution |
 
-When `high_divergence` is present, the composite score is capped at 75 regardless of individual layer values.
+where spread = max(sub-index) − min(sub-index) across the available layers.
+
+**Extreme-imbalance cap:** independently of the divergence flag, if any layer's sub-index is above 85 *and* any other layer's is below 30, the composite score is capped at 75. This cap is triggered by that specific high/low contradiction, not by the `high_divergence` flag itself.
 
 ---
 
@@ -261,7 +291,7 @@ The `freshness` object shows when each layer's data was last updated:
 - **market_as_of** — refreshes every 15 minutes during market hours
 - **narrative_as_of** — refreshes every 30 minutes
 - **influencer_as_of** — refreshes every 6 hours
-- **macro_as_of** — refreshes daily at 2am UTC
+- **macro_as_of** — VIX and sector ETFs refresh hourly during market hours; FRED Treasury yields refresh daily at 02:00 UTC
 
 If a layer's `as_of` timestamp is `null`, that layer had no data available and its weight was redistributed to the remaining layers.
 
@@ -384,12 +414,14 @@ Any ticker not in the supported universe returns a `ticker_not_found` response.
 
 | Layer | Frequency | Coverage |
 |---|---|---|
-| Market data | Every 15 min (market hours) | Price, volume, RSI, options |
-| News sentiment | Every 30 min | Alpha Vantage, Finnhub news |
-| Analyst & insider | Every 6 hours | SEC filings, Finnhub ratings |
-| Macro context | Daily at 2am UTC | VIX, sector ETF trends |
+| Market data | Every 15 min (market hours) | Price, volume, RSI, order flow, bid-ask |
+| News sentiment | Every 30 min | Alpha Vantage NEWS_SENTIMENT, Finnhub news |
+| Analyst & insider | Every 6 hours | Finnhub insider transactions, recommendations, targets |
+| Macro context | VIX + sector ETFs hourly (market hours); FRED yields daily at 02:00 UTC | VIX, sector ETF trends, Treasury yield curve |
+| Short volume | Weekdays after close (21:30 UTC) | FINRA REGSHO daily short volume |
+| Scoring tick | Every 15 min (market hours) / 30 min (off-hours) | Recomputes all four layers from stored data |
 
-Scores are pre-computed and cached — API responses are always under 100ms regardless of which data sources are involved.
+Scores are pre-computed and cached — API responses are served from the cache regardless of which data sources are involved.
 
 ---
 
