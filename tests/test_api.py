@@ -261,3 +261,27 @@ class TestStatus:
         data = r.json()
         assert "status" in data
         assert data["status"] == "operational"
+
+    def test_last_macro_run_is_most_recent_of_split_macro_jobs(self):
+        # The macro job was split into macro_daily + macro_intraday; last_macro_run
+        # must report the most recent of the two (not the retired `macro` key).
+        runs = {
+            "pipeline:last_run:macro_daily":    "2026-04-24T02:00:00+00:00",
+            "pipeline:last_run:macro_intraday": "2026-04-24T18:00:00+00:00",
+        }
+
+        async def _fake_read_ts(key):
+            from datetime import datetime
+            val = runs.get(key)
+            return datetime.fromisoformat(val) if val else None
+
+        with patch("api.routes.status._read_ts", side_effect=_fake_read_ts):
+            r = TestClient(app).get("/v1/status")
+        assert r.status_code == 200
+        # intraday (18:00) is more recent than daily (02:00)
+        assert r.json()["last_macro_run"] == "2026-04-24T18:00:00Z"
+
+    def test_last_macro_run_null_when_no_macro_runs_recorded(self):
+        with patch("api.routes.status._read_ts", AsyncMock(return_value=None)):
+            r = TestClient(app).get("/v1/status")
+        assert r.json()["last_macro_run"] is None

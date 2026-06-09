@@ -173,7 +173,8 @@ async def screen_overview() -> None:
         "market_eod":   "pipeline:last_run:market_eod",
         "narrative":    "pipeline:last_run:narrative",
         "influencer":   "pipeline:last_run:influencer",
-        "macro":        "pipeline:last_run:macro",
+        "macro_daily":    "pipeline:last_run:macro_daily",
+        "macro_intraday": "pipeline:last_run:macro_intraday",
         "short_volume": "pipeline:last_run:short_volume",
     }
     scheduler_ts: dict[str, str | None] = {}
@@ -743,7 +744,8 @@ async def screen_pipeline_health() -> None:
         "market_eod":   "pipeline:last_run:market_eod",
         "narrative":    "pipeline:last_run:narrative",
         "influencer":   "pipeline:last_run:influencer",
-        "macro":        "pipeline:last_run:macro",
+        "macro_daily":    "pipeline:last_run:macro_daily",
+        "macro_intraday": "pipeline:last_run:macro_intraday",
         "short_volume": "pipeline:last_run:short_volume",
     }
 
@@ -752,15 +754,18 @@ async def screen_pipeline_health() -> None:
     # market_eod: 25h on weekdays, ignore weekends
     # narrative: 6h always
     # influencer: 3 days always
-    # macro: 25h always
+    # macro_daily (FRED): 25h always
+    # macro_intraday (VIX/ETF): hourly during market hours only — no staleness
+    #   check (would false-alarm over weekends when the job doesn't run)
     # short_volume: TODO — confirm threshold with Aayudh
     _STALENESS_SECS = {
-        "market":       90 * 60,
-        "market_eod":   25 * 3600,
-        "narrative":    6 * 3600,
-        "influencer":   3 * 86400,
-        "macro":        25 * 3600,
-        "short_volume": None,
+        "market":         90 * 60,
+        "market_eod":     25 * 3600,
+        "narrative":      6 * 3600,
+        "influencer":     3 * 86400,
+        "macro_daily":    25 * 3600,
+        "macro_intraday": None,
+        "short_volume":   None,
     }
 
     scheduler_ts: dict[str, str | None] = {}

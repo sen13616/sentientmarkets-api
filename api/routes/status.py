@@ -28,10 +28,17 @@ _JOB_KEYS = {
     "last_market_run":     "pipeline:last_run:market",
     "last_narrative_run":  "pipeline:last_run:narrative",
     "last_influencer_run": "pipeline:last_run:influencer",
-    "last_macro_run":      "pipeline:last_run:macro",
     "last_eod_run":          "pipeline:last_run:market_eod",
     "last_scoring_tick_run": "pipeline:last_run:scoring_tick",
 }
+
+# The single macro job was split into two (daily FRED + intraday VIX/ETF),
+# each recording its own run key. `last_macro_run` reports the most recent of
+# the two so it reflects the freshest macro refresh regardless of cadence.
+_MACRO_KEYS = (
+    "pipeline:last_run:macro_daily",
+    "pipeline:last_run:macro_intraday",
+)
 
 
 async def _read_ts(key: str) -> datetime | None:
@@ -49,6 +56,15 @@ async def _read_ts(key: str) -> datetime | None:
 @router.get("/status", response_model=StatusResponse)
 async def get_status() -> StatusResponse:
     timestamps = {field: await _read_ts(key) for field, key in _JOB_KEYS.items()}
+
+    # Macro: most recent of the daily (FRED) and intraday (VIX/ETF) jobs.
+    macro_runs = []
+    for key in _MACRO_KEYS:
+        ts = await _read_ts(key)
+        if ts is not None:
+            macro_runs.append(ts)
+    timestamps["last_macro_run"] = max(macro_runs) if macro_runs else None
+
     return StatusResponse(
         status         = "operational",
         market_is_open = is_market_hours(datetime.now(timezone.utc)),
