@@ -14,10 +14,9 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query
 
-from api.auth import authenticate
-from api.rate_limit import check_rate_limit
+from api.rate_limit import rate_limited
 from api.response.assembler import assemble
 from api.response.schemas import ErrorResponse, FreeTierResponse, NoDataResponse, ProTierResponse
 from scripts.db.queries.universe import is_supported_ticker
@@ -37,15 +36,9 @@ _log   = logging.getLogger(__name__)
 )
 async def get_sentiment(
     ticker:  str,
-    request: Request,
     detail:  str = Query(default="summary", pattern="^(summary|full)$"),
-    tier:    str = Depends(authenticate),
+    tier:    str = Depends(rate_limited),
 ) -> FreeTierResponse | ProTierResponse | NoDataResponse:
-    # ── Rate limiting ─────────────────────────────────────────────────────────
-    auth_header = request.headers.get("authorization", "")
-    raw_token   = auth_header.removeprefix("Bearer ").strip()
-    await check_rate_limit(raw_token, tier)
-
     # ── Ticker validation ─────────────────────────────────────────────────────
     ticker = ticker.upper()
     if not await is_supported_ticker(ticker):

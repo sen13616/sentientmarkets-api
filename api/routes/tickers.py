@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from api.auth import authenticate
+from api.rate_limit import rate_limited
 from api.response.schemas import TickerItem, TickersResponse
 from scripts.db.queries.universe import get_all_tickers
 
@@ -18,7 +18,7 @@ router = APIRouter()
 
 @router.get("/tickers", response_model=TickersResponse)
 async def list_tickers(
-    tier: str = Depends(authenticate),
+    tier: str = Depends(rate_limited),
 ) -> TickersResponse:
     rows = await get_all_tickers()
     items = [

@@ -85,7 +85,7 @@ def pro_client():
 def _sentiment_patches(*, supported: bool = True, state: dict | None = _MOCK_STATE):
     """Return a combined context manager for the three most common patches."""
     return (
-        patch("api.routes.sentiment.check_rate_limit", AsyncMock()),
+        patch("api.rate_limit.check_rate_limit", AsyncMock()),
         patch("api.routes.sentiment.is_supported_ticker", AsyncMock(return_value=supported)),
         patch("api.response.assembler._load_from_redis", AsyncMock(return_value=state)),
     )
@@ -216,9 +216,12 @@ class TestTickers:
     ]
 
     def test_returns_universe_size_and_tickers_list(self, free_client):
-        with patch(
-            "api.routes.tickers.get_all_tickers",
-            AsyncMock(return_value=self._MOCK_ROWS),
+        with (
+            patch("api.rate_limit.check_rate_limit", AsyncMock()),
+            patch(
+                "api.routes.tickers.get_all_tickers",
+                AsyncMock(return_value=self._MOCK_ROWS),
+            ),
         ):
             r = free_client.get(
                 "/v1/tickers",
@@ -233,9 +236,12 @@ class TestTickers:
         assert "AAPL" in tickers_list
 
     def test_tickers_include_name_field(self, free_client):
-        with patch(
-            "api.routes.tickers.get_all_tickers",
-            AsyncMock(return_value=self._MOCK_ROWS),
+        with (
+            patch("api.rate_limit.check_rate_limit", AsyncMock()),
+            patch(
+                "api.routes.tickers.get_all_tickers",
+                AsyncMock(return_value=self._MOCK_ROWS),
+            ),
         ):
             r = free_client.get(
                 "/v1/tickers",

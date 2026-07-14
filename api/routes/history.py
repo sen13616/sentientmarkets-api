@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from api.auth import authenticate
+from api.rate_limit import rate_limited
 from api.response.labels import score_to_label
 from api.response.schemas import ErrorResponse, HistoryEntry, HistoryResponse, HistorySubIndices
 from scripts.db.queries.sentiment_history import get_history
@@ -33,13 +33,14 @@ router = APIRouter()
         401: {"model": ErrorResponse},
         403: {"model": ErrorResponse},
         404: {"model": ErrorResponse},
+        429: {"model": ErrorResponse},
     },
 )
 async def get_sentiment_history(
     ticker:   str,
     days:     int        = Query(default=30, ge=1, le=365),
     interval: str | None = Query(default=None, pattern="^(daily|hourly|raw)$"),
-    tier:     str        = Depends(authenticate),
+    tier:     str        = Depends(rate_limited),
 ) -> HistoryResponse:
     # When interval is not explicitly provided, default depends on the window:
     # a 1-day window gets every scoring tick; longer windows collapse to daily.

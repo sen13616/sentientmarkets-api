@@ -176,7 +176,7 @@ class TestMissingLayers:
 
     def _pro_request(self, client, state):
         with (
-            patch("api.routes.sentiment.check_rate_limit", AsyncMock()),
+            patch("api.rate_limit.check_rate_limit", AsyncMock()),
             patch("api.routes.sentiment.is_supported_ticker", AsyncMock(return_value=True)),
             patch("api.response.assembler._load_from_redis", AsyncMock(return_value=state)),
         ):
@@ -210,9 +210,12 @@ class TestMissingLayers:
 class TestTickersCompanyNames:
 
     def test_tickers_returns_list_of_objects(self, free_client):
-        with patch(
-            "api.routes.tickers.get_all_tickers",
-            AsyncMock(return_value=_MOCK_TICKER_ROWS),
+        with (
+            patch("api.rate_limit.check_rate_limit", AsyncMock()),
+            patch(
+                "api.routes.tickers.get_all_tickers",
+                AsyncMock(return_value=_MOCK_TICKER_ROWS),
+            ),
         ):
             r = free_client.get(
                 "/v1/tickers",
@@ -224,9 +227,12 @@ class TestTickersCompanyNames:
         assert isinstance(data["tickers"][0], dict)
 
     def test_ticker_item_has_ticker_and_name_fields(self, free_client):
-        with patch(
-            "api.routes.tickers.get_all_tickers",
-            AsyncMock(return_value=_MOCK_TICKER_ROWS),
+        with (
+            patch("api.rate_limit.check_rate_limit", AsyncMock()),
+            patch(
+                "api.routes.tickers.get_all_tickers",
+                AsyncMock(return_value=_MOCK_TICKER_ROWS),
+            ),
         ):
             r = free_client.get(
                 "/v1/tickers",
@@ -239,9 +245,12 @@ class TestTickersCompanyNames:
         assert item["name"] == "Apple Inc."
 
     def test_universe_size_matches_tickers_list_length(self, free_client):
-        with patch(
-            "api.routes.tickers.get_all_tickers",
-            AsyncMock(return_value=_MOCK_TICKER_ROWS),
+        with (
+            patch("api.rate_limit.check_rate_limit", AsyncMock()),
+            patch(
+                "api.routes.tickers.get_all_tickers",
+                AsyncMock(return_value=_MOCK_TICKER_ROWS),
+            ),
         ):
             r = free_client.get(
                 "/v1/tickers",
