@@ -33,7 +33,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 import asyncpg
 from dotenv import load_dotenv
 
-_ENV_FILE = os.path.join(os.path.dirname(__file__), "..", ".env")
+_ENV_FILE = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
 load_dotenv(_ENV_FILE, override=True)
 
 EXPORTS_DIR = os.path.join(os.path.dirname(__file__), "exports")

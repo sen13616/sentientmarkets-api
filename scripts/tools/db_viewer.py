@@ -59,7 +59,7 @@ from db_health import (  # noqa: E402
     query_article_volume_24h,
 )
 
-_ENV_FILE = os.path.join(os.path.dirname(__file__), "..", ".env")
+_ENV_FILE = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
 load_dotenv(_ENV_FILE, override=True)  # belt-and-suspenders for the viewer
 
 console = Console()
