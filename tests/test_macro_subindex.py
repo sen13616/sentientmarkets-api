@@ -275,12 +275,15 @@ class TestOrchestratorDispatch:
         # Both aggregators get spies; verify only the macro one fires
         # on the macro layer call path.
         with (
-            patch("scripts.db.queries.raw_signals.get_signals_since",
+            # Patch the orchestrator's own references — it imports these by
+            # name, so patching the source modules would not take effect and
+            # the test would hit the real database.
+            patch("pipeline.orchestrator.get_signals_since",
                   new=AsyncMock(return_value=[{
                       "signal_type": "vix", "value": 22.0, "source": "yfinance",
                       "timestamp": _ts(),
                   }])),
-            patch("pipeline.features.normalize.score_macro_signals",
+            patch("pipeline.orchestrator.score_macro_signals",
                   new=AsyncMock(return_value=[_sig("vix", 50.0)])),
             patch("pipeline.orchestrator.compute_macro_sub_index",
                   return_value=mock_result) as mock_macro,
