@@ -60,7 +60,22 @@ async def get_signals_since(
 
 
 async def insert_signals(rows: list[tuple]) -> None:
-    """Bulk-insert (ticker, signal_type, value, source, upload_type, timestamp) tuples."""
+    """Bulk-insert (ticker, signal_type, value, source, upload_type, timestamp) tuples.
+
+    Idempotent on the natural key (ticker, signal_type, timestamp, value,
+    source): a row whose exact key already exists is skipped, so jobs that
+    re-fetch an overlapping window (influencer Form 4s, FRED latest-obs,
+    sector-ETF closes, intraday OHLC bars) no longer accrue duplicates.
+    upload_type is deliberately NOT part of the key — a live re-fetch of a
+    value that a backfill already stored is still a duplicate.
+
+    The NOT EXISTS probe is served by idx_raw_signals_lookup
+    (ticker, signal_type, timestamp DESC). executemany runs the batch in
+    one transaction, so within-batch duplicates are also collapsed.
+    Concurrent writers could still race past the probe; the hard guarantee
+    is a unique index, deferred until the historical duplicates are
+    cleaned up.
+    """
     if not rows:
         return
     pool = await get_pool()
@@ -69,7 +84,16 @@ async def insert_signals(rows: list[tuple]) -> None:
             """
             INSERT INTO raw_signals
                 (ticker, signal_type, value, source, upload_type, timestamp)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            SELECT $1::varchar, $2::varchar, $3::float8, $4::varchar,
+                   $5::varchar, $6::timestamptz
+            WHERE NOT EXISTS (
+                SELECT 1 FROM raw_signals
+                WHERE ticker      = $1::varchar
+                  AND signal_type = $2::varchar
+                  AND timestamp   = $6::timestamptz
+                  AND value       = $3::float8
+                  AND source      = $4::varchar
+            )
             """,
             rows,
         )

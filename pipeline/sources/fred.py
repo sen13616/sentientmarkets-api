@@ -35,6 +35,7 @@ in `_score_macro`. Per-signal weights and aggregation are in
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from datetime import datetime, timezone
@@ -133,14 +134,43 @@ async def _fetch_observation(
     return parsed
 
 
+#: How many observations to request per series. Must cover the worst
+#: realistic run of unusable head observations ('.'-padded holidays /
+#: not-yet-published days over a long weekend) so the newest real value
+#: is always inside the page.
+_OBS_FETCH_LIMIT = 10
+
+#: One retry after a transient failure. The daily 02:00 UTC run showed a
+#: positional failure pattern (first series fetched failed for days in a
+#: row while later ones succeeded — DGS10 stalled 12 days in July 2026),
+#: consistent with a transient network/rate-limit burst at the top of the
+#: hour that guarded_get's own retries did not outlast.
+_RETRY_DELAY_S = 15.0
+
+
 async def fetch_fred_signals(client: httpx.AsyncClient) -> int:
-    """Daily ingest: write the latest observation for each FRED series.
+    """Daily ingest: write the latest real observation for each FRED series.
+
+    Requests a page of recent observations (not just the newest row) so a
+    '.'-padded head observation cannot blank the series for the day —
+    _fetch_observation already filters '.' rows, so obs[0] is the newest
+    observation that carries an actual value. Retries each series once
+    after _RETRY_DELAY_S on a failed/empty first attempt.
 
     Returns the number of rows written.
     """
     rows: list[tuple] = []
     for sig_type, series_id in SERIES_MAP.items():
-        obs = await _fetch_observation(client, series_id, limit=1, sort_order="desc")
+        obs = await _fetch_observation(
+            client, series_id, limit=_OBS_FETCH_LIMIT, sort_order="desc",
+        )
+        if not obs:
+            _log.warning("FRED %s empty on first attempt — retrying in %.0fs",
+                         series_id, _RETRY_DELAY_S)
+            await asyncio.sleep(_RETRY_DELAY_S)
+            obs = await _fetch_observation(
+                client, series_id, limit=_OBS_FETCH_LIMIT, sort_order="desc",
+            )
         if not obs:
             _log.warning("FRED %s returned no usable observation this tick", series_id)
             continue
