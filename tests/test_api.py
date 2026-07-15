@@ -260,15 +260,23 @@ class TestTickers:
 
 class TestStatus:
 
-    def test_returns_operational_status(self):
-        with patch("api.routes.status._read_ts", AsyncMock(return_value=None)):
-            r = TestClient(app).get("/v1/status")
+    def test_requires_authentication(self):
+        # /v1/status is auth-gated (any tier); anonymous pollers get 401.
+        r = TestClient(app).get("/v1/status")
+        assert r.status_code == 401
+
+    def test_returns_operational_status(self, free_client):
+        with (
+            patch("api.rate_limit.check_rate_limit", AsyncMock()),
+            patch("api.routes.status._read_ts", AsyncMock(return_value=None)),
+        ):
+            r = free_client.get("/v1/status", headers={"Authorization": "Bearer k"})
         assert r.status_code == 200
         data = r.json()
         assert "status" in data
         assert data["status"] == "operational"
 
-    def test_last_macro_run_is_most_recent_of_split_macro_jobs(self):
+    def test_last_macro_run_is_most_recent_of_split_macro_jobs(self, free_client):
         # The macro job was split into macro_daily + macro_intraday; last_macro_run
         # must report the most recent of the two (not the retired `macro` key).
         runs = {
@@ -281,13 +289,19 @@ class TestStatus:
             val = runs.get(key)
             return datetime.fromisoformat(val) if val else None
 
-        with patch("api.routes.status._read_ts", side_effect=_fake_read_ts):
-            r = TestClient(app).get("/v1/status")
+        with (
+            patch("api.rate_limit.check_rate_limit", AsyncMock()),
+            patch("api.routes.status._read_ts", side_effect=_fake_read_ts),
+        ):
+            r = free_client.get("/v1/status", headers={"Authorization": "Bearer k"})
         assert r.status_code == 200
         # intraday (18:00) is more recent than daily (02:00)
         assert r.json()["last_macro_run"] == "2026-04-24T18:00:00Z"
 
-    def test_last_macro_run_null_when_no_macro_runs_recorded(self):
-        with patch("api.routes.status._read_ts", AsyncMock(return_value=None)):
-            r = TestClient(app).get("/v1/status")
+    def test_last_macro_run_null_when_no_macro_runs_recorded(self, free_client):
+        with (
+            patch("api.rate_limit.check_rate_limit", AsyncMock()),
+            patch("api.routes.status._read_ts", AsyncMock(return_value=None)),
+        ):
+            r = free_client.get("/v1/status", headers={"Authorization": "Bearer k"})
         assert r.json()["last_macro_run"] is None

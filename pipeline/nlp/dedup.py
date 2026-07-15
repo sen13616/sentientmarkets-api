@@ -32,6 +32,7 @@ The sentence-transformers model is loaded lazily on first call (≈80 MB).
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from datetime import datetime
@@ -105,13 +106,16 @@ async def cluster_articles(
 
     # --- Encode titles --------------------------------------------------
     import numpy as np  # noqa: PLC0415 — deferred to avoid torch at startup
-    model  = _get_model()
     titles = [a["title"] or "" for a in articles]
-    embeddings = model.encode(
-        titles,
-        normalize_embeddings=True,   # unit-vectors → cosine = dot product
-        show_progress_bar=False,
-        batch_size=64,
+    # Model load + encode are sync CPU torch work; run off the event loop so
+    # the in-process FastAPI keeps serving during the narrative job.
+    embeddings = await asyncio.to_thread(
+        lambda: _get_model().encode(
+            titles,
+            normalize_embeddings=True,   # unit-vectors → cosine = dot product
+            show_progress_bar=False,
+            batch_size=64,
+        )
     )  # shape (n, dim)
 
     # --- Build time-aware similarity graph via union-find ----------------

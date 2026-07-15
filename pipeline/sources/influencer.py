@@ -46,6 +46,7 @@ from pipeline.rate_limits import (
     FINNHUB_SEM, FINNHUB_DELAY,
     guarded_get,
 )
+from pipeline.sources.market import to_yahoo_symbol
 
 _log = logging.getLogger(__name__)
 
@@ -152,7 +153,7 @@ async def _analyst_target_yf(ticker: str) -> float | None:
     asyncio.to_thread because yfinance is synchronous (mirrors macro.py:75-89).
     """
     def _fetch() -> float | None:
-        info = yf.Ticker(ticker).info
+        info = yf.Ticker(to_yahoo_symbol(ticker)).info
         target = info.get("targetMeanPrice")
         if target is None:
             return None
@@ -179,7 +180,7 @@ async def _earnings_estimate_yf(ticker: str) -> float | None:
     period-over-period delta from history (Sprint P3.3).
     """
     def _fetch() -> float | None:
-        est = yf.Ticker(ticker).get_earnings_estimate()
+        est = yf.Ticker(to_yahoo_symbol(ticker)).get_earnings_estimate()
         if est is None:
             return None
         try:

@@ -95,6 +95,21 @@ async def _ohlcv_polygon(ticker: str, client: httpx.AsyncClient) -> dict | None:
 
 
 # ---------------------------------------------------------------------------
+# Yahoo symbol mapping
+# ---------------------------------------------------------------------------
+
+def to_yahoo_symbol(ticker: str) -> str:
+    """
+    Map a universe ticker to Yahoo Finance's symbol convention.
+
+    Class-share symbols use a dot in the universe (BRK.B, BF.B) but a dash
+    on Yahoo (BRK-B, BF-B). Apply this at every yfinance call boundary ONLY —
+    the universe/DB symbol stays dotted everywhere else.
+    """
+    return ticker.replace(".", "-")
+
+
+# ---------------------------------------------------------------------------
 # Bid-ask spread (yfinance Ticker.info)
 # ---------------------------------------------------------------------------
 
@@ -113,7 +128,7 @@ def _fetch_bid_ask_spread(ticker: str) -> dict | None:
     import yfinance as yf
 
     try:
-        info = yf.Ticker(ticker).info
+        info = yf.Ticker(to_yahoo_symbol(ticker)).info
     except Exception as exc:
         _log.warning("yfinance Ticker.info failed for %s: %s", ticker, exc)
         return None

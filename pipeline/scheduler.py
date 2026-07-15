@@ -66,7 +66,7 @@ from pipeline.rate_limits import job_counters
 from pipeline.sources.fred import fetch_fred_signals
 from pipeline.sources.influencer import fetch_influencer_signals
 from pipeline.sources.macro import fetch_macro_signals
-from pipeline.sources.market import fetch_market_signals
+from pipeline.sources.market import fetch_market_signals, to_yahoo_symbol
 from pipeline.nlp.dedup import cluster_articles
 from pipeline.sources.narrative import fetch_narrative_signals
 from pipeline.sources.short_volume import ingest_short_volume
@@ -301,9 +301,13 @@ async def _yf_batch_download(tickers: list[str]) -> dict[str, dict]:
     """
     loop = asyncio.get_running_loop()
 
+    # Yahoo uses dashed class-share symbols (BRK-B); the universe uses dots
+    # (BRK.B). Download under Yahoo symbols, key results by universe symbol.
+    yahoo_symbols = [to_yahoo_symbol(t) for t in tickers]
+
     def _download():
         return yf.download(
-            tickers=tickers,
+            tickers=yahoo_symbols,
             period="5d",
             interval="1d",
             group_by="ticker",
@@ -328,7 +332,7 @@ async def _yf_batch_download(tickers: list[str]) -> dict[str, dict]:
             if len(tickers) == 1:
                 df = raw
             else:
-                df = raw[ticker]
+                df = raw[to_yahoo_symbol(ticker)]
 
             if df.empty:
                 continue
@@ -504,7 +508,9 @@ async def narrative_job() -> None:
                 (a["title"] or "") + " " + (a["summary"] or "")
                 for a in unscored
             ]
-            scores = finbert_score_batch(texts)
+            # Sync torch inference (up to 500 articles) — run off the event
+            # loop so the in-process FastAPI keeps serving requests.
+            scores = await asyncio.to_thread(finbert_score_batch, texts)
             rows = [
                 (a["id"], s["finbert_score"], s["finbert_pos"],
                  s["finbert_neg"], s["finbert_neu"])
@@ -696,6 +702,12 @@ async def retention_job() -> None:
       - raw_signals OHLCV rows older than 365 days
       - raw_signals non-OHLCV rows older than 90 days
       - raw_articles older than 30 days
+
+    Deliberately does NOT purge `sentiment_history` or `price_snapshots`:
+    both are the research paper's raw material (score time series and the
+    tick-aligned closes for sentiment-vs-price analysis) and grow
+    unboundedly by design (~55K rows/day combined). Revisit after the
+    paper is published.
     """
     t_start = time.monotonic()
     now = datetime.now(timezone.utc)
