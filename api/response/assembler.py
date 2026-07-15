@@ -23,6 +23,7 @@ from datetime import datetime, timedelta, timezone
 from scripts.db.queries.sentiment_history import get_latest
 from scripts.db.redis import get_redis
 from pipeline.confidence.staleness import is_market_hours
+from pipeline.scoring.market_overview import PERCENTILE_KEY
 
 from .labels import score_to_label
 from .schemas import (
@@ -83,6 +84,18 @@ async def _load_from_redis(ticker: str) -> dict | None:
         return json.loads(raw)
     except Exception as exc:
         _log.warning("assembler: Redis read failed for %s: %s", ticker, exc)
+        return None
+
+
+async def _load_percentile(ticker: str) -> float | None:
+    """Universe percentile from the latest scoring tick; None if the ticker
+    was not in that tick (or Redis is unavailable)."""
+    try:
+        client = get_redis()
+        raw = await client.hget(PERCENTILE_KEY, ticker.upper())
+        return float(raw) if raw is not None else None
+    except Exception as exc:
+        _log.warning("assembler: percentile read failed for %s: %s", ticker, exc)
         return None
 
 
@@ -173,24 +186,37 @@ def _sub_val(state: dict, layer: str) -> float | None:
     return float(si)
 
 
+def _change_fields(state: dict) -> tuple[float | None, float | None]:
+    """1-day change pair from state; None for pre-feature states and gaps."""
+    change = state.get("score_change_1d")
+    pct = state.get("score_change_1d_pct")
+    return (
+        float(change) if change is not None else None,
+        float(pct) if pct is not None else None,
+    )
+
+
 def _build_free(state: dict) -> FreeTierResponse:
     score = int(round(state.get("composite_score") or state.get("score") or 0))
     conf  = state.get("confidence") or {}
     confidence = int(conf.get("score") if isinstance(conf, dict) else conf or 0)
     ts    = _parse_dt(state.get("timestamp"))
     now   = _now_utc()
+    change, change_pct = _change_fields(state)
     return FreeTierResponse(
-        ticker            = state["ticker"].upper(),
-        score             = score,
-        label             = score_to_label(score),
-        confidence        = confidence,
-        timestamp         = ts or now,
-        cache_age_seconds = _cache_age(state.get("timestamp")),
-        market_hours      = _market_hours_info(now),
+        ticker              = state["ticker"].upper(),
+        score               = score,
+        score_change_1d     = change,
+        score_change_1d_pct = change_pct,
+        label               = score_to_label(score),
+        confidence          = confidence,
+        timestamp           = ts or now,
+        cache_age_seconds   = _cache_age(state.get("timestamp")),
+        market_hours        = _market_hours_info(now),
     )
 
 
-def _build_pro(state: dict) -> ProTierResponse:
+def _build_pro(state: dict, universe_percentile: float | None = None) -> ProTierResponse:
     score = int(round(state.get("composite_score") or state.get("score") or 0))
     conf  = state.get("confidence") or {}
     confidence = int(conf.get("score") if isinstance(conf, dict) else conf or 0)
@@ -235,10 +261,15 @@ def _build_pro(state: dict) -> ProTierResponse:
     obs_count = state.get("ema_obs_count")
     ema_obs_count = int(obs_count) if obs_count is not None else None
 
+    change, change_pct = _change_fields(state)
+
     return ProTierResponse(
         ticker            = state["ticker"].upper(),
         score             = score,
         score_raw         = score_raw,
+        score_change_1d     = change,
+        score_change_1d_pct = change_pct,
+        universe_percentile = universe_percentile,
         ema_obs_count     = ema_obs_count,
         label             = score_to_label(score),
         confidence        = confidence,
@@ -285,5 +316,6 @@ async def assemble(
 
     use_full = (tier == "pro" and detail == "full")
     if use_full:
-        return _build_pro(state)
+        percentile = await _load_percentile(ticker)
+        return _build_pro(state, universe_percentile=percentile)
     return _build_free(state)

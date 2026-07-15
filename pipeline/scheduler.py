@@ -34,6 +34,7 @@ Usage
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import sys
 import time
@@ -50,10 +51,17 @@ from tqdm.asyncio import tqdm as _atqdm
 
 from scripts.db.queries.raw_articles import purge_articles_before
 from scripts.db.queries.raw_signals import OHLCV_SIGNAL_TYPES, purge_signals_before
+from scripts.db.queries.sentiment_history import get_baseline_scores
 from scripts.db.queries.universe import get_active_tickers, get_ticker_sector_map
 from scripts.db.redis import get_redis
 from pipeline.features.normalize import log_scoring_telemetry, reset_scoring_telemetry
-from pipeline.orchestrator import _score_and_write
+from pipeline.orchestrator import ScoreResult, _score_and_write
+from pipeline.scoring.market_overview import (
+    OVERVIEW_KEY,
+    PERCENTILE_KEY,
+    build_overview,
+    compute_percentiles,
+)
 from pipeline.rate_limits import job_counters
 from pipeline.sources.fred import fetch_fred_signals
 from pipeline.sources.influencer import fetch_influencer_signals
@@ -184,6 +192,18 @@ async def _score_all(
     fetched = 0
     total_layers = 0
 
+    # 1-day-change baselines (24-48h-old smoothed scores), one query for the
+    # whole universe. A missing entry leaves that ticker's change fields null
+    # (new ticker or data gap) — the change is never computed across a gap.
+    try:
+        baselines = await get_baseline_scores()
+    except Exception as exc:
+        _log.warning("%s: get_baseline_scores failed: %s — 1d changes null this tick",
+                     job_name, exc)
+        baselines = {}
+
+    results: dict[str, ScoreResult] = {}
+
     pbar = _tqdm(
         total=len(tickers),
         desc=desc,
@@ -198,9 +218,10 @@ async def _score_all(
         sector = (sector_map or {}).get(ticker)
         async with _SCORE_SEM:
             try:
-                n_layers = await _score_and_write(ticker, sector)
+                result = await _score_and_write(ticker, sector, baselines.get(ticker.upper()))
                 fetched += 1
-                total_layers += n_layers
+                total_layers += result.n_populated
+                results[ticker.upper()] = result
             except Exception as exc:
                 _log.warning(
                     "%s: scoring failed for %s: %s", job_name, ticker, exc, exc_info=True
@@ -213,7 +234,48 @@ async def _score_all(
     await asyncio.gather(*[_bounded(t) for t in tickers])
     pbar.close()
 
+    await _publish_universe_stats(results, sector_map or {})
+
     return fetched, total_layers
+
+
+async def _publish_universe_stats(
+    results: dict[str, ScoreResult],
+    sector_map: dict[str, str],
+) -> None:
+    """
+    End-of-tick universe pass: percentiles + market-overview blob, computed
+    from the in-memory results of the scoring pass and cached in Redis for
+    the API (pro sentiment ``universe_percentile``; ``/v1/market/overview``).
+
+    Only tickers scored THIS tick are included, so a ticker absent from the
+    latest tick has no percentile (API returns null). Best-effort: a Redis
+    failure logs a warning and never fails the scoring job.
+    """
+    if not results:
+        return
+    now = datetime.now(timezone.utc)
+    scores      = {t: r.smoothed_score for t, r in results.items()}
+    changes     = {t: r.score_change_1d for t, r in results.items()}
+    change_pcts = {t: r.score_change_1d_pct for t, r in results.items()}
+
+    pct_map  = compute_percentiles(scores)
+    overview = build_overview(scores, changes, change_pcts, sector_map, now)
+
+    try:
+        client = get_redis()
+        pipe = client.pipeline(transaction=True)
+        pipe.delete(PERCENTILE_KEY)
+        if pct_map:
+            pipe.hset(PERCENTILE_KEY, mapping=pct_map)
+        pipe.set(OVERVIEW_KEY, json.dumps(overview))
+        await pipe.execute()
+        _log.info(
+            "universe stats published: %d percentiles, overview avg=%s",
+            len(pct_map), overview.get("average_score"),
+        )
+    except Exception as exc:
+        _log.warning("_publish_universe_stats: Redis write failed: %s", exc)
 
 
 def _fmt_elapsed(seconds: float) -> str:

@@ -37,13 +37,15 @@ class MarketHours(BaseModel):
 # ---------------------------------------------------------------------------
 
 class FreeTierResponse(BaseModel):
-    ticker:            str
-    score:             int
-    label:             str
-    confidence:        int
-    timestamp:         datetime
-    cache_age_seconds: int
-    market_hours:      MarketHours
+    ticker:              str
+    score:               int
+    score_change_1d:     Optional[float] = None   # vs most recent tick 24-48h old; null across gaps
+    score_change_1d_pct: Optional[float] = None
+    label:               str
+    confidence:          int
+    timestamp:           datetime
+    cache_age_seconds:   int
+    market_hours:        MarketHours
 
 
 # ---------------------------------------------------------------------------
@@ -76,6 +78,9 @@ class ProTierResponse(BaseModel):
     ticker:            str
     score:             int              # EMA-smoothed composite (with raw fallback)
     score_raw:         Optional[int]    = None   # Unsmoothed composite
+    score_change_1d:     Optional[float] = None  # vs most recent tick 24-48h old; null across gaps
+    score_change_1d_pct: Optional[float] = None
+    universe_percentile: Optional[float] = None  # percentile within latest tick; null if not in it
     ema_obs_count:     Optional[int]    = None   # Monotonic EMA update counter
     label:             str
     confidence:        int
@@ -149,6 +154,41 @@ class TickerItem(BaseModel):
 class TickersResponse(BaseModel):
     universe_size: int
     tickers:       list[TickerItem]
+
+
+# ---------------------------------------------------------------------------
+# Market overview endpoint (pro tier)
+# ---------------------------------------------------------------------------
+
+class Mover(BaseModel):
+    ticker:              str
+    score:               float
+    score_change_1d:     Optional[float] = None
+    score_change_1d_pct: Optional[float] = None
+
+
+class SectorTickerRank(BaseModel):
+    ticker: str
+    score:  float
+    rank:   int               # 1 = highest score within the sector
+
+
+class SectorOverview(BaseModel):
+    sector:        str
+    average_score: float
+    size:          int        # tickers scored in this sector this tick
+    tickers:       list[SectorTickerRank]
+
+
+class MarketOverviewResponse(BaseModel):
+    timestamp:             datetime            # scoring tick the blob was computed at
+    universe_scored:       int
+    average_score:         Optional[float] = None
+    breadth_above_50_pct:  Optional[float] = None
+    breadth_improving_pct: Optional[float] = None   # null when no ticker has a 1d baseline
+    top_movers:            list[Mover] = []
+    bottom_movers:         list[Mover] = []
+    sectors:               list[SectorOverview] = []
 
 
 # ---------------------------------------------------------------------------

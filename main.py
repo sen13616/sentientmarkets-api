@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routes import health, history, sentiment, status, tickers
+from api.routes import health, history, market, sentiment, status, tickers
 from scripts.db.connection import close_pool, init_pool
 from scripts.db.redis import close_redis, init_redis
 from pipeline.scheduler import scheduler
@@ -64,5 +64,6 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(sentiment.router, prefix="/v1")
 app.include_router(history.router,   prefix="/v1")
+app.include_router(market.router,    prefix="/v1")
 app.include_router(tickers.router,   prefix="/v1")
 app.include_router(status.router,    prefix="/v1")

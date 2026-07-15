@@ -189,3 +189,39 @@ async def get_history(
                 str(days),
             )
     return [dict(r) for r in rows]
+
+
+async def get_baseline_scores(
+    min_age_hours: int = 24,
+    max_age_hours: int = 48,
+) -> dict[str, float]:
+    """
+    Batched 1-day-change baseline: for every ticker, the smoothed composite
+    score of its most recent tick aged between `min_age_hours` and
+    `max_age_hours` (default 24-48h old).
+
+    The upper bound is what makes day-over-day change gap-safe: a ticker
+    whose newest >=24h-old tick is older than 48h (new ticker, or a data
+    gap such as the 2026-06-23 -> 07-03 outage) is simply absent from the
+    returned map, so callers report the change as null rather than
+    comparing across the gap. Falls back to the raw composite for pre-EMA
+    rows, mirroring the API's display-score convention.
+
+    One query for the whole universe; called once per scoring tick.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT DISTINCT ON (ticker)
+                   ticker,
+                   COALESCE(composite_score_smoothed, composite_score) AS baseline
+              FROM sentiment_history
+             WHERE timestamp <= NOW() - ($1 || ' hours')::interval
+               AND timestamp >= NOW() - ($2 || ' hours')::interval
+             ORDER BY ticker, timestamp DESC
+            """,
+            str(min_age_hours),
+            str(max_age_hours),
+        )
+    return {r["ticker"]: float(r["baseline"]) for r in rows if r["baseline"] is not None}

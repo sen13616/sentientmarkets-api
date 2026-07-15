@@ -33,6 +33,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
+from typing import NamedTuple
 
 import httpx
 
@@ -340,7 +341,19 @@ async def _score_macro(
 # Core compute + persist  (no external API calls)
 # ---------------------------------------------------------------------------
 
-async def _score_and_write(ticker: str, sector: str | None = None) -> int:
+class ScoreResult(NamedTuple):
+    """Per-ticker outcome of one scoring pass, consumed by _score_all."""
+    n_populated: int            # non-null sub-indices (0-4)
+    smoothed_score: float       # EMA-smoothed composite written to state
+    score_change_1d: float | None       # vs 24-48h-old baseline; None if no baseline
+    score_change_1d_pct: float | None   # same basis, as % of the baseline
+
+
+async def _score_and_write(
+    ticker: str,
+    sector: str | None = None,
+    baseline_score: float | None = None,
+) -> ScoreResult:
     """
     Read all layers from DB, compute the full scored state, and persist it.
 
@@ -359,10 +372,16 @@ async def _score_and_write(ticker: str, sector: str | None = None) -> int:
         full ticker→sector map once via ``get_ticker_sector_map()`` and
         threads it through here. ``None`` is valid and produces a
         VIX-only macro sub-index for that ticker.
+    baseline_score : float | None
+        Smoothed composite from this ticker's most recent tick aged 24–48h
+        (preloaded once per tick via ``get_baseline_scores()``). Drives
+        ``score_change_1d``. ``None`` (new ticker, or a data gap such as
+        the 2026-06-23→07-03 outage) makes the change fields null — the
+        change is never computed across a gap.
 
     Returns
     -------
-    int — number of non-null sub-indices (0–4).
+    ScoreResult — (n_populated, smoothed_score, score_change_1d).
     """
     now        = datetime.now(timezone.utc)
     ticker     = ticker.upper()
@@ -412,6 +431,16 @@ async def _score_and_write(ticker: str, sector: str | None = None) -> int:
     smoothed_score = compute_ema(effective_score, prev_smoothed, dt_hours)
     ema_obs_count  = prev_obs_count + 1
 
+    # ── 1-day change vs the 24–48h-old baseline (null across gaps) ────────────
+    score_change_1d: float | None = None
+    score_change_1d_pct: float | None = None
+    if baseline_score is not None:
+        score_change_1d = round(smoothed_score - baseline_score, 2)
+        if baseline_score != 0:
+            score_change_1d_pct = round(
+                100.0 * (smoothed_score - baseline_score) / baseline_score, 2
+            )
+
     # ── Staleness and confidence ───────────────────────────────────────────────
     as_of_map = {
         "market":  market_as_of,
@@ -448,6 +477,8 @@ async def _score_and_write(ticker: str, sector: str | None = None) -> int:
         "composite_score":           round(smoothed_score, 2),
         "composite_score_raw":       round(effective_score, 2),
         "composite_score_smoothed":  round(smoothed_score, 2),
+        "score_change_1d":           score_change_1d,
+        "score_change_1d_pct":       score_change_1d_pct,
         "ema_obs_count":             ema_obs_count,
         "sub_indices": {
             k: {
@@ -493,7 +524,12 @@ async def _score_and_write(ticker: str, sector: str | None = None) -> int:
         composite_result.missing_layers or "none",
         n_populated,
     )
-    return n_populated
+    return ScoreResult(
+        n_populated=n_populated,
+        smoothed_score=round(smoothed_score, 2),
+        score_change_1d=score_change_1d,
+        score_change_1d_pct=score_change_1d_pct,
+    )
 
 
 # ---------------------------------------------------------------------------
