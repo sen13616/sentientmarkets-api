@@ -279,15 +279,6 @@ class RollingZScorer:
 
         return 50.0 + 50.0 * (z / 3.0)
 
-    async def score(
-        self, ticker: str, signal_type: str, current_value: float
-    ) -> float | None:
-        """Fetch history from DB and compute z-score."""
-        from scripts.db.queries.raw_signals import get_signal_history
-
-        history = await get_signal_history(ticker, signal_type, limit=self.window)
-        return self.score_from_history(history, current_value)
-
 
 # Per-signal-type z-score configuration.
 # Signals not listed here use parametric scorers only.

@@ -11,7 +11,7 @@ from the pool.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import asyncpg
 

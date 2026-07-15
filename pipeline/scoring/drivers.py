@@ -57,7 +57,6 @@ _SIGNAL_LABELS: dict[str, str] = {
     "analyst_buy_pct":       "Analyst consensus",
     "analyst_target_price":  "Analyst price target",
     "vix":                   "VIX",
-    "sector_etf_close":      "Sector ETF",
     "sector_etf_return_20d": "Sector trend (20d)",
     "order_flow_imbalance":  "Order flow",
     "buy_pressure":          "Buy pressure",

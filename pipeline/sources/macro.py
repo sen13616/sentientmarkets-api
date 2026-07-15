@@ -13,8 +13,9 @@ vix
   Primary:  Finnhub /quote  (symbol=^VIX)
   Fallback: Alpha Vantage GLOBAL_QUOTE (symbol=^VIX)
 
-sector_etf_close  (one row per sector ETF, stored under ticker=ETF_SYMBOL)
+ohlcv_close  (one row per sector ETF, stored under ticker=ETF_SYMBOL)
   Source:   Alpha Vantage GLOBAL_QUOTE  for each GICS ETF
+  (stored as ohlcv_close so get_close_history() finds it)
 
 sector_etf_return_20d  (20-day return; needs ≥20 days of stored ETF closes)
   Computed: from raw_signals close history for each ETF

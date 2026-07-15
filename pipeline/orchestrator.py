@@ -38,11 +38,10 @@ from typing import NamedTuple
 import httpx
 
 from scripts.db.queries.raw_articles import get_articles_since
-from scripts.db.queries.raw_signals import get_latest_close, get_latest_signal, get_signals_since, get_signals_since_batch
+from scripts.db.queries.raw_signals import get_latest_close, get_signals_since
 from pipeline.confidence.scorer import compute_confidence
 from pipeline.confidence.staleness import (
     _market_stale,
-    check_staleness,
     filter_stale_signals,
     market_lookback_since,
     stale_sources,

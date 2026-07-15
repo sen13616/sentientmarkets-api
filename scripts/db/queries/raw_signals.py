@@ -153,25 +153,6 @@ async def get_volume_history(
     return [float(r["value"]) for r in reversed(rows)]
 
 
-async def get_latest_signal(ticker: str, signal_type: str) -> float | None:
-    """Return the most recent value for a given signal_type, or None if absent."""
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        val = await conn.fetchval(
-            """
-            SELECT value
-            FROM raw_signals
-            WHERE ticker      = $1
-              AND signal_type = $2
-            ORDER BY timestamp DESC
-            LIMIT 1
-            """,
-            ticker,
-            signal_type,
-        )
-    return float(val) if val is not None else None
-
-
 async def get_signal_history(
     ticker: str,
     signal_type: str,
@@ -199,46 +180,6 @@ async def get_signal_history(
             limit,
         )
     return [float(r["value"]) for r in reversed(rows)]
-
-
-async def get_signals_since_batch(
-    tickers: list[str],
-    since: datetime,
-    signal_types: list[str],
-) -> dict[str, list[dict]]:
-    """
-    Batch version of get_signals_since — fetches signals for multiple tickers
-    in a single query using ANY($1::text[]).
-
-    Returns a dict mapping ticker → list[dict], where each dict has keys:
-    signal_type, value, source, timestamp. Tickers with no results are omitted.
-    """
-    if not tickers or not signal_types:
-        return {}
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        rows = await conn.fetch(
-            """
-            SELECT ticker, signal_type, value, source, timestamp
-            FROM raw_signals
-            WHERE ticker      = ANY($1::text[])
-              AND timestamp  >= $2
-              AND signal_type = ANY($3::text[])
-            ORDER BY timestamp DESC
-            """,
-            tickers,
-            since,
-            signal_types,
-        )
-    result: dict[str, list[dict]] = {}
-    for r in rows:
-        result.setdefault(r["ticker"], []).append({
-            "signal_type": r["signal_type"],
-            "value":       r["value"],
-            "source":      r["source"],
-            "timestamp":   r["timestamp"],
-        })
-    return result
 
 
 async def get_latest_close(ticker: str) -> float | None:
