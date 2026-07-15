@@ -47,6 +47,8 @@ curl -H "Authorization: Bearer sk-sm-your-key" \
 {
   "ticker": "AAPL",
   "score": 72,
+  "score_change_1d": 3.25,
+  "score_change_1d_pct": 4.73,
   "label": "Bullish",
   "confidence": 81,
   "timestamp": "2026-04-24T14:32:00Z",
@@ -58,6 +60,8 @@ curl -H "Authorization: Bearer sk-sm-your-key" \
   }
 }
 ```
+
+`score_change_1d` / `score_change_1d_pct` (both tiers): smoothed score vs the most recent tick aged 24–48h. `null` when no such baseline exists (new ticker or a data gap) — the change is never computed across a gap.
 
 **Pro Tier Response**
 
@@ -71,6 +75,9 @@ curl -H "Authorization: Bearer sk-sm-your-key" \
   "ticker": "AAPL",
   "score": 72,
   "score_raw": 70,
+  "score_change_1d": 3.25,
+  "score_change_1d_pct": 4.73,
+  "universe_percentile": 87.3,
   "ema_obs_count": 143,
   "label": "Bullish",
   "confidence": 81,
@@ -116,7 +123,7 @@ curl -H "Authorization: Bearer sk-sm-your-key" \
 }
 ```
 
-Pro-tier fields beyond the Free set: `score_raw` (unsmoothed composite), `ema_obs_count` (EMA update counter), `sub_indices`, `missing_layers`, `divergence`, `top_drivers`, `explanation`, `freshness`, and `confidence_flags`. Each driver has exactly `signal`, `description`, `direction`, `magnitude`, and `source_layer` — there is no per-driver `confidence`.
+Pro-tier fields beyond the Free set: `score_raw` (unsmoothed composite), `universe_percentile` (percentile of this ticker's smoothed score within the latest scoring tick; `null` if the ticker was absent from that tick), `ema_obs_count` (EMA update counter), `sub_indices`, `missing_layers`, `divergence`, `top_drivers`, `explanation`, `freshness`, and `confidence_flags`. Each driver has exactly `signal`, `description`, `direction`, `magnitude`, and `source_layer` — there is no per-driver `confidence`.
 
 ---
 
@@ -187,12 +194,55 @@ Each entry is an object with `ticker`, `name` (company name, may be `null` if no
 
 ---
 
-### GET /v1/status
+### GET /v1/market/overview
 
-Returns API health and last pipeline run timestamps.
+Universe-level statistics for the latest scoring tick. **Pro tier only** (free keys receive 403). Served from a single per-tick cached blob; returns 503 `temporarily_unavailable` before the first tick after a deployment.
 
 ```bash
-curl https://sentimentapi-p.up.railway.app/v1/status
+curl -H "Authorization: Bearer sk-sm-your-key" \
+  https://sentimentapi-p.up.railway.app/v1/market/overview
+```
+
+**Response**
+
+```json
+{
+  "timestamp": "2026-07-15T14:30:00Z",
+  "universe_scored": 502,
+  "average_score": 55.2,
+  "breadth_above_50_pct": 63.5,
+  "breadth_improving_pct": 48.2,
+  "top_movers": [
+    { "ticker": "AAPL", "score": 72.0, "score_change_1d": 3.25, "score_change_1d_pct": 4.73 }
+  ],
+  "bottom_movers": [
+    { "ticker": "MSFT", "score": 55.0, "score_change_1d": -1.5, "score_change_1d_pct": -2.65 }
+  ],
+  "sectors": [
+    {
+      "sector": "Information Technology",
+      "average_score": 58.4,
+      "size": 68,
+      "tickers": [
+        { "ticker": "NVDA", "score": 74.1, "rank": 1 },
+        { "ticker": "AAPL", "score": 72.0, "rank": 2 }
+      ]
+    }
+  ]
+}
+```
+
+`timestamp` is the scoring tick the blob was computed at. `breadth_improving_pct` counts tickers with a positive `score_change_1d` among those with a 1-day baseline and is `null` when none have one; movers exclude tickers with `null` change (both can be empty right after a data gap). `sectors[].tickers[].rank` is the within-sector rank by score (1 = highest) — combine with `size` to render "#4 of 68 in Information Technology".
+
+---
+
+### GET /v1/status
+
+Returns API health and last pipeline run timestamps. **Requires a valid API key (any tier)** and counts against the key's rate limit — use `/health` for unauthenticated liveness checks.
+
+```bash
+curl -H "Authorization: Bearer sk-sm-your-key" \
+  https://sentimentapi-p.up.railway.app/v1/status
 ```
 
 **Response**
@@ -210,7 +260,7 @@ curl https://sentimentapi-p.up.railway.app/v1/status
 }
 ```
 
-Any `last_*_run` field is `null` if the corresponding job has no recorded run in Redis. This endpoint requires no authentication.
+Any `last_*_run` field is `null` if the corresponding job has no recorded run in Redis. Requests without a valid key receive 401.
 
 ---
 

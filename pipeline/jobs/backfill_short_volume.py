@@ -181,6 +181,10 @@ async def backfill(days_back: int = 90, start: date | None = None, end: date | N
 
             if rows:
                 async with pool.acquire() as conn:
+                    # CAUTION: blind INSERT — bypasses insert_signals()'s dedup guard
+                    # (NOT EXISTS on ticker/signal_type/timestamp/value/source). Re-running
+                    # this script can create duplicate rows; dedupe manually or port to
+                    # scripts.db.queries.raw_signals.insert_signals() before reuse.
                     await conn.executemany(
                         """INSERT INTO raw_signals
                              (ticker, signal_type, value, source, upload_type, timestamp)

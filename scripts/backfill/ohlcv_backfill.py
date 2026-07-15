@@ -146,6 +146,10 @@ async def _insert_rows(rows: list[tuple]) -> None:
         return
     pool = await get_pool()
     async with pool.acquire() as conn:
+        # CAUTION: blind INSERT — bypasses insert_signals()'s dedup guard
+        # (NOT EXISTS on ticker/signal_type/timestamp/value/source). Re-running
+        # this script can create duplicate rows; dedupe manually or port to
+        # scripts.db.queries.raw_signals.insert_signals() before reuse.
         await conn.executemany(
             """
             INSERT INTO raw_signals

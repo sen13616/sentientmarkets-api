@@ -98,6 +98,10 @@ async def main() -> int:
                     if obs_date in existing:
                         skipped += 1
                         continue
+                    # CAUTION: blind INSERT — bypasses insert_signals()'s dedup guard
+                    # (NOT EXISTS on ticker/signal_type/timestamp/value/source). Re-running
+                    # this script can create duplicate rows; dedupe manually or port to
+                    # scripts.db.queries.raw_signals.insert_signals() before reuse.
                     await conn.execute(
                         """
                         INSERT INTO raw_signals
