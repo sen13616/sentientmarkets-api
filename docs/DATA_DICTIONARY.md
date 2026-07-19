@@ -175,7 +175,7 @@ Composite scores are stored twice: `composite_score` is the raw weighted average
 |---|---|---|---|
 | `id` | `SERIAL PRIMARY KEY` | NO | |
 | `key_hash` | `VARCHAR(128)` | NO, UNIQUE | SHA-256 hex digest of the plaintext bearer token. The auth dependency in `api/auth.py` hashes the incoming `Authorization` header value and looks it up here. |
-| `tier` | `VARCHAR(20)` | NO, CHECK | `'free'` (10 req/min) or `'pro'` (120 req/min). |
+| `tier` | `VARCHAR(20)` | NO, CHECK | `'free'` (10 req/min) or `'pro'` (600 req/min). |
 | `owner_email` | `VARCHAR(255)` | YES | Free-form contact for the key holder. Optional. |
 | `is_active` | `BOOLEAN` | NO (default TRUE) | Soft-delete flag. Inactive keys 401 regardless of hash match. |
 | `created_at` | `TIMESTAMPTZ` | NO (default NOW) | |

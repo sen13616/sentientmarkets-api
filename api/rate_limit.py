@@ -6,7 +6,7 @@ Per-tier fixed-window rate limiting backed by Redis.
 Limits
 ------
     free  — 10 requests / minute
-    pro   — 120 requests / minute
+    pro   — 600 requests / minute
 
 Each API key gets its own Redis counter key with a 60-second TTL.  The
 INCR + EXPIRE pair runs as a single Lua script so a counter can never be
@@ -32,7 +32,7 @@ from scripts.db.redis import get_redis
 
 _LIMITS: dict[str, int] = {
     "free": 10,
-    "pro":  120,
+    "pro":  600,
 }
 
 _bearer = HTTPBearer(auto_error=False)

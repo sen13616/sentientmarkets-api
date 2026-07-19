@@ -17,7 +17,7 @@ API keys are available in two tiers:
 | Tier | Rate Limit | Access |
 |---|---|---|
 | Free | 10 requests/min | Composite score and label only |
-| Pro | 120 requests/min | Full breakdown with sub-indices, drivers, and explanation |
+| Pro | 600 requests/min | Full breakdown with sub-indices, drivers, and explanation |
 
 ---
 

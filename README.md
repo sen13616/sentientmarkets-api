@@ -338,7 +338,7 @@ A `.env.example` listing every variable is on the Phase-5 Group B to-do list. Th
 | `LOG_LEVEL` | optional | Default `INFO` |
 | `LOG_FORMAT` | optional | `json` (Railway) or `text` (local) |
 
-API authentication uses bearer tokens (`Authorization: Bearer sk-sm-…`); keys are stored as SHA-256 hashes in the `api_keys` table. Tier is either `free` (10 req/min, basic fields) or `pro` (120 req/min, full breakdown via `?detail=full`: sub-indices + drivers + explanation + `score_raw`). Keys are minted via `python3 scripts/tools/generate_keys.py` — the plaintext key is printed once at creation and never recoverable from the DB.
+API authentication uses bearer tokens (`Authorization: Bearer sk-sm-…`); keys are stored as SHA-256 hashes in the `api_keys` table. Tier is either `free` (10 req/min, basic fields) or `pro` (600 req/min, full breakdown via `?detail=full`: sub-indices + drivers + explanation + `score_raw`). Keys are minted via `python3 scripts/tools/generate_keys.py` — the plaintext key is printed once at creation and never recoverable from the DB.
 
 ---
 
