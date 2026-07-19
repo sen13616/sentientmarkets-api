@@ -189,6 +189,7 @@ class MarketOverviewResponse(BaseModel):
     top_movers:            list[Mover] = []
     bottom_movers:         list[Mover] = []
     sectors:               list[SectorOverview] = []
+    summary:               str = ""            # human-readable market sentiment narrative
 
 
 # ---------------------------------------------------------------------------

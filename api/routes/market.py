@@ -10,7 +10,8 @@ architecture of the sentiment endpoint.
 
 Contents: average composite score, breadth (% above 50, % improving
 day-over-day), top/bottom 10 movers by 1-day change, per-sector average
-scores, and within-sector rank + sector size for every ticker. The
+scores, within-sector rank + sector size for every ticker, and a
+human-readable `summary` narrating the overall market mood. The
 `timestamp` field is the scoring tick the blob was computed at.
 
 Gap safety: 1-day changes inside the blob are computed against a bounded

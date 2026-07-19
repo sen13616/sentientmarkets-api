@@ -22,6 +22,7 @@ from fastapi.testclient import TestClient
 from api.auth import authenticate
 from main import app
 from pipeline.scoring.market_overview import build_overview, compute_percentiles
+from pipeline.scoring.market_summary import build_summary
 
 _NOW = datetime(2026, 7, 15, 14, 30, tzinfo=timezone.utc)
 
@@ -176,6 +177,89 @@ class TestBuildOverview:
 
 
 # ===========================================================================
+# build_summary
+# ===========================================================================
+
+def _overview(scores, changes=None, change_pcts=None, sector_map=None):
+    """Helper: build an overview blob with sensible defaults for summary tests."""
+    changes = changes if changes is not None else {t: 1.0 for t in scores}
+    change_pcts = change_pcts if change_pcts is not None else {t: 2.0 for t in scores}
+    return build_overview(scores, changes, change_pcts, sector_map or {}, _NOW)
+
+
+class TestBuildSummary:
+
+    def test_empty_universe_fallback(self):
+        blob = build_overview({}, {}, {}, {}, _NOW)
+        assert blob["summary"] == "No market sentiment data available for this tick."
+
+    def test_bullish_mood_and_avg(self):
+        s = build_summary(_overview({"A": 62.0, "B": 60.0}))
+        assert s.startswith("Market sentiment is bullish")
+        assert "avg 61" in s
+
+    def test_strongly_bullish_band(self):
+        s = build_summary(_overview({"A": 70.0, "B": 66.0}))
+        assert "strongly bullish" in s
+
+    def test_mildly_bullish_band(self):
+        # avg 55 sits in the narrowed 53–58 "mildly bullish" band.
+        s = build_summary(_overview({"A": 55.0, "B": 55.0}))
+        assert "mildly bullish" in s
+
+    def test_bearish_mood(self):
+        s = build_summary(_overview({"A": 30.0, "B": 34.0}))
+        assert "bearish" in s
+        assert "avg 32" in s
+
+    def test_neutral_band(self):
+        s = build_summary(_overview({"A": 50.0, "B": 50.0}))
+        assert "Market sentiment is neutral" in s
+
+    def test_breadth_improving_clause_present(self):
+        # All names above 50 and improving → both breadth clauses appear.
+        s = build_summary(_overview(
+            {"A": 60.0, "B": 62.0}, changes={"A": 2.0, "B": 3.0}))
+        assert "% of names above neutral" in s
+        assert "improving" in s
+
+    def test_breadth_improving_clause_omitted_when_null(self):
+        # No baselines → breadth_improving_pct is None → no improving/weakening clause.
+        blob = build_overview(
+            {"A": 60.0, "B": 62.0}, {"A": None, "B": None},
+            {"A": None, "B": None}, {}, _NOW)
+        s = build_summary(blob)
+        assert "improving" not in s and "weakening" not in s
+
+    def test_sector_lead_and_lag(self):
+        blob = _overview(
+            {"AAPL": 80.0, "MSFT": 78.0, "XOM": 30.0, "CVX": 32.0,
+             "JPM": 55.0, "BAC": 54.0, "PG": 45.0, "KO": 46.0},
+            sector_map={"AAPL": "Information Technology", "MSFT": "Information Technology",
+                        "XOM": "Energy", "CVX": "Energy",
+                        "JPM": "Financials", "BAC": "Financials",
+                        "PG": "Consumer Staples", "KO": "Consumer Staples"},
+        )
+        s = build_summary(blob)
+        assert "Information Technology" in s   # highest-average sector leads
+        assert "Energy lags" in s              # lowest-average sector lags
+
+    def test_movers_named(self):
+        blob = _overview(
+            {"NVDA": 70.0, "TSLA": 40.0},
+            changes={"NVDA": 8.2, "TSLA": -6.1},
+            change_pcts={"NVDA": 13.0, "TSLA": -13.2},
+        )
+        s = build_summary(blob)
+        assert "NVDA (+8.2)" in s
+        assert "TSLA (-6.1)" in s
+
+    def test_wiring_build_overview_includes_summary(self):
+        assert isinstance(_MOCK_OVERVIEW["summary"], str)
+        assert _MOCK_OVERVIEW["summary"] != ""
+
+
+# ===========================================================================
 # Sentiment response — new fields
 # ===========================================================================
 
@@ -253,6 +337,7 @@ class TestMarketOverviewRoute:
         assert body["universe_scored"] == 4
         assert body["timestamp"].startswith("2026-07-15T14:30")
         assert body["top_movers"][0]["ticker"] == "AAPL"
+        assert isinstance(body["summary"], str) and body["summary"] != ""
         tech = next(s for s in body["sectors"] if s["sector"] == "Information Technology")
         assert tech["size"] == 2
         assert tech["tickers"][0]["rank"] == 1

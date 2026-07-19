@@ -212,6 +212,7 @@ curl -H "Authorization: Bearer sk-sm-your-key" \
   "average_score": 55.2,
   "breadth_above_50_pct": 63.5,
   "breadth_improving_pct": 48.2,
+  "summary": "Market sentiment is mildly bullish (avg 55, 64% of names above neutral). Information Technology and Financials lead; Energy lags. Biggest movers: AAPL (+3.2), MSFT (-1.5).",
   "top_movers": [
     { "ticker": "AAPL", "score": 72.0, "score_change_1d": 3.25, "score_change_1d_pct": 4.73 }
   ],
@@ -232,7 +233,7 @@ curl -H "Authorization: Bearer sk-sm-your-key" \
 }
 ```
 
-`timestamp` is the scoring tick the blob was computed at. `breadth_improving_pct` counts tickers with a positive `score_change_1d` among those with a 1-day baseline and is `null` when none have one; movers exclude tickers with `null` change (both can be empty right after a data gap). `sectors[].tickers[].rank` is the within-sector rank by score (1 = highest) — combine with `size` to render "#4 of 68 in Information Technology".
+`timestamp` is the scoring tick the blob was computed at. `summary` is a deterministic, template-generated plain-English narrative of the tick — market mood (from `average_score`), breadth, leading/lagging sectors, and the largest up/down movers — suitable for display as a market sentiment summary; it only ever references figures already in the blob and is `""` in the rare pre-first-tick blob. `breadth_improving_pct` counts tickers with a positive `score_change_1d` among those with a 1-day baseline and is `null` when none have one; movers exclude tickers with `null` change (both can be empty right after a data gap). `sectors[].tickers[].rank` is the within-sector rank by score (1 = highest) — combine with `size` to render "#4 of 68 in Information Technology".
 
 ---
 

@@ -7,7 +7,8 @@ scoring pass from values already in memory (no extra DB reads):
     • universe percentile per ticker (share of universe scoring strictly
       below, 0–100)
     • market overview blob: average score, breadth, top/bottom movers by
-      1-day change, per-sector averages and within-sector ranks
+      1-day change, per-sector averages and within-sector ranks, and a
+      human-readable summary narrative (pipeline/scoring/market_summary.py)
 
 Both are cached in Redis by the scheduler and served read-only by the API
 (`universe_percentile` on the pro sentiment response; `/v1/market/overview`).
@@ -21,6 +22,8 @@ here interpolates across missing ticks.
 from __future__ import annotations
 
 from datetime import datetime
+
+from pipeline.scoring.market_summary import build_summary
 
 #: Redis keys written each tick by the scheduler and read by the API.
 PERCENTILE_KEY = "pipeline:universe_percentile"
@@ -78,7 +81,7 @@ def build_overview(
     """
     n = len(scores)
     if n == 0:
-        return {
+        empty = {
             "timestamp": timestamp.isoformat(),
             "universe_scored": 0,
             "average_score": None,
@@ -88,6 +91,8 @@ def build_overview(
             "bottom_movers": [],
             "sectors": [],
         }
+        empty["summary"] = build_summary(empty)
+        return empty
 
     average = sum(scores.values()) / n
     above_50 = sum(1 for v in scores.values() if v > 50.0)
@@ -131,7 +136,7 @@ def build_overview(
             ],
         })
 
-    return {
+    blob = {
         "timestamp": timestamp.isoformat(),
         "universe_scored": n,
         "average_score": round(average, 2),
@@ -141,3 +146,5 @@ def build_overview(
         "bottom_movers": bottom_movers,
         "sectors": sectors,
     }
+    blob["summary"] = build_summary(blob)
+    return blob
