@@ -110,7 +110,8 @@ async def test_zero_close_price_persisted():
 
     state = {
         "ticker": "TEST",
-        "timestamp": datetime.now(timezone.utc),
+        # Fixed in-market-hours timestamp: snapshots are skipped off-hours.
+        "timestamp": datetime(2026, 7, 15, 15, 0, tzinfo=timezone.utc),
         "composite_score": 50.0,
         "close_price": 0.0,
         "price": {"close": 999.0},

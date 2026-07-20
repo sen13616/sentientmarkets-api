@@ -3,7 +3,8 @@ pipeline/persistence/pg_writer.py
 
 Persists a fully scored state to PostgreSQL in a single atomic transaction:
     1. INSERT into sentiment_history  (one row per scoring cycle per ticker)
-    2. INSERT into price_snapshots    (close + volume at moment of scoring)
+    2. INSERT into price_snapshots    (close + volume at moment of scoring;
+                                       skipped outside US market hours)
 
 Both inserts share the same connection and are committed together, so a
 partial write is impossible.
@@ -43,6 +44,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from pipeline.confidence.staleness import is_market_hours
 from scripts.db.connection import get_pool
 from scripts.db.queries import price_snapshots as ps_queries
 from scripts.db.queries import sentiment_history as sh_queries
@@ -170,7 +172,10 @@ async def persist_scored_state(state: dict) -> None:
                 ema_obs_count            = ema_obs_count,
             )
 
-            if close is not None:
+            # Off-hours ticks would re-snapshot an unchanged close (~98% of
+            # off-hours rows were exact repeats); the last in-hours tick at
+            # ~21:00 UTC already captures the closing price.
+            if close is not None and is_market_hours(timestamp):
                 await ps_queries.insert_row(
                     conn,
                     ticker    = ticker,
