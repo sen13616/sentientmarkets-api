@@ -98,6 +98,13 @@ _LAYER_LOOKBACK: dict[str, timedelta] = {
 # miss articles published more than 6 hours ago.
 _NARRATIVE_SCORE_LOOKBACK = timedelta(days=3)
 
+# Insider rows are dated by transaction date, ingested over a 30-day window,
+# carry a 7-day half-life and a 30-day staleness threshold. Fetching only the
+# 3-day staleness window here would silently exclude every insider signal
+# older than 3 days, leaving the influencer sub-index analyst-only. Match the
+# insider ingest/staleness window instead.
+_INFLUENCER_SCORE_LOOKBACK = timedelta(days=30)
+
 _MARKET_SIGNAL_TYPES = [
     "rsi_14", "return_1d", "return_5d", "return_20d",
     "volume_ratio",
@@ -259,7 +266,7 @@ async def _score_influencer(
     current_price: float | None,
 ) -> tuple[SubIndexResult | None, list[dict], datetime | None, datetime | None, datetime | None]:
     """Returns (subindex, sigs, influencer_as_of, analyst_as_of, insider_as_of)."""
-    since = now - _LAYER_LOOKBACK["influencer"]
+    since = now - _INFLUENCER_SCORE_LOOKBACK
     raw   = await get_signals_since(ticker, since, _INFLUENCER_SIGNAL_TYPES)
     if raw:
         sigs  = await score_influencer_signals(ticker, raw, now, current_price)

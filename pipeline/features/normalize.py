@@ -302,12 +302,14 @@ _ZSCORE_CONFIG: dict[str, RollingZScorer] = {
     # symbol (XLK, XLE, …), not the ticker being scored. ~22 daily obs per
     # ETF today → parametric fallback runs for ~3 more weeks.
     "sector_etf_return_20d":  RollingZScorer(window=90),
-    # Sprint P4.3: FRED Treasury / yield-curve signals. All sign-inverted —
-    # rising yields and widening spreads are bearish for equities. Stored
-    # under `_MACRO_` alongside VIX, so history lookup uses the same ticker.
+    # Sprint P4.3: FRED Treasury / yield-curve signals. Stored under `_MACRO_`
+    # alongside VIX, so history lookup uses the same ticker. The two YIELDS are
+    # sign-inverted (rising yields are bearish for equities). `ted_spread` is
+    # the 10y-2y SLOPE, NOT a yield: a positive/steep slope is bullish and an
+    # inversion is bearish, so it is NOT negated — matching _score_ted_spread.
     "treasury_yield_10y":     RollingZScorer(window=90, negate=True),
     "treasury_yield_2y":      RollingZScorer(window=90, negate=True),
-    "ted_spread":             RollingZScorer(window=90, negate=True),
+    "ted_spread":             RollingZScorer(window=90),
 }
 
 

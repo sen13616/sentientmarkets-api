@@ -278,7 +278,19 @@ class TestFredZScoreConfig:
         assert "ted_spread" in _ZSCORE_CONFIG
         cfg = _ZSCORE_CONFIG["ted_spread"]
         assert cfg.window == 90
-        assert cfg.negate is True
+        # ted_spread is the 10y-2y SLOPE, not a yield: a steep/positive slope is
+        # bullish, so it must NOT be negated (unlike the two yields above). The
+        # z-score sign must agree with the parametric _score_ted_spread.
+        assert cfg.negate is False
+
+    def test_ted_spread_zscore_sign_matches_parametric(self):
+        """A positive-slope z-score must score bullish (>50), like _score_ted_spread(+)."""
+        cfg = _ZSCORE_CONFIG["ted_spread"]
+        # 60 obs (> effective_min_obs) with mean ~0.32; today's slope well above.
+        history = [0.2, 0.3, 0.4, 0.3, 0.35] * 12
+        score = cfg.score_from_history(history, 0.9)
+        assert score is not None and score > 50.0
+        assert _score_ted_spread(0.9) > 50.0
 
 
 class TestFredScoringIntegration:
