@@ -124,7 +124,7 @@ class TestHealth:
 
     def test_invalid_key_still_returns_200(self, client):
         """Health must never raise 401 — bad key → tier: null."""
-        with patch("api.routes.health.get_key_tier", AsyncMock(return_value=None)):
+        with patch("api.routes.health._lookup_tier", AsyncMock(return_value=None)):
             r = client.get(
                 "/health",
                 headers={"Authorization": "Bearer sk-sm-bad-key"},
@@ -135,7 +135,7 @@ class TestHealth:
         assert data["tier"] is None
 
     def test_valid_pro_key_returns_tier_pro(self, client):
-        with patch("api.routes.health.get_key_tier", AsyncMock(return_value="pro")):
+        with patch("api.routes.health._lookup_tier", AsyncMock(return_value="pro")):
             r = client.get(
                 "/health",
                 headers={"Authorization": "Bearer sk-sm-prod-validkey"},
@@ -146,7 +146,7 @@ class TestHealth:
         assert data["tier"] == "pro"
 
     def test_valid_free_key_returns_tier_free(self, client):
-        with patch("api.routes.health.get_key_tier", AsyncMock(return_value="free")):
+        with patch("api.routes.health._lookup_tier", AsyncMock(return_value="free")):
             r = client.get(
                 "/health",
                 headers={"Authorization": "Bearer sk-sm-dev-validkey"},
@@ -157,7 +157,7 @@ class TestHealth:
     def test_db_error_during_health_still_returns_200(self, client):
         """Even if DB is down, /health must not crash."""
         with patch(
-            "api.routes.health.get_key_tier",
+            "api.routes.health._lookup_tier",
             AsyncMock(side_effect=Exception("DB unavailable")),
         ):
             r = client.get(

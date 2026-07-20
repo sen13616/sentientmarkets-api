@@ -44,16 +44,23 @@ _MACRO_KEYS = (
 )
 
 
-async def _read_ts(key: str) -> datetime | None:
-    try:
-        client = get_redis()
-        raw = await client.get(key)
-        if raw is None:
-            return None
-        return datetime.fromisoformat(raw.decode() if isinstance(raw, bytes) else raw)
-    except Exception as exc:
-        _log.warning("status: failed to read %s: %s", key, exc)
+def _parse_ts(raw) -> datetime | None:
+    if raw is None:
         return None
+    try:
+        return datetime.fromisoformat(raw.decode() if isinstance(raw, bytes) else raw)
+    except (ValueError, AttributeError):
+        return None
+
+
+async def _read_all_ts(keys: list[str]) -> dict[str, datetime | None]:
+    """One Redis MGET for every run-timestamp key; None per key on any failure."""
+    try:
+        raws = await get_redis().mget(keys)
+    except Exception as exc:
+        _log.warning("status: failed to read run timestamps: %s", exc)
+        return {k: None for k in keys}
+    return {k: _parse_ts(raw) for k, raw in zip(keys, raws)}
 
 
 @router.get(
@@ -67,14 +74,14 @@ async def _read_ts(key: str) -> datetime | None:
 async def get_status(
     tier: str = Depends(rate_limited),
 ) -> StatusResponse:
-    timestamps = {field: await _read_ts(key) for field, key in _JOB_KEYS.items()}
+    # Single MGET for all job keys + the two macro keys.
+    all_keys = list(_JOB_KEYS.values()) + list(_MACRO_KEYS)
+    by_key = await _read_all_ts(all_keys)
+
+    timestamps = {field: by_key[key] for field, key in _JOB_KEYS.items()}
 
     # Macro: most recent of the daily (FRED) and intraday (VIX/ETF) jobs.
-    macro_runs = []
-    for key in _MACRO_KEYS:
-        ts = await _read_ts(key)
-        if ts is not None:
-            macro_runs.append(ts)
+    macro_runs = [by_key[k] for k in _MACRO_KEYS if by_key[k] is not None]
     timestamps["last_macro_run"] = max(macro_runs) if macro_runs else None
 
     return StatusResponse(

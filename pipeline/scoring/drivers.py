@@ -62,10 +62,8 @@ _SIGNAL_LABELS: dict[str, str] = {
     "buy_pressure":          "Buy pressure",
     "sell_pressure":         "Sell pressure",
     "bid_ask_spread_bps":    "Bid-ask spread",
-    "bid_ask_spread":        "Bid-ask spread (raw)",
-    "bid":                   "Bid price",
-    "ask":                   "Ask price",
     "short_volume_ratio_otc": "Short volume ratio",
+    "finbert_sentiment":     "News sentiment",
 }
 
 

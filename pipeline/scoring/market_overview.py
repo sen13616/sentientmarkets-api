@@ -112,8 +112,12 @@ def build_overview(
         }
 
     ranked_by_change = sorted(with_change, key=lambda t: changes[t], reverse=True)
-    top_movers = [_mover(t) for t in ranked_by_change[:_N_MOVERS]]
-    bottom_movers = [_mover(t) for t in ranked_by_change[-_N_MOVERS:]][::-1]
+    # Split at the midpoint when fewer than 2*_N_MOVERS tickers have a change,
+    # so a ticker can't appear in both top and bottom movers (e.g. after a data
+    # gap when baselines are sparse).
+    n_movers = min(_N_MOVERS, len(ranked_by_change) // 2)
+    top_movers = [_mover(t) for t in ranked_by_change[:n_movers]]
+    bottom_movers = [_mover(t) for t in ranked_by_change[-n_movers:]][::-1] if n_movers else []
 
     # Per-sector averages and within-sector rank (1 = highest score).
     by_sector: dict[str, list[str]] = {}

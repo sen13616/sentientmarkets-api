@@ -196,10 +196,21 @@ def _change_fields(state: dict) -> tuple[float | None, float | None]:
     )
 
 
+def _composite_score(state: dict) -> int:
+    """Rounded composite; explicit None-check so a legitimate 0.0 isn't skipped."""
+    val = state.get("composite_score")
+    return int(round(val if val is not None else 0))
+
+
+def _confidence_score(conf) -> int:
+    raw = conf.get("score") if isinstance(conf, dict) else conf
+    return int(raw or 0)
+
+
 def _build_free(state: dict) -> FreeTierResponse:
-    score = int(round(state.get("composite_score") or state.get("score") or 0))
+    score = _composite_score(state)
     conf  = state.get("confidence") or {}
-    confidence = int(conf.get("score") if isinstance(conf, dict) else conf or 0)
+    confidence = _confidence_score(conf)
     ts    = _parse_dt(state.get("timestamp"))
     now   = _now_utc()
     change, change_pct = _change_fields(state)
@@ -217,10 +228,10 @@ def _build_free(state: dict) -> FreeTierResponse:
 
 
 def _build_pro(state: dict, universe_percentile: float | None = None) -> ProTierResponse:
-    score = int(round(state.get("composite_score") or state.get("score") or 0))
+    score = _composite_score(state)
     conf  = state.get("confidence") or {}
-    confidence = int(conf.get("score") if isinstance(conf, dict) else conf or 0)
-    flags = conf.get("flags", []) if isinstance(conf, dict) else []
+    confidence = _confidence_score(conf)
+    flags = (conf.get("flags") or []) if isinstance(conf, dict) else []
     ts    = _parse_dt(state.get("timestamp"))
     now   = _now_utc()
 

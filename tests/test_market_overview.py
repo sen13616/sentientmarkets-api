@@ -156,6 +156,18 @@ class TestBuildOverview:
         assert blob["top_movers"] == [] and blob["bottom_movers"] == []
         assert blob["average_score"] == 50.0  # level stats still present
 
+    def test_movers_disjoint_when_few_tickers(self):
+        """With <20 changed tickers, top and bottom movers must not overlap."""
+        scores = {t: 50.0 + i for i, t in enumerate(["A", "B", "C"])}
+        changes = {"A": 3.0, "B": 1.0, "C": -2.0}
+        blob = build_overview(
+            scores=scores, changes=changes,
+            change_pcts={t: None for t in scores}, sector_map={}, timestamp=_NOW,
+        )
+        top = {m["ticker"] for m in blob["top_movers"]}
+        bottom = {m["ticker"] for m in blob["bottom_movers"]}
+        assert not (top & bottom)  # no ticker in both lists
+
     def test_sector_ranks_and_size(self):
         tech = next(s for s in _MOCK_OVERVIEW["sectors"] if s["sector"] == "Information Technology")
         assert tech["size"] == 2

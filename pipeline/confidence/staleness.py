@@ -218,11 +218,10 @@ SIGNAL_STALENESS_RULES: dict[str, SignalStalenessRule] = {
     "order_flow_imbalance": SignalStalenessRule(30),
     "buy_pressure":         SignalStalenessRule(30),
     "sell_pressure":        SignalStalenessRule(30),
-    # ── Bid-ask (only meaningful during market hours) ─────────────────────
-    "bid_ask_spread":       SignalStalenessRule(30, always_stale_outside=True),
+    # ── Bid-ask spread (only meaningful during market hours) ──────────────
+    # Only bid_ask_spread_bps is persisted; raw bid/ask/bid_ask_spread stopped
+    # being written 2026-07-20.
     "bid_ask_spread_bps":   SignalStalenessRule(30, always_stale_outside=True),
-    "bid":                  SignalStalenessRule(30, always_stale_outside=True),
-    "ask":                  SignalStalenessRule(30, always_stale_outside=True),
     # ── FINRA short volume (daily cadence, published ~21:30 UTC) ─────────
     # market_hours_aware=False: these use a custom checker (_short_volume_stale)
     # that accounts for the daily publication schedule and weekends.

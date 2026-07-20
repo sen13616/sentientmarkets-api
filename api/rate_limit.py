@@ -16,6 +16,10 @@ the count exceeded its limit).
 Note this is a fixed 60-second window, not a sliding one: a client can
 burst up to 2× its per-minute limit across a window boundary.
 
+If Redis is unavailable the limiter fails OPEN — the request is allowed
+through unthrottled (and logged) rather than 500-ing, matching auth's
+graceful-degradation contract.
+
 Routes enforce the quota through the `rate_limited` dependency, which
 chains authentication and keys the bucket off the same parsed bearer
 token that authentication used.
@@ -23,12 +27,15 @@ token that authentication used.
 from __future__ import annotations
 
 import hashlib
+import logging
 
 from fastapi import Depends, HTTPException, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from api.auth import authenticate
 from scripts.db.redis import get_redis
+
+_log = logging.getLogger(__name__)
 
 _LIMITS: dict[str, int] = {
     "free": 10,
@@ -57,11 +64,18 @@ async def check_rate_limit(raw_token: str, tier: str) -> None:
     raw_token : The plaintext Bearer token (used only to derive a Redis key).
     tier      : 'free' or 'pro'.
     """
-    client = get_redis()
     key_hash = hashlib.sha256(raw_token.encode()).hexdigest()
     redis_key = f"rate:{key_hash}"
 
-    count = await client.eval(_INCR_WITH_TTL, 1, redis_key, 60)
+    try:
+        count = await get_redis().eval(_INCR_WITH_TTL, 1, redis_key, 60)
+    except Exception as exc:
+        # Fail open: a Redis outage must not take the whole API down. Auth
+        # already degrades to a direct DB lookup when Redis is unavailable, so
+        # we match that contract — allow the request through, unthrottled, and
+        # log it rather than 500-ing every /v1 call.
+        _log.warning("rate limit check skipped (Redis unavailable): %s", exc)
+        return
 
     limit = _LIMITS.get(tier, _LIMITS["free"])
     if count > limit:

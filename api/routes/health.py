@@ -14,20 +14,15 @@ With Authorization: Bearer <token>:
 """
 from __future__ import annotations
 
-import hashlib
 import logging
 
 from fastapi import APIRouter, Request
 
-from scripts.db.queries.api_keys import get_key_tier
+from api.auth import _hash_token, _lookup_tier
 
 _log = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-def _hash_token(token: str) -> str:
-    return hashlib.sha256(token.encode()).hexdigest()
 
 
 @router.get("/health")
@@ -41,8 +36,11 @@ async def health(request: Request) -> dict:
         return {"status": "ok"}
 
     try:
+        # Reuse the Redis-cached tier lookup (caches hits AND misses, 60s TTL)
+        # so unauthenticated /health calls with arbitrary tokens cannot drive a
+        # DB write (last_used_at) per request.
         key_hash = _hash_token(token)
-        tier = await get_key_tier(key_hash)
+        tier = await _lookup_tier(key_hash)
         return {"status": "ok", "tier": tier}
     except Exception as exc:
         _log.debug("health check tier lookup failed (returning ok): %s", exc)

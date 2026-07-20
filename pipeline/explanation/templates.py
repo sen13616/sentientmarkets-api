@@ -38,11 +38,6 @@ _PHRASES: dict[str, dict[str, str]] = {
         "bearish": "overbought RSI pressure",
         "neutral": "neutral RSI momentum",
     },
-    "Price": {
-        "bullish": "rising price trend",
-        "bearish": "declining price trend",
-        "neutral": "flat price action",
-    },
     "Price momentum (1d)": {
         "bullish": "single-day price gain",
         "bearish": "single-day price decline",
@@ -58,30 +53,10 @@ _PHRASES: dict[str, dict[str, str]] = {
         "bearish": "20-day price weakness",
         "neutral": "sideways 20-day price action",
     },
-    "Volume": {
-        "bullish": "buying interest on elevated volume",
-        "bearish": "selling pressure on elevated volume",
-        "neutral": "normal trading volume",
-    },
     "Volume surge": {
         "bullish": "buying volume surge",
         "bearish": "selling volume surge",
         "neutral": "normal volume levels",
-    },
-    "Put/call ratio": {
-        "bullish": "bullish options positioning",
-        "bearish": "bearish options skew",
-        "neutral": "balanced options market",
-    },
-    "Short interest": {
-        "bullish": "declining short interest",
-        "bearish": "rising short interest",
-        "neutral": "stable short interest",
-    },
-    "Implied volatility": {
-        "bullish": "falling implied volatility",
-        "bearish": "rising implied volatility",
-        "neutral": "stable implied volatility",
     },
     "Insider transaction": {
         "bullish": "insider conviction",
@@ -102,11 +77,6 @@ _PHRASES: dict[str, dict[str, str]] = {
         "bullish": "falling VIX (market fear receding)",
         "bearish": "rising VIX (growing market fear)",
         "neutral": "stable market volatility",
-    },
-    "Sector ETF": {
-        "bullish": "sector strength",
-        "bearish": "sector weakness",
-        "neutral": "flat sector performance",
     },
     "Sector trend (20d)": {
         "bullish": "positive sector momentum",
@@ -137,6 +107,11 @@ _PHRASES: dict[str, dict[str, str]] = {
         "bullish": "declining short volume activity",
         "bearish": "elevated short volume pressure",
         "neutral": "normal short volume levels",
+    },
+    "News sentiment": {
+        "bullish": "positive news sentiment",
+        "bearish": "negative news sentiment",
+        "neutral": "mixed news sentiment",
     },
 }
 

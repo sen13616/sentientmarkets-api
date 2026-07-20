@@ -57,13 +57,10 @@ class TestRequiredCases:
         assert signal_is_stale("yf_close", ts, now) is True
 
     def test_d_bid_ask_always_stale_outside_hours(self):
-        """(d) Saturday: bid_ask_spread from Friday 20:59 is stale (special-cased)."""
+        """(d) Saturday: bid_ask_spread_bps from Friday 20:59 is stale (special-cased)."""
         now = _utc(2026, 4, 25, 10, 0)        # Saturday 10:00 UTC
         ts = _utc(2026, 4, 24, 20, 59)        # Friday 20:59 UTC (just before close)
-        assert signal_is_stale("bid_ask_spread", ts, now) is True
         assert signal_is_stale("bid_ask_spread_bps", ts, now) is True
-        assert signal_is_stale("bid", ts, now) is True
-        assert signal_is_stale("ask", ts, now) is True
 
     def test_e_holiday_prior_close_is_fresh(self):
         """(e) Wednesday before market open (simulates a holiday): prior close is fresh.
@@ -158,11 +155,11 @@ class TestSignalIsStaleOutsideMarketHours:
         assert signal_is_stale("bid_ask_spread_bps", ts, now) is True
 
     def test_bid_ask_always_stale_overnight(self):
-        """Bid-ask stale after close on a weeknight too."""
+        """Bid-ask spread stale after close on a weeknight too."""
         now = _utc(2026, 4, 28, 22, 0)   # Tuesday 22:00 UTC (after close)
         ts = _utc(2026, 4, 28, 20, 55)   # Tuesday 20:55 UTC (just before close)
         assert is_market_hours(now) is False
-        assert signal_is_stale("bid_ask_spread", ts, now) is True
+        assert signal_is_stale("bid_ask_spread_bps", ts, now) is True
 
     def test_none_tzinfo_gets_utc(self):
         """Naive datetimes are treated as UTC."""
@@ -195,14 +192,14 @@ class TestFilterStaleSignals:
         ts = _utc(2026, 4, 24, 21, 15)  # Friday EOD
         rows = [
             {"signal_type": "yf_close",        "timestamp": ts},   # fresh (session)
-            {"signal_type": "bid_ask_spread",   "timestamp": ts},   # stale (always)
+            {"signal_type": "bid_ask_spread_bps", "timestamp": ts},   # stale (always)
             {"signal_type": "order_flow_imbalance", "timestamp": ts},  # fresh (session)
         ]
         fresh = filter_stale_signals(rows, now)
         types = [r["signal_type"] for r in fresh]
         assert "yf_close" in types
         assert "order_flow_imbalance" in types
-        assert "bid_ask_spread" not in types
+        assert "bid_ask_spread_bps" not in types
 
     def test_empty_input_returns_empty(self):
         assert filter_stale_signals([], _utc(2026, 4, 28, 16, 0)) == []
