@@ -1,5 +1,11 @@
 # Changelog
 
+## Phase 6
+
+### Sprint P6.1 — Storage reclaim + compact driver encoding (2026-07-20)
+
+Two-part storage overhaul of the production database (5,475 MB → ~3.0 GB expected). **Part A — reclaim:** deleted 3,452,964 historical natural-key duplicate rows from `raw_signals` (27% of the table — pre-guard insider/yfinance/ETF re-inserts; every row archived to `exports/raw_signals_dupes_20260720.csv.gz` first via new `scripts/tools/dedupe_raw_signals.py`); dropped three never-read indexes (`raw_signals_pkey`, `price_snapshots_pkey`, `idx_price_snapshots_ticker_ts` — ~450 MB; `id` columns retained, nothing queries by them); `VACUUM FULL` on both big tables; `price_snapshots` writes are now market-hours-only (`is_market_hours` guard in `pg_writer.persist_scored_state` — off-hours rows were 98% exact repeats of the prior close). TOAST compression on `sentiment_history` was investigated and proven impossible: rows (~1.2 KB) never reach PostgreSQL's compile-time ~2 KB toast trigger, which `toast_tuple_target` cannot lower. **Part B — compact driver encoding:** `sentiment_history.top_drivers` (981 of every 1,203-byte row; ~5 driver objects with repeated JSON keys) is now re-encoded for rows older than 30 days to fixed-order arrays `[signal, direction, magnitude, confidence, source_layer]` — `description` dropped after archiving originals to `exports/top_drivers_verbose_20260720.csv.gz` (descriptions embed raw signal values stored nowhere else, so the archive is the permanent record). New `pipeline/scoring/driver_codec.py` (compact/expand/is_compact), `compact_drivers_before()` in `scripts/db/queries/sentiment_history.py` (id-cursor batched, idempotent via `jsonb_typeof` guard), a fourth `retention_job` phase (`DRIVER_COMPACT_DAYS = 30`, daily 03:30 UTC), one-off `scripts/tools/compact_drivers_backfill.py`, and export normalization in `db_exports` (compact rows re-expand with `description: null`). API responses are unaffected — endpoints only serve the latest tick, which stays verbose. No `sentiment_history`/`price_snapshots` rows are ever deleted; scores are never modified.
+
 ## Phase 5
 
 ### Phase 5 — GitHub cleanup + Sprint C retraction (2026-05-16)

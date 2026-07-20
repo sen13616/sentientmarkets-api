@@ -263,8 +263,9 @@ Ingestion and scoring are decoupled: ingestion jobs are data-only; only `scoring
 | `raw_signals` OHLCV (`yf_*`, `ohlcv_*`) | 365 days | longest scoring lookback is 50 trading days; 7× safety margin |
 | `raw_signals` everything else | 90 days | RSI / order-flow / macro / short-volume normalizers use ≤20-day windows |
 | `raw_articles` | 30 days | narrative scoring half-life is 4 h; clustering window is 48 h |
+| `sentiment_history.top_drivers` | verbose for 30 days | rows past 30 days are re-encoded in place to a compact array format (`description` dropped, scores untouched) — see `pipeline/scoring/driver_codec.py` |
 
-`sentiment_history`, `price_snapshots`, `ticker_universe`, and `api_keys` are not touched. Tune the windows via `OHLCV_RETENTION_DAYS` / `SIGNAL_RETENTION_DAYS` / `ARTICLE_RETENTION_DAYS` in `pipeline/scheduler.py`.
+No rows are ever deleted from `sentiment_history` or `price_snapshots` (research time series); `ticker_universe` and `api_keys` are not touched. Since 2026-07-20, `price_snapshots` receives rows only during US market hours. Tune the windows via `OHLCV_RETENTION_DAYS` / `SIGNAL_RETENTION_DAYS` / `ARTICLE_RETENTION_DAYS` / `DRIVER_COMPACT_DAYS` in `pipeline/scheduler.py`.
 
 ### Scoring pipeline (per tick, per ticker)
 

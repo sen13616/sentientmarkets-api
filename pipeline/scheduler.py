@@ -51,7 +51,7 @@ from tqdm.asyncio import tqdm as _atqdm
 
 from scripts.db.queries.raw_articles import purge_articles_before
 from scripts.db.queries.raw_signals import OHLCV_SIGNAL_TYPES, purge_signals_before
-from scripts.db.queries.sentiment_history import get_baseline_scores
+from scripts.db.queries.sentiment_history import compact_drivers_before, get_baseline_scores
 from scripts.db.queries.universe import get_active_tickers, get_ticker_sector_map
 from scripts.db.redis import get_redis
 from pipeline.features.normalize import log_scoring_telemetry, reset_scoring_telemetry
@@ -693,6 +693,7 @@ async def scoring_tick_job() -> None:
 OHLCV_RETENTION_DAYS = 365
 SIGNAL_RETENTION_DAYS = 90
 ARTICLE_RETENTION_DAYS = 30
+DRIVER_COMPACT_DAYS = 30
 
 
 async def retention_job() -> None:
@@ -703,21 +704,26 @@ async def retention_job() -> None:
       - raw_signals non-OHLCV rows older than 90 days
       - raw_articles older than 30 days
 
-    Deliberately does NOT purge `sentiment_history` or `price_snapshots`:
-    both are the research paper's raw material (score time series and the
-    tick-aligned closes for sentiment-vs-price analysis) and grow
-    unboundedly by design (~55K rows/day combined). Revisit after the
-    paper is published.
+    Plus one in-place rewrite: sentiment_history `top_drivers` older than
+    30 days are re-encoded to the compact array format (description dropped
+    — originals archived offline; see pipeline/scoring/driver_codec.py).
+
+    Deliberately does NOT delete rows from `sentiment_history` or
+    `price_snapshots`: both are the research paper's raw material (score
+    time series and the tick-aligned closes for sentiment-vs-price
+    analysis) and grow unboundedly by design. Revisit after the paper is
+    published.
     """
     t_start = time.monotonic()
     now = datetime.now(timezone.utc)
     ohlcv_cutoff   = now - timedelta(days=OHLCV_RETENTION_DAYS)
     signal_cutoff  = now - timedelta(days=SIGNAL_RETENTION_DAYS)
     article_cutoff = now - timedelta(days=ARTICLE_RETENTION_DAYS)
+    compact_cutoff = now - timedelta(days=DRIVER_COMPACT_DAYS)
 
     _log.info("retention_job: starting")
 
-    n_ohlcv = n_signals = n_articles = 0
+    n_ohlcv = n_signals = n_articles = n_compacted = 0
     try:
         n_ohlcv = await purge_signals_before(ohlcv_cutoff, OHLCV_SIGNAL_TYPES)
     except Exception as exc:
@@ -735,15 +741,21 @@ async def retention_job() -> None:
     except Exception as exc:
         _log.warning("retention_job: articles purge failed: %s", exc, exc_info=True)
 
+    try:
+        n_compacted = await compact_drivers_before(compact_cutoff)
+    except Exception as exc:
+        _log.warning("retention_job: driver compaction failed: %s", exc, exc_info=True)
+
     await _record_run("retention")
 
     elapsed = time.monotonic() - t_start
     _log.info(
         "retention_job complete: ohlcv=%d (>%dd), other_signals=%d (>%dd), "
-        "articles=%d (>%dd) in %.1fs",
+        "articles=%d (>%dd), drivers_compacted=%d (>%dd) in %.1fs",
         n_ohlcv, OHLCV_RETENTION_DAYS,
         n_signals, SIGNAL_RETENTION_DAYS,
         n_articles, ARTICLE_RETENTION_DAYS,
+        n_compacted, DRIVER_COMPACT_DAYS,
         elapsed,
     )
 

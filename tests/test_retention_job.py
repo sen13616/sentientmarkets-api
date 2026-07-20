@@ -28,9 +28,10 @@ def test_ohlcv_signal_types_cover_market_layer():
 
 
 def test_retention_constants():
-    """Retention windows are 365 / 90 / 30 days."""
+    """Retention windows are 365 / 90 / 30 days; driver compaction at 30 days."""
     from pipeline.scheduler import (
         ARTICLE_RETENTION_DAYS,
+        DRIVER_COMPACT_DAYS,
         OHLCV_RETENTION_DAYS,
         SIGNAL_RETENTION_DAYS,
     )
@@ -38,6 +39,7 @@ def test_retention_constants():
     assert OHLCV_RETENTION_DAYS   == 365
     assert SIGNAL_RETENTION_DAYS  == 90
     assert ARTICLE_RETENTION_DAYS == 30
+    assert DRIVER_COMPACT_DAYS    == 30
 
 
 def test_retention_job_registered():
@@ -66,6 +68,7 @@ async def test_retention_job_calls_purges_with_correct_cutoffs():
     with (
         patch("pipeline.scheduler.purge_signals_before", new_callable=AsyncMock, return_value=0) as mock_signals,
         patch("pipeline.scheduler.purge_articles_before", new_callable=AsyncMock, return_value=0) as mock_articles,
+        patch("pipeline.scheduler.compact_drivers_before", new_callable=AsyncMock, return_value=0) as mock_compact,
         patch("pipeline.scheduler._record_run", new_callable=AsyncMock),
         patch("pipeline.scheduler.datetime") as mock_dt,
     ):
@@ -95,9 +98,14 @@ async def test_retention_job_calls_purges_with_correct_cutoffs():
     mock_articles.assert_called_once()
     assert mock_articles.call_args.args[0] == fixed_now - timedelta(days=ARTICLE_RETENTION_DAYS)
 
+    # Driver compaction: cutoff at -30d
+    from pipeline.scheduler import DRIVER_COMPACT_DAYS
+    mock_compact.assert_called_once()
+    assert mock_compact.call_args.args[0] == fixed_now - timedelta(days=DRIVER_COMPACT_DAYS)
+
 
 async def test_retention_job_swallows_per_purge_failures():
-    """A failure in one purge must not abort the other two."""
+    """A failure in one purge must not abort the others."""
     with (
         patch(
             "pipeline.scheduler.purge_signals_before",
@@ -109,6 +117,11 @@ async def test_retention_job_swallows_per_purge_failures():
             new_callable=AsyncMock,
             return_value=7,
         ) as mock_articles,
+        patch(
+            "pipeline.scheduler.compact_drivers_before",
+            new_callable=AsyncMock,
+            return_value=3,
+        ) as mock_compact,
         patch("pipeline.scheduler._record_run", new_callable=AsyncMock),
     ):
         from pipeline.scheduler import retention_job
@@ -116,3 +129,25 @@ async def test_retention_job_swallows_per_purge_failures():
 
     assert mock_signals.call_count == 2
     mock_articles.assert_called_once()
+    mock_compact.assert_called_once()
+
+
+async def test_retention_job_swallows_compaction_failure():
+    """A failure in driver compaction must not abort the job or the purges."""
+    with (
+        patch("pipeline.scheduler.purge_signals_before", new_callable=AsyncMock, return_value=0) as mock_signals,
+        patch("pipeline.scheduler.purge_articles_before", new_callable=AsyncMock, return_value=0) as mock_articles,
+        patch(
+            "pipeline.scheduler.compact_drivers_before",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("boom"),
+        ) as mock_compact,
+        patch("pipeline.scheduler._record_run", new_callable=AsyncMock) as mock_record,
+    ):
+        from pipeline.scheduler import retention_job
+        await retention_job()  # must not raise
+
+    assert mock_signals.call_count == 2
+    mock_articles.assert_called_once()
+    mock_compact.assert_called_once()
+    mock_record.assert_awaited_once()

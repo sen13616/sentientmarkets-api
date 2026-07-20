@@ -33,6 +33,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 import asyncpg
 from dotenv import load_dotenv
 
+from pipeline.scoring.driver_codec import expand_drivers, is_compact
+
 _ENV_FILE = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
 load_dotenv(_ENV_FILE, override=True)
 
@@ -83,6 +85,23 @@ def _write_csv(filepath: str, rows: list[dict], fieldnames: list[str] | None = N
             writer.writerow([_v(row.get(h) if isinstance(row, dict) else row[h])
                               for h in headers])
     return len(rows)
+
+
+def _normalize_drivers(raw):
+    """
+    Expand compact-encoded top_drivers (rows past DRIVER_COMPACT_DAYS) back
+    into the verbose dict shape so exports have a uniform schema; compacted
+    rows get description=None. Verbose/empty/null values pass through.
+    """
+    if not raw:
+        return raw
+    try:
+        drivers = json.loads(raw) if isinstance(raw, str) else raw
+    except (TypeError, ValueError):
+        return raw
+    if is_compact(drivers):
+        return json.dumps(expand_drivers(drivers))
+    return raw
 
 
 def _ts() -> str:
@@ -169,7 +188,11 @@ async def export_full_database(
             col_sql = ", ".join(cols)
             rows = await db.fetch(f"SELECT {col_sql} FROM {table}")
             fp   = os.path.join(folder, f"{table}.csv")
-            n    = _write_csv(fp, [dict(r) for r in rows], fieldnames=cols)
+            dicts = [dict(r) for r in rows]
+            if table == "sentiment_history":
+                for d in dicts:
+                    d["top_drivers"] = _normalize_drivers(d.get("top_drivers"))
+            n    = _write_csv(fp, dicts, fieldnames=cols)
             table_counts[table] = n
             total_rows += n
             if progress_cb:
@@ -257,7 +280,7 @@ async def export_sentiment_history() -> tuple[str, int]:
             "macro_index":      r["macro_index"],
             "confidence_score": r["confidence_score"],
             "confidence_flags": r["confidence_flags"],
-            "top_drivers":      r["top_drivers"],
+            "top_drivers":      _normalize_drivers(r["top_drivers"]),
             "divergence":       r["divergence"],
             "market_as_of":     r["market_as_of"],
             "narrative_as_of":  r["narrative_as_of"],

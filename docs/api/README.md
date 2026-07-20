@@ -125,6 +125,8 @@ curl -H "Authorization: Bearer sk-sm-your-key" \
 
 Pro-tier fields beyond the Free set: `score_raw` (unsmoothed composite), `universe_percentile` (percentile of this ticker's smoothed score within the latest scoring tick; `null` if the ticker was absent from that tick), `ema_obs_count` (EMA update counter), `sub_indices`, `missing_layers`, `divergence`, `top_drivers`, `explanation`, `freshness`, and `confidence_flags`. Each driver has exactly `signal`, `description`, `direction`, `magnitude`, and `source_layer` — there is no per-driver `confidence`.
 
+> Storage note: API responses are always built from the most recent scoring tick, which stores drivers in the full format above. Rows older than 30 days are re-encoded server-side to a compact storage format, but those rows are never served by any endpoint — response shapes are unaffected.
+
 ---
 
 ### GET /v1/sentiment/{ticker}/history

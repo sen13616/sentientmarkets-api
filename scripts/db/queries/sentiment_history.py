@@ -225,3 +225,52 @@ async def get_baseline_scores(
             str(max_age_hours),
         )
     return {r["ticker"]: float(r["baseline"]) for r in rows if r["baseline"] is not None}
+
+
+async def compact_drivers_before(cutoff: datetime, batch_size: int = 20_000) -> int:
+    """
+    Re-encode `top_drivers` from verbose (array of objects) to compact
+    (array of fixed-order arrays) on all rows older than `cutoff`.
+
+    Field order MUST match pipeline.scoring.driver_codec.COMPACT_FIELDS:
+    [signal, direction, magnitude, confidence, source_layer] — `description`
+    is dropped. Idempotent: already-compact rows fail the jsonb_typeof
+    guard; NULL/empty top_drivers are skipped (`->0` is NULL for both).
+
+    Runs in short per-batch transactions so the daily retention job never
+    holds long locks against the live scoring writer. Returns rows updated.
+    """
+    pool = await get_pool()
+    total = 0
+    last_id = 0  # id cursor: each batch range-scans forward, never re-reads
+    while True:
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                WITH batch AS (
+                    SELECT id FROM sentiment_history
+                    WHERE id > $3
+                      AND timestamp < $1
+                      AND jsonb_typeof(top_drivers->0) = 'object'
+                    ORDER BY id
+                    LIMIT $2
+                ), upd AS (
+                    UPDATE sentiment_history s SET top_drivers = (
+                        SELECT jsonb_agg(jsonb_build_array(
+                            e->'signal', e->'direction', e->'magnitude',
+                            e->'confidence', e->'source_layer'))
+                        FROM jsonb_array_elements(s.top_drivers) e)
+                    FROM batch b WHERE s.id = b.id
+                    RETURNING s.id
+                )
+                SELECT count(*) AS n, max(id) AS last_id FROM upd
+                """,
+                cutoff,
+                batch_size,
+                last_id,
+            )
+        n = int(row["n"])
+        total += n
+        if n < batch_size:
+            return total
+        last_id = int(row["last_id"])
