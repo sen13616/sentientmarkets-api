@@ -325,12 +325,11 @@ async def _run_market(
             ba = await asyncio.to_thread(_fetch_bid_ask_spread, ticker)
         if ba is not None:
             _log.debug("bid_ask_spread %s bps=%.2f", ticker, ba["spread_bps"])
-            rows.extend([
-                (ticker, "bid_ask_spread",     ba["spread"],     "yfinance", "live", now),
+            # Only bps is persisted — raw bid/ask/spread were write-only
+            # telemetry (never read back) and are no longer stored.
+            rows.append(
                 (ticker, "bid_ask_spread_bps", ba["spread_bps"], "yfinance", "live", now),
-                (ticker, "bid",                ba["bid"],        "yfinance", "live", now),
-                (ticker, "ask",                ba["ask"],        "yfinance", "live", now),
-            ])
+            )
         else:
             _log.debug("bid_ask_spread %s: no data", ticker)
 

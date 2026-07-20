@@ -206,6 +206,21 @@ OHLCV_SIGNAL_TYPES: list[str] = [
     "ohlcv_adjusted_close", "ohlcv_volume",
 ]
 
+# Recomputed by market_job every 15 min from OHLCV/live bars. Deepest read is
+# the RollingZScorer window of 500 observations (~20 trading days at ~25
+# rows/ticker/day), so these get the short DERIVED_RETENTION_DAYS tier.
+DERIVED_INTRADAY_SIGNAL_TYPES: list[str] = [
+    "rsi_14", "return_1d", "return_5d", "return_20d",
+    "volume_ratio",
+    "order_flow_imbalance", "buy_pressure", "sell_pressure",
+    "bid_ask_spread_bps",
+]
+
+# Write-only quote telemetry — never read back (only bid_ask_spread_bps is
+# scored). No longer written since 2026-07-20; QUOTE_RETENTION_DAYS tier
+# drains the remainder.
+QUOTE_SIGNAL_TYPES: list[str] = ["bid", "ask", "bid_ask_spread"]
+
 
 async def purge_signals_before(
     cutoff: datetime,

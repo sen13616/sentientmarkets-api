@@ -28,18 +28,43 @@ def test_ohlcv_signal_types_cover_market_layer():
 
 
 def test_retention_constants():
-    """Retention windows are 365 / 90 / 30 days; driver compaction at 30 days."""
+    """Retention tiers: 365 OHLCV / 45 derived / 14 quotes / 90 catch-all / 30 articles+compaction."""
     from pipeline.scheduler import (
         ARTICLE_RETENTION_DAYS,
+        DERIVED_RETENTION_DAYS,
         DRIVER_COMPACT_DAYS,
         OHLCV_RETENTION_DAYS,
+        QUOTE_RETENTION_DAYS,
         SIGNAL_RETENTION_DAYS,
     )
 
     assert OHLCV_RETENTION_DAYS   == 365
     assert SIGNAL_RETENTION_DAYS  == 90
+    assert DERIVED_RETENTION_DAYS == 45
+    assert QUOTE_RETENTION_DAYS   == 14
     assert ARTICLE_RETENTION_DAYS == 30
     assert DRIVER_COMPACT_DAYS    == 30
+
+
+def test_tier_signal_type_lists():
+    """Tier lists must cover exactly the intended types (guards against drift)."""
+    from scripts.db.queries.raw_signals import (
+        DERIVED_INTRADAY_SIGNAL_TYPES,
+        OHLCV_SIGNAL_TYPES,
+        QUOTE_SIGNAL_TYPES,
+    )
+
+    assert set(DERIVED_INTRADAY_SIGNAL_TYPES) == {
+        "rsi_14", "return_1d", "return_5d", "return_20d",
+        "volume_ratio",
+        "order_flow_imbalance", "buy_pressure", "sell_pressure",
+        "bid_ask_spread_bps",
+    }
+    assert set(QUOTE_SIGNAL_TYPES) == {"bid", "ask", "bid_ask_spread"}
+    # Tiers must be disjoint from each other and from OHLCV
+    assert not set(DERIVED_INTRADAY_SIGNAL_TYPES) & set(QUOTE_SIGNAL_TYPES)
+    assert not set(DERIVED_INTRADAY_SIGNAL_TYPES) & set(OHLCV_SIGNAL_TYPES)
+    assert not set(QUOTE_SIGNAL_TYPES) & set(OHLCV_SIGNAL_TYPES)
 
 
 def test_retention_job_registered():
@@ -55,13 +80,19 @@ def test_retention_job_registered():
 
 
 async def test_retention_job_calls_purges_with_correct_cutoffs():
-    """retention_job calls the three purges with cutoffs derived from now()."""
+    """retention_job calls the four tiered purges with cutoffs derived from now()."""
     from pipeline.scheduler import (
         ARTICLE_RETENTION_DAYS,
+        DERIVED_RETENTION_DAYS,
         OHLCV_RETENTION_DAYS,
+        QUOTE_RETENTION_DAYS,
         SIGNAL_RETENTION_DAYS,
     )
-    from scripts.db.queries.raw_signals import OHLCV_SIGNAL_TYPES
+    from scripts.db.queries.raw_signals import (
+        DERIVED_INTRADAY_SIGNAL_TYPES,
+        OHLCV_SIGNAL_TYPES,
+        QUOTE_SIGNAL_TYPES,
+    )
 
     fixed_now = datetime(2026, 5, 16, 12, 0, tzinfo=timezone.utc)
 
@@ -79,19 +110,31 @@ async def test_retention_job_calls_purges_with_correct_cutoffs():
         from pipeline.scheduler import retention_job
         await retention_job()
 
-    # Two signal purges: OHLCV (include) and non-OHLCV (exclude)
-    assert mock_signals.call_count == 2
+    # Four signal purges: OHLCV, derived intraday, quotes (include) + catch-all (exclude)
+    assert mock_signals.call_count == 4
 
-    ohlcv_call, other_call = mock_signals.call_args_list
+    ohlcv_call, derived_call, quote_call, other_call = mock_signals.call_args_list
 
-    # OHLCV purge: positional cutoff at -365d, signal_types=OHLCV list, exclude default False
+    # OHLCV purge: cutoff at -365d, OHLCV list, exclude default False
     assert ohlcv_call.args[0] == fixed_now - timedelta(days=OHLCV_RETENTION_DAYS)
     assert ohlcv_call.args[1] == OHLCV_SIGNAL_TYPES
     assert ohlcv_call.kwargs.get("exclude", False) is False
 
-    # Non-OHLCV purge: cutoff at -90d, same list, exclude=True
+    # Derived intraday purge: cutoff at -45d
+    assert derived_call.args[0] == fixed_now - timedelta(days=DERIVED_RETENTION_DAYS)
+    assert derived_call.args[1] == DERIVED_INTRADAY_SIGNAL_TYPES
+    assert derived_call.kwargs.get("exclude", False) is False
+
+    # Quote purge: cutoff at -14d
+    assert quote_call.args[0] == fixed_now - timedelta(days=QUOTE_RETENTION_DAYS)
+    assert quote_call.args[1] == QUOTE_SIGNAL_TYPES
+    assert quote_call.kwargs.get("exclude", False) is False
+
+    # Catch-all purge: cutoff at -90d, excludes ALL tiered lists
     assert other_call.args[0] == fixed_now - timedelta(days=SIGNAL_RETENTION_DAYS)
-    assert other_call.args[1] == OHLCV_SIGNAL_TYPES
+    assert other_call.args[1] == (
+        OHLCV_SIGNAL_TYPES + DERIVED_INTRADAY_SIGNAL_TYPES + QUOTE_SIGNAL_TYPES
+    )
     assert other_call.kwargs["exclude"] is True
 
     # Articles purge: cutoff at -30d
@@ -110,7 +153,7 @@ async def test_retention_job_swallows_per_purge_failures():
         patch(
             "pipeline.scheduler.purge_signals_before",
             new_callable=AsyncMock,
-            side_effect=[RuntimeError("boom"), 5],  # OHLCV fails, non-OHLCV succeeds
+            side_effect=[RuntimeError("boom"), 5, 2, 4],  # OHLCV fails, rest succeed
         ) as mock_signals,
         patch(
             "pipeline.scheduler.purge_articles_before",
@@ -127,7 +170,7 @@ async def test_retention_job_swallows_per_purge_failures():
         from pipeline.scheduler import retention_job
         await retention_job()  # must not raise
 
-    assert mock_signals.call_count == 2
+    assert mock_signals.call_count == 4
     mock_articles.assert_called_once()
     mock_compact.assert_called_once()
 
@@ -147,7 +190,7 @@ async def test_retention_job_swallows_compaction_failure():
         from pipeline.scheduler import retention_job
         await retention_job()  # must not raise
 
-    assert mock_signals.call_count == 2
+    assert mock_signals.call_count == 4
     mock_articles.assert_called_once()
     mock_compact.assert_called_once()
     mock_record.assert_awaited_once()

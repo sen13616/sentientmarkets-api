@@ -50,7 +50,12 @@ from tqdm import tqdm as _tqdm
 from tqdm.asyncio import tqdm as _atqdm
 
 from scripts.db.queries.raw_articles import purge_articles_before
-from scripts.db.queries.raw_signals import OHLCV_SIGNAL_TYPES, purge_signals_before
+from scripts.db.queries.raw_signals import (
+    DERIVED_INTRADAY_SIGNAL_TYPES,
+    OHLCV_SIGNAL_TYPES,
+    QUOTE_SIGNAL_TYPES,
+    purge_signals_before,
+)
 from scripts.db.queries.sentiment_history import compact_drivers_before, get_baseline_scores
 from scripts.db.queries.universe import get_active_tickers, get_ticker_sector_map
 from scripts.db.redis import get_redis
@@ -692,6 +697,8 @@ async def scoring_tick_job() -> None:
 
 OHLCV_RETENTION_DAYS = 365
 SIGNAL_RETENTION_DAYS = 90
+DERIVED_RETENTION_DAYS = 45
+QUOTE_RETENTION_DAYS = 14
 ARTICLE_RETENTION_DAYS = 30
 DRIVER_COMPACT_DAYS = 30
 
@@ -699,9 +706,13 @@ DRIVER_COMPACT_DAYS = 30
 async def retention_job() -> None:
     """Daily retention job — runs at 03:30 UTC.
 
-    Three deletes:
-      - raw_signals OHLCV rows older than 365 days
-      - raw_signals non-OHLCV rows older than 90 days
+    Tiered raw_signals deletes, plus articles:
+      - OHLCV rows older than 365 days (50-day close lookback, 7x margin)
+      - derived intraday rows older than 45 days (z-score window is 500
+        observations ~ 20 trading days; 2x margin)
+      - quote telemetry (bid/ask/bid_ask_spread) older than 14 days
+        (write-only; no longer written since 2026-07-20)
+      - everything else older than 90 days
       - raw_articles older than 30 days
 
     Plus one in-place rewrite: sentiment_history `top_drivers` older than
@@ -718,23 +729,39 @@ async def retention_job() -> None:
     now = datetime.now(timezone.utc)
     ohlcv_cutoff   = now - timedelta(days=OHLCV_RETENTION_DAYS)
     signal_cutoff  = now - timedelta(days=SIGNAL_RETENTION_DAYS)
+    derived_cutoff = now - timedelta(days=DERIVED_RETENTION_DAYS)
+    quote_cutoff   = now - timedelta(days=QUOTE_RETENTION_DAYS)
     article_cutoff = now - timedelta(days=ARTICLE_RETENTION_DAYS)
     compact_cutoff = now - timedelta(days=DRIVER_COMPACT_DAYS)
 
     _log.info("retention_job: starting")
 
-    n_ohlcv = n_signals = n_articles = n_compacted = 0
+    n_ohlcv = n_derived = n_quotes = n_signals = n_articles = n_compacted = 0
     try:
         n_ohlcv = await purge_signals_before(ohlcv_cutoff, OHLCV_SIGNAL_TYPES)
     except Exception as exc:
         _log.warning("retention_job: OHLCV purge failed: %s", exc, exc_info=True)
 
     try:
-        n_signals = await purge_signals_before(
-            signal_cutoff, OHLCV_SIGNAL_TYPES, exclude=True,
+        n_derived = await purge_signals_before(
+            derived_cutoff, DERIVED_INTRADAY_SIGNAL_TYPES,
         )
     except Exception as exc:
-        _log.warning("retention_job: non-OHLCV purge failed: %s", exc, exc_info=True)
+        _log.warning("retention_job: derived-intraday purge failed: %s", exc, exc_info=True)
+
+    try:
+        n_quotes = await purge_signals_before(quote_cutoff, QUOTE_SIGNAL_TYPES)
+    except Exception as exc:
+        _log.warning("retention_job: quote purge failed: %s", exc, exc_info=True)
+
+    try:
+        n_signals = await purge_signals_before(
+            signal_cutoff,
+            OHLCV_SIGNAL_TYPES + DERIVED_INTRADAY_SIGNAL_TYPES + QUOTE_SIGNAL_TYPES,
+            exclude=True,
+        )
+    except Exception as exc:
+        _log.warning("retention_job: catch-all purge failed: %s", exc, exc_info=True)
 
     try:
         n_articles = await purge_articles_before(article_cutoff)
@@ -750,9 +777,12 @@ async def retention_job() -> None:
 
     elapsed = time.monotonic() - t_start
     _log.info(
-        "retention_job complete: ohlcv=%d (>%dd), other_signals=%d (>%dd), "
-        "articles=%d (>%dd), drivers_compacted=%d (>%dd) in %.1fs",
+        "retention_job complete: ohlcv=%d (>%dd), derived=%d (>%dd), "
+        "quotes=%d (>%dd), other_signals=%d (>%dd), articles=%d (>%dd), "
+        "drivers_compacted=%d (>%dd) in %.1fs",
         n_ohlcv, OHLCV_RETENTION_DAYS,
+        n_derived, DERIVED_RETENTION_DAYS,
+        n_quotes, QUOTE_RETENTION_DAYS,
         n_signals, SIGNAL_RETENTION_DAYS,
         n_articles, ARTICLE_RETENTION_DAYS,
         n_compacted, DRIVER_COMPACT_DAYS,
