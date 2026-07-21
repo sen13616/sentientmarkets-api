@@ -1,6 +1,7 @@
 """Release-gate CLI for the eval harness.
 
-    python3 -m scripts.eval.run --start 2026-04-24 --end 2026-07-20 \
+    python3 -m scripts.eval.run [--window research|holdout|all] \
+        [--start 2026-04-24] [--end 2026-06-23] \
         --out exports/eval [--baseline scripts/eval/baselines/BASELINE_2026-07-21.json] \
         [--intraday] [--gap 2026-06-23:2026-07-03]
 
@@ -8,6 +9,17 @@ Reads sentiment_history + raw_signals closes from the DB, runs the daily
 analysis (and optionally intraday), writes scorecard.json / scorecard.md /
 CSVs to --out, and — when --baseline is given — exits non-zero if any
 scorecard metric regressed beyond tolerance (see scorecard.DEFAULT_RULES).
+
+Holdout discipline (scripts/eval/HOLDOUT.md)
+--------------------------------------------
+--window research (DEFAULT) : research window only — candidate development/ranking
+--window holdout            : frozen holdout — only for confirming a candidate that
+                              already won on research; log every run in HOLDOUT.md
+--window all                : full history (requires explicit --start/--end) —
+                              reproduction / diagnostics only, never candidate ranking
+
+--start/--end default to the selected window's bounds; explicit dates outside
+the window are rejected.
 """
 
 from __future__ import annotations
@@ -15,7 +27,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -27,11 +39,58 @@ load_dotenv(override=True)
 from scripts.db.connection import close_pool  # noqa: E402
 from scripts.eval import analyze, data, intraday, scorecard
 
+# ---------------------------------------------------------------------------
+# Holdout split — FROZEN 2026-07-22 (scripts/eval/HOLDOUT.md). Do not move.
+# The 2026-06-23..07-03 ingestion outage is the boundary between the windows.
+# ---------------------------------------------------------------------------
+RESEARCH_START = "2026-04-24"
+RESEARCH_END = "2026-06-23"     # exclusive → research window is through 06-22
+HOLDOUT_START = "2026-07-03"    # holdout runs to the present, open-ended
+
+
+def resolve_window(
+    window: str,
+    start: str | None,
+    end: str | None,
+    today: datetime | None = None,
+) -> tuple[str, str]:
+    """Resolve --window/--start/--end into concrete (start, end) date strings.
+
+    research/holdout: missing --start/--end default to the window bounds;
+    explicit dates must lie within the window (SystemExit otherwise).
+    all: both --start and --end are required and pass through unchecked.
+    """
+    if window == "all":
+        if not start or not end:
+            raise SystemExit("--window all requires explicit --start and --end")
+        return start, end
+
+    if window == "research":
+        lo, hi = RESEARCH_START, RESEARCH_END
+    else:  # holdout — open-ended: include everything through today
+        today = today or datetime.now(timezone.utc)
+        lo = HOLDOUT_START
+        hi = (today + timedelta(days=1)).strftime("%Y-%m-%d")
+
+    start = start or lo
+    end = end or hi
+    if start < lo or end > hi:
+        raise SystemExit(
+            f"--start/--end [{start}..{end}) outside the {window} window "
+            f"[{lo}..{hi}) — see scripts/eval/HOLDOUT.md"
+        )
+    return start, end
+
 
 def _parse_args(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--start", required=True, help="window start, YYYY-MM-DD (UTC)")
-    p.add_argument("--end", required=True, help="window end (exclusive), YYYY-MM-DD (UTC)")
+    p.add_argument("--window", choices=["research", "holdout", "all"],
+                   default="research",
+                   help="evaluation window (default: research; see HOLDOUT.md)")
+    p.add_argument("--start", help="window start, YYYY-MM-DD (UTC); "
+                                   "defaults to the --window bound")
+    p.add_argument("--end", help="window end (exclusive), YYYY-MM-DD (UTC); "
+                                 "defaults to the --window bound")
     p.add_argument("--out", default="exports/eval", help="output directory")
     p.add_argument("--baseline", help="baseline scorecard JSON to gate against")
     p.add_argument("--intraday", action="store_true",
@@ -62,9 +121,20 @@ async def _run(args) -> int:
     gaps = _parse_gaps(args.gap)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    args.start, args.end = resolve_window(args.window, args.start, args.end)
     start, end = _utc(args.start), _utc(args.end)
 
-    print(f"loading sentiment (daily) + closes for {args.start}..{args.end} ...")
+    if args.window == "holdout":
+        print(
+            "*** HOLDOUT EVALUATION ***\n"
+            "This window is for confirming a candidate that already won on the\n"
+            "research window. Log this run in scripts/eval/HOLDOUT.md (date,\n"
+            "candidate, commit, result) — every holdout peek counts.\n",
+            file=sys.stderr,
+        )
+
+    print(f"loading sentiment (daily) + closes for {args.start}..{args.end} "
+          f"(window={args.window}) ...")
     sent = await data.load_sentiment_panel(start, end, granularity="daily")
     closes = await data.load_close_panel(start, end)
     latency = await data.load_article_latency(start, end)
@@ -99,7 +169,7 @@ async def _run(args) -> int:
 
     card = scorecard.build_scorecard(
         s, ic, ll_raw, ll_exo,
-        meta={"start": args.start, "end": args.end,
+        meta={"start": args.start, "end": args.end, "window": args.window,
               "gaps": [f"{g0.date()}:{g1.date()}" for g0, g1 in gaps],
               "generated_at": datetime.now(timezone.utc).isoformat()},
         latency=latency,
