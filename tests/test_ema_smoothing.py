@@ -195,3 +195,27 @@ class TestEMANegativeDt:
         """Negative dt with cold-start still returns raw."""
         result = compute_ema(65.0, None, dt_hours=-5.0)
         assert result == 65.0
+
+
+class TestHalfLifeEnvOverride:
+    """The default half-life is env-tunable (EMA_HALF_LIFE_HOURS) but must
+    stay 4.0 unless explicitly overridden — the production default only
+    changes via the eval-gated experiment (nowcasting plan, Phase 4)."""
+
+    def test_default_is_four_hours(self):
+        import pipeline.scoring.ema as ema
+        assert ema._HALF_LIFE_HOURS == 4.0
+
+    def test_env_override_binds_at_import(self, monkeypatch):
+        import importlib
+        import pipeline.scoring.ema as ema
+        monkeypatch.setenv("EMA_HALF_LIFE_HOURS", "2.0")
+        try:
+            importlib.reload(ema)
+            assert ema._HALF_LIFE_HOURS == 2.0
+            # α after one half-life must now close 50% at dt=2h
+            assert ema.compute_ema(100.0, 0.0, 2.0) == pytest.approx(50.0)
+        finally:
+            monkeypatch.delenv("EMA_HALF_LIFE_HOURS")
+            importlib.reload(ema)
+            assert ema._HALF_LIFE_HOURS == 4.0

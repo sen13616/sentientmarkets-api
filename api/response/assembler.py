@@ -228,9 +228,11 @@ def _build_free(state: dict) -> FreeTierResponse:
     ts    = _parse_dt(state.get("timestamp"))
     now   = _now_utc()
     change, change_pct = _change_fields(state)
+    raw_val = state.get("composite_score_raw")
     return FreeTierResponse(
         ticker              = state["ticker"].upper(),
         score               = score,
+        score_raw           = int(round(raw_val)) if raw_val is not None else None,
         score_change_1d     = change,
         score_change_1d_pct = change_pct,
         label               = score_to_label(score),

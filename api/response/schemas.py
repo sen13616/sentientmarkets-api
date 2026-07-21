@@ -38,7 +38,8 @@ class MarketHours(BaseModel):
 
 class FreeTierResponse(BaseModel):
     ticker:              str
-    score:               int
+    score:               int                      # EMA-smoothed (display-stable; lags by design)
+    score_raw:           Optional[int] = None     # Unsmoothed composite — the responsive number
     score_change_1d:     Optional[float] = None   # vs most recent tick 24-48h old; null across gaps
     score_change_1d_pct: Optional[float] = None
     label:               str

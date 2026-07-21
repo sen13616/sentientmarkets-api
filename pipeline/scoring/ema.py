@@ -26,8 +26,12 @@ regardless of gap length or any other condition.
 from __future__ import annotations
 
 import math
+import os
 
-_HALF_LIFE_HOURS: float = 4.0
+# Tunable via env for offline experiments and a future gated change; the 4h
+# default only changes if scripts/eval/experiments/ema_halflife.py wins on
+# the eval scorecard. Read once at import (uvicorn restarts pick up changes).
+_HALF_LIFE_HOURS: float = float(os.getenv("EMA_HALF_LIFE_HOURS", "4.0"))
 
 
 def compute_ema(

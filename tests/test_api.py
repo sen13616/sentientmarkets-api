@@ -143,7 +143,8 @@ class TestSentimentFreeTier:
 
     def test_required_fields_present(self, free_client):
         data = self._request(free_client).json()
-        for field in ("ticker", "score", "label", "confidence", "timestamp", "cache_age_seconds"):
+        for field in ("ticker", "score", "score_raw", "label", "confidence",
+                      "timestamp", "cache_age_seconds"):
             assert field in data, f"Missing expected field: {field!r}"
 
     def test_pro_fields_absent(self, free_client):
