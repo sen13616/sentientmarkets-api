@@ -185,6 +185,119 @@ class TestLeadLag:
         assert peak["corr"] > 0.9
 
 
+# -------------------------------------------------------- quintile_ls cost --
+
+
+class TestQuintileLSCost:
+    def _panel(self, n_days=6, n_tickers=25, churn=False):
+        """Synthetic panel: fixed per-ticker feature ranking (churn=False) or
+        a ranking that fully swaps top/bottom quintiles each day (churn=True).
+        fwdN_1 is proportional to the feature so the spread is deterministic."""
+        days = pd.bdate_range("2026-01-05", periods=n_days)
+        rows = []
+        for di, d in enumerate(days):
+            for i in range(n_tickers):
+                if churn and di % 2 == 1:
+                    feat = float(n_tickers - 1 - i)   # reversed ranking
+                else:
+                    feat = float(i)
+                rows.append({
+                    "ticker": f"T{i}", "date": d,
+                    "myfeat": feat, "fwdN_1": feat * 1e-4,
+                })
+        return pd.DataFrame(rows)
+
+    def test_zero_cost_makes_net_equal_gross(self):
+        r = analyze.quintile_ls(self._panel(), "myfeat", h=1, cost_bps=0.0)
+        assert r["mean_LS_net_per_period"] == r["mean_LS_per_period"]
+        assert r["ann_sharpe_net"] == r["ann_sharpe"]
+
+    def test_gross_fields_unaffected_by_cost(self):
+        r0 = analyze.quintile_ls(self._panel(), "myfeat", h=1, cost_bps=0.0)
+        r15 = analyze.quintile_ls(self._panel(), "myfeat", h=1, cost_bps=15.0)
+        for k in ["mean_LS_per_period", "t", "ann_return", "ann_sharpe",
+                  "win_rate", "n_days"]:
+            assert r0[k] == r15[k]
+
+    def test_stable_membership_charges_inception_only(self):
+        # Fixed ranking: memberships identical every day -> turnover 0 after
+        # the inception day (charged 2.0 = both legs fully established).
+        n_days = 6
+        r = analyze.quintile_ls(self._panel(n_days=n_days), "myfeat", h=1,
+                                cost_bps=15.0)
+        cost_rt = 15.0 / 1e4
+        expected_net = r["mean_LS_per_period"] - (cost_rt * 2.0) / n_days
+        assert r["mean_LS_net_per_period"] == pytest.approx(expected_net, abs=1e-5)
+        # avg one-way leg turnover: one full day out of six, per leg
+        assert r["avg_leg_turnover"] == pytest.approx(1.0 / n_days, abs=1e-3)
+
+    def test_full_churn_charges_every_day(self):
+        # Ranking fully reverses daily: both legs replaced at every rebalance.
+        r = analyze.quintile_ls(self._panel(churn=True), "myfeat", h=1,
+                                cost_bps=15.0)
+        cost_rt = 15.0 / 1e4
+        expected_net = r["mean_LS_per_period"] - cost_rt * 2.0
+        assert r["mean_LS_net_per_period"] == pytest.approx(expected_net, abs=1e-5)
+        assert r["avg_leg_turnover"] == pytest.approx(1.0, abs=1e-3)
+
+    def test_turnover_compares_against_h_days_prior(self):
+        # With churn (reversal every day) and h=2, the tranche being rolled is
+        # from 2 days earlier — same ranking again — so turnover after the
+        # 2 inception days is 0.
+        n_days = 6
+        panel = self._panel(n_days=n_days, churn=True)
+        panel["fwdN_2"] = panel["fwdN_1"]
+        r = analyze.quintile_ls(panel, "myfeat", h=2, cost_bps=15.0)
+        # 2 inception days at 2.0, then 0 -> avg per-leg = 2/n_days
+        assert r["avg_leg_turnover"] == pytest.approx(2.0 / n_days, abs=1e-3)
+
+
+# ------------------------------------------------------------ intraday exo --
+
+
+class TestIntradayExo:
+    def test_prepare_raw_sentiment_computes_renormalized_exo(self):
+        from scripts.eval import intraday
+
+        s = intraday.prepare_raw_sentiment(pd.DataFrame([
+            _sent_row("AAPL", "2026-01-05 15:00", 55, market=99,
+                      narrative=60, influencer=70, macro=40),
+        ]))
+        expected = (0.30 * 60 + 0.25 * 70 + 0.10 * 40) / 0.65
+        assert s["exo"].iloc[0] == pytest.approx(expected)
+
+    def test_exo_renormalizes_and_ignores_market(self):
+        from scripts.eval import intraday
+
+        s = intraday.prepare_raw_sentiment(pd.DataFrame([
+            _sent_row("AAPL", "2026-01-05 15:00", 55, market=99, narrative=60),
+        ]))
+        assert s["exo"].iloc[0] == pytest.approx(60.0)
+
+    def test_exo_nan_when_all_exo_layers_missing(self):
+        from scripts.eval import intraday
+
+        s = intraday.prepare_raw_sentiment(pd.DataFrame([
+            _sent_row("AAPL", "2026-01-05 15:00", 55, market=80),
+        ]))
+        assert pd.isna(s["exo"].iloc[0])
+
+    def test_build_long_emits_dexo(self):
+        from scripts.eval import intraday
+
+        bars = pd.date_range("2026-01-05 14:30", periods=40, freq="15min", tz="UTC")
+        prices = pd.DataFrame({"AAPL": 100 + np.arange(len(bars)) * 0.1}, index=bars)
+        sent = pd.DataFrame([
+            _sent_row("AAPL", str(t.tz_convert(None)), 55, market=50,
+                      narrative=55 + i * 0.1, influencer=60, macro=50)
+            for i, t in enumerate(bars)
+        ])
+        st = intraday.prepare_raw_sentiment(sent)
+        long = intraday.build_long(prices, st, gaps=[])
+        assert "dexo" in long.columns
+        assert long["dexo"].notna().sum() > 0
+
+
 # ---------------------------------------------------------------- scorecard --
 
 

@@ -51,6 +51,7 @@ def build_scorecard(
     leadlag_exo: pd.DataFrame,
     meta: dict | None = None,
     latency: pd.DataFrame | None = None,
+    ls: list[dict] | None = None,
 ) -> dict:
     card: dict = {"meta": meta or {}}
     card["meta"].setdefault("n_tickers", int(daily["ticker"].nunique()))
@@ -73,6 +74,12 @@ def build_scorecard(
         "raw_change": _leadlag_summary(leadlag_raw),
         "exo_change": _leadlag_summary(leadlag_exo),
     }
+
+    # Quintile long-short spreads, gross AND net of the turnover cost overlay
+    # (analyze.quintile_ls cost_bps). Absent from pre-E001 cards; scorecard
+    # diff skips missing metrics, so old baselines stay comparable.
+    if ls:
+        card["quintile_ls"] = ls
 
     if latency is not None and not latency.empty:
         by_src = latency.groupby("source")["latency_minutes"]
@@ -198,6 +205,29 @@ def render_markdown(card: dict) -> str:
             lines.append(
                 f"| {r['feature']} | {r['horizon_d']} | {r['target']} | "
                 f"{r['mean_IC']} | {r['IC_t']} | {r['hit_rate']} | {r['n_days']} |"
+            )
+        lines.append("")
+        lines.append(
+            "*hit = fraction of DAYS with positive daily cross-sectional IC "
+            "(not per-trade accuracy).*"
+        )
+        lines.append("")
+
+    ls = card.get("quintile_ls")
+    if ls:
+        cost = ls[0].get("cost_bps", "?")
+        lines += [f"## Quintile L/S — gross vs net ({cost} bps round-trip on leg turnover)",
+                  "",
+                  "| feature | h | gross/period | net/period | t | t_net | "
+                  "ann Sharpe | ann Sharpe net | leg turnover | days |",
+                  "|---|---|---|---|---|---|---|---|---|---|"]
+        for r in ls:
+            lines.append(
+                f"| {r['feature']} | {r['horizon_d']} | "
+                f"{r['mean_LS_per_period']} | {r.get('mean_LS_net_per_period', 'n/a')} | "
+                f"{r['t']} | {r.get('t_net', 'n/a')} | "
+                f"{r['ann_sharpe']} | {r.get('ann_sharpe_net', 'n/a')} | "
+                f"{r.get('avg_leg_turnover', 'n/a')} | {r['n_days']} |"
             )
         lines.append("")
 

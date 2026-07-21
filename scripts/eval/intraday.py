@@ -11,20 +11,37 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from scripts.eval.analyze import DEFAULT_GAPS, GapList, window_spans_gap
+from scripts.eval.analyze import DEFAULT_GAPS, EXO_WEIGHTS, GapList, window_spans_gap
 
-SIG_COLS = ["score_raw", "narrative", "market"]
+SIG_COLS = ["score_raw", "narrative", "market", "exo"]
 
 
 def prepare_raw_sentiment(sent: pd.DataFrame) -> pd.DataFrame:
-    """DB raw-tick rows -> (ticker, dt, score_raw, narrative, market)."""
+    """DB raw-tick rows -> (ticker, dt, score_raw, narrative, market, exo).
+
+    exo (E001 plumbing): the exogenous narrative/influencer/macro composite,
+    weights renormalized over present layers — same construction as
+    analyze.prepare_daily, computed per scoring tick so intraday exo-change
+    lead-lag can be measured.
+    """
     s = sent.rename(
         columns={
             "composite_score": "score_raw",
             "narrative_index": "narrative",
+            "influencer_index": "influencer",
+            "macro_index": "macro",
             "market_index": "market",
         }
     ).copy()
+    for col in ["score_raw", "narrative", "influencer", "macro", "market"]:
+        s[col] = pd.to_numeric(s[col], errors="coerce")
+    num = pd.Series(0.0, index=s.index)
+    den = pd.Series(0.0, index=s.index)
+    for layer, w in EXO_WEIGHTS.items():
+        present = s[layer].notna()
+        num += s[layer].fillna(0.0) * w * present
+        den += w * present
+    s["exo"] = (num / den).where(den > 0)
     s["dt"] = pd.to_datetime(s["timestamp"], utc=True)
     return s[["ticker", "dt"] + SIG_COLS].sort_values("dt")
 
@@ -89,7 +106,7 @@ def build_long(
         m["ticker"] = tk
         gap_mask = m["dt"].apply(lambda t: window_spans_gap(t, t, _utc_gaps(gaps)))
         m = m[~gap_mask]
-        out.append(m[["ticker", "dt", "date", "ret", "dscore_raw", "dnarrative", "dmarket"]])
+        out.append(m[["ticker", "dt", "date", "ret"] + [f"d{c}" for c in SIG_COLS]])
     if not out:
         return pd.DataFrame()
     return pd.concat(out, ignore_index=True)
@@ -123,7 +140,7 @@ def overnight(
     ret = np.log(closes.sort_index()).diff()
     trad = list(ret.index)
     rows = []
-    for sig in ["score_raw", "narrative"]:
+    for sig in ["score_raw", "narrative", "exo"]:
         xs, ys = [], []
         for tk, gg in sent.groupby("ticker"):
             if tk not in ret.columns:

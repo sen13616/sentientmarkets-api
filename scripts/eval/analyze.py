@@ -171,7 +171,17 @@ def ic_table(
     min_days: int = 5,
 ) -> pd.DataFrame:
     """Daily cross-sectional Spearman IC (Pearson of ranks) with a t-stat on
-    the IC time series, per feature x horizon x {raw, market-neutral}."""
+    the IC time series, per feature x horizon x {raw, market-neutral}.
+
+    Field definitions (E001 clarification — these describe the DAILY IC
+    SERIES, not individual trades):
+      mean_IC  : mean of the per-day cross-sectional ICs.
+      IC_t     : t-stat of that daily IC series against zero.
+      hit_rate : fraction of DAYS whose cross-sectional IC was positive —
+                 "on how many days did ranking by this feature rank forward
+                 returns in the right direction". It is NOT per-trade
+                 accuracy and does not translate to a win rate on positions.
+    """
     out = []
     for f in feats:
         if f not in panel.columns:
@@ -215,24 +225,64 @@ def ic_table(
 
 
 def quintile_ls(
-    panel: pd.DataFrame, feat: str, h: int = 1, neutral: bool = True
+    panel: pd.DataFrame,
+    feat: str,
+    h: int = 1,
+    neutral: bool = True,
+    cost_bps: float = 15.0,
 ) -> dict | None:
-    """Daily Q5-Q1 spread on (market-neutral) forward returns."""
+    """Daily Q5-Q1 spread on (market-neutral) forward returns, gross and net.
+
+    Cost overlay (E001): ``cost_bps`` is a round-trip transaction cost in
+    basis points charged on one-way leg turnover at each rebalance. Each
+    signal day's Q5/Q1 memberships are compared with the memberships of the
+    tranche being rolled (h signal-days earlier); the fraction of names
+    replaced in each leg, times cost_bps/1e4, is subtracted from that day's
+    gross spread. The first h days (no prior tranche) are charged full
+    turnover (1.0 per leg) — conservative by design: a promotion decision
+    must not lean on an inception-cost discount. Gross fields are computed
+    exactly as before the overlay; ``cost_bps=0`` makes net == gross.
+    """
     tgt = f"fwdN_{h}" if neutral else f"fwd_{h}"
-    sub = panel[[feat, tgt, "date"]].dropna()
+    sub = panel[["ticker", feat, tgt, "date"]].dropna()
 
-    def spread(g):
+    gross_by_day: dict = {}
+    memb_by_day: dict = {}
+    for date, g in sub.groupby("date"):
         if len(g) < 20:
-            return np.nan
+            continue
         q = pd.qcut(g[feat].rank(method="first"), 5, labels=False)
-        return g[tgt][q == 4].mean() - g[tgt][q == 0].mean()
+        gross_by_day[date] = g[tgt][q == 4].mean() - g[tgt][q == 0].mean()
+        memb_by_day[date] = (set(g["ticker"][q == 4]), set(g["ticker"][q == 0]))
 
-    daily = sub.groupby("date")[[feat, tgt]].apply(spread).dropna()
-    if len(daily) < 5:
+    dates = sorted(gross_by_day)
+    if len(dates) < 5:
         return None
-    t = daily.mean() / (daily.std(ddof=1) / np.sqrt(len(daily)))
-    ann = daily.mean() / h * 252
-    sharpe = (daily.mean() / h) / (daily.std(ddof=1) / np.sqrt(h)) * np.sqrt(252)
+
+    cost_rt = cost_bps / 1e4
+    turnovers: list[float] = []      # per-day sum of both legs' one-way turnover
+    for i, d in enumerate(dates):
+        long_d, short_d = memb_by_day[d]
+        if i < h:
+            to = 2.0                 # inception: both legs fully established
+        else:
+            prev_l, prev_s = memb_by_day[dates[i - h]]
+            to_l = 1.0 - len(long_d & prev_l) / len(long_d) if long_d else 1.0
+            to_s = 1.0 - len(short_d & prev_s) / len(short_d) if short_d else 1.0
+            to = to_l + to_s
+        turnovers.append(to)
+
+    daily = pd.Series([gross_by_day[d] for d in dates], index=dates)
+    net = daily - cost_rt * pd.Series(turnovers, index=dates)
+
+    def _stats(series: pd.Series) -> tuple[float, float, float, float]:
+        t = series.mean() / (series.std(ddof=1) / np.sqrt(len(series)))
+        ann = series.mean() / h * 252
+        sharpe = (series.mean() / h) / (series.std(ddof=1) / np.sqrt(h)) * np.sqrt(252)
+        return t, ann, sharpe, (series > 0).mean()
+
+    t, ann, sharpe, win = _stats(daily)
+    t_net, ann_net, sharpe_net, win_net = _stats(net)
     return {
         "feature": feat,
         "horizon_d": h,
@@ -241,8 +291,15 @@ def quintile_ls(
         "t": round(t, 2),
         "ann_return": round(ann, 3),
         "ann_sharpe": round(sharpe, 2),
-        "win_rate": round((daily > 0).mean(), 2),
+        "win_rate": round(win, 2),
         "n_days": len(daily),
+        "cost_bps": cost_bps,
+        "avg_leg_turnover": round(float(np.mean(turnovers)) / 2.0, 3),
+        "mean_LS_net_per_period": round(net.mean(), 5),
+        "t_net": round(t_net, 2),
+        "ann_return_net": round(ann_net, 3),
+        "ann_sharpe_net": round(sharpe_net, 2),
+        "win_rate_net": round(win_net, 2),
     }
 
 

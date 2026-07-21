@@ -97,6 +97,9 @@ def _parse_args(argv=None):
                    help="also run the intraday lead-lag (heavier query)")
     p.add_argument("--prices", choices=["snapshots", "yfinance"], default="snapshots",
                    help="intraday price source (default: price_snapshots)")
+    p.add_argument("--cost-bps", type=float, default=15.0,
+                   help="round-trip transaction cost (bps) charged on quintile "
+                        "L/S leg turnover; 0 disables the overlay (default: 15)")
     p.add_argument("--gap", action="append", default=None, metavar="START:END",
                    help="data-gap window to excise (repeatable); "
                         "default: 2026-06-23:2026-07-03")
@@ -154,10 +157,11 @@ async def _run(args) -> int:
 
     ls_rows = []
     for feat in ["score_raw", "xs_pct", "exo", "exo_pct",
-                 "dscore_raw_1", "dscore_raw_3", "dexo_1", "dexo_3",
+                 "dscore_raw_1", "dscore_raw_3", "dexo_1", "dexo_3", "dexo_5",
                  "narrative", "influencer", "macro"]:
-        for h in [1, 3, 5]:
-            r = analyze.quintile_ls(panel, feat, h, neutral=True)
+        for h in [1, 2, 3, 5]:
+            r = analyze.quintile_ls(panel, feat, h, neutral=True,
+                                    cost_bps=args.cost_bps)
             if r:
                 ls_rows.append(r)
     pd.DataFrame(ls_rows).to_csv(out / "quintile_ls.csv", index=False)
@@ -173,6 +177,7 @@ async def _run(args) -> int:
               "gaps": [f"{g0.date()}:{g1.date()}" for g0, g1 in gaps],
               "generated_at": datetime.now(timezone.utc).isoformat()},
         latency=latency,
+        ls=ls_rows,
     )
 
     if args.intraday:
@@ -189,7 +194,7 @@ async def _run(args) -> int:
         else:
             long = intraday.build_long(prices, st, gaps=gaps)
             card["leadlag_intraday"] = {}
-            for sig in ["dscore_raw", "dnarrative", "dmarket"]:
+            for sig in ["dscore_raw", "dnarrative", "dmarket", "dexo"]:
                 ll = intraday.leadlag(long, sig)
                 ll.to_csv(out / f"intraday_leadlag_{sig}.csv", index=False)
                 card["leadlag_intraday"][sig] = scorecard._leadlag_summary(

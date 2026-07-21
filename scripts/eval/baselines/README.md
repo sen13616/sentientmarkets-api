@@ -43,7 +43,14 @@ Outputs land in `--out`: `scorecard.json`, `scorecard.md`, plus
 | dispersion | pooled std + `xs_dispersion` (mean per-day cross-sectional std) | averaging must not crush the tails |
 | leadlag | peak offset + curve for raw Δ and exogenous Δ | mirror (peak ≤ 0) vs headlight (peak > 0) |
 | predictive | daily cross-sectional Spearman IC × horizon, quintile L/S | forward information, market-neutral |
+| quintile_ls | gross AND net L/S spreads (E001 cost overlay: round-trip bps × leg turnover per rebalance, default 15) | does the spread survive trading costs |
 | information_latency | `created_at − published_at` per source | the predictive budget (Phase 5a) |
+
+**Reading the IC table** (E001 clarification): `mean_IC`, `IC_t`, and `hit_rate`
+all describe the **daily IC series**. `hit_rate` = fraction of DAYS whose
+cross-sectional IC was positive — NOT per-trade accuracy; it does not translate
+to a win rate on positions. A hit rate of 0.7 with IC ≈ 0.03 means "most days
+the ranking tilts the right way, faintly", not "70% of trades win".
 
 ## Gate rules (`scorecard.DEFAULT_RULES`)
 
