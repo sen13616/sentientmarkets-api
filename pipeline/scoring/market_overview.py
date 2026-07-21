@@ -28,8 +28,14 @@ from pipeline.scoring.market_summary import build_summary
 #: Redis keys written each tick by the scheduler and read by the API.
 PERCENTILE_KEY = "pipeline:universe_percentile"
 OVERVIEW_KEY = "pipeline:market_overview"
+#: Cross-sectional stats on the RAW score (nowcasting plan, Phase 2):
+#: hash of ticker → JSON {raw_z, raw_pctl, sector_pctl}.
+XS_KEY = "pipeline:universe_xs"
 
 _N_MOVERS = 10
+#: Sectors smaller than this get sector_pctl=None (a rank within 2 names
+#: says nothing).
+_MIN_SECTOR_SIZE = 3
 
 
 def compute_percentiles(scores: dict[str, float]) -> dict[str, float]:
@@ -55,6 +61,56 @@ def compute_percentiles(scores: dict[str, float]) -> dict[str, float]:
     return {
         t: round(100.0 * below[v] / (n - 1), 1)
         for t, v in scores.items()
+    }
+
+
+def compute_cross_sectional(
+    raw_scores: dict[str, float],
+    sector_map: dict[str, str],
+) -> dict[str, dict]:
+    """
+    Cross-sectional standardization of the RAW (divergence-capped, unsmoothed)
+    composite over the tickers scored this tick — the primary nowcast lens.
+    The smoothed score is the laggiest view of the universe, so relative
+    position is computed on raw.
+
+    Returns ticker → {raw_z, raw_pctl, sector_pctl}:
+      raw_z       — (x − μ)/σ over this tick's universe (sample σ); None when
+                    the universe has <2 tickers or zero variance. Unclamped.
+      raw_pctl    — compute_percentiles() over the universe.
+      sector_pctl — compute_percentiles() within the ticker's GICS sector;
+                    None if the sector is unknown or has <_MIN_SECTOR_SIZE
+                    members this tick.
+    """
+    n = len(raw_scores)
+    if n == 0:
+        return {}
+
+    raw_pctl = compute_percentiles(raw_scores)
+
+    mean = sum(raw_scores.values()) / n
+    std = None
+    if n > 1:
+        var = sum((v - mean) ** 2 for v in raw_scores.values()) / (n - 1)
+        std = var ** 0.5
+
+    by_sector: dict[str, dict[str, float]] = {}
+    for t, v in raw_scores.items():
+        sector = sector_map.get(t)
+        if sector:
+            by_sector.setdefault(sector, {})[t] = v
+    sector_pctl: dict[str, float] = {}
+    for members in by_sector.values():
+        if len(members) >= _MIN_SECTOR_SIZE:
+            sector_pctl.update(compute_percentiles(members))
+
+    return {
+        t: {
+            "raw_z": round((v - mean) / std, 2) if std and std > 1e-9 else None,
+            "raw_pctl": raw_pctl[t],
+            "sector_pctl": sector_pctl.get(t),
+        }
+        for t, v in raw_scores.items()
     }
 
 

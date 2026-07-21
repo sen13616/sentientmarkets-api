@@ -21,7 +21,11 @@ from fastapi.testclient import TestClient
 
 from api.auth import authenticate
 from main import app
-from pipeline.scoring.market_overview import build_overview, compute_percentiles
+from pipeline.scoring.market_overview import (
+    build_overview,
+    compute_cross_sectional,
+    compute_percentiles,
+)
 from pipeline.scoring.market_summary import build_summary
 
 _NOW = datetime(2026, 7, 15, 14, 30, tzinfo=timezone.utc)
@@ -367,3 +371,117 @@ class TestMarketOverviewRoute:
         client = TestClient(app)
         r = client.get("/v1/market/overview")
         assert r.status_code in (401, 403)
+
+
+# ===========================================================================
+# compute_cross_sectional (nowcasting plan, Phase 2)
+# ===========================================================================
+
+class TestComputeCrossSectional:
+
+    _SECTORS = {"AAPL": "Tech", "MSFT": "Tech", "NVDA": "Tech", "XOM": "Energy"}
+
+    def test_empty_universe(self):
+        assert compute_cross_sectional({}, {}) == {}
+
+    def test_single_ticker_pctl_50_z_none(self):
+        xs = compute_cross_sectional({"AAPL": 60.0}, {})
+        assert xs["AAPL"]["raw_pctl"] == 50.0
+        assert xs["AAPL"]["raw_z"] is None
+        assert xs["AAPL"]["sector_pctl"] is None
+
+    def test_zero_variance_z_none(self):
+        xs = compute_cross_sectional({"AAPL": 55.0, "MSFT": 55.0, "NVDA": 55.0}, {})
+        assert all(v["raw_z"] is None for v in xs.values())
+
+    def test_z_matches_sample_std(self):
+        scores = {"AAPL": 60.0, "MSFT": 50.0, "NVDA": 40.0}
+        xs = compute_cross_sectional(scores, {})
+        # mean 50, sample std 10
+        assert xs["AAPL"]["raw_z"] == 1.0
+        assert xs["MSFT"]["raw_z"] == 0.0
+        assert xs["NVDA"]["raw_z"] == -1.0
+
+    def test_percentile_ordering_and_ties(self):
+        scores = {"AAPL": 60.0, "MSFT": 60.0, "NVDA": 40.0}
+        xs = compute_cross_sectional(scores, {})
+        assert xs["NVDA"]["raw_pctl"] == 0.0
+        assert xs["AAPL"]["raw_pctl"] == xs["MSFT"]["raw_pctl"]
+
+    def test_sector_pctl_within_sector_only(self):
+        scores = {"AAPL": 60.0, "MSFT": 50.0, "NVDA": 40.0, "XOM": 99.0}
+        xs = compute_cross_sectional(scores, self._SECTORS)
+        # Tech has 3 members: NVDA lowest -> 0, AAPL highest -> 100
+        assert xs["NVDA"]["sector_pctl"] == 0.0
+        assert xs["AAPL"]["sector_pctl"] == 100.0
+        # Energy has 1 member (< _MIN_SECTOR_SIZE) -> None
+        assert xs["XOM"]["sector_pctl"] is None
+
+    def test_unknown_sector_gets_none(self):
+        xs = compute_cross_sectional(
+            {"AAPL": 60.0, "MSFT": 50.0, "NVDA": 40.0}, {"AAPL": "Tech"}
+        )
+        assert xs["MSFT"]["sector_pctl"] is None
+
+    def test_values_json_roundtrip(self):
+        xs = compute_cross_sectional(
+            {"AAPL": 60.0, "MSFT": 50.0, "NVDA": 40.0}, self._SECTORS
+        )
+        for v in xs.values():
+            assert json.loads(json.dumps(v)) == v
+
+
+# ===========================================================================
+# Cross-sectional fields on the pro sentiment response
+# ===========================================================================
+
+class TestSentimentXsFields:
+
+    _XS = {"raw_z": 1.42, "raw_pctl": 91.5, "sector_pctl": 88.0}
+
+    def _patches(self):
+        return (
+            patch("api.rate_limit.check_rate_limit", AsyncMock()),
+            patch("api.routes.sentiment.is_supported_ticker", AsyncMock(return_value=True)),
+            patch("api.response.assembler._load_from_redis", AsyncMock(return_value=_MOCK_STATE)),
+            patch("api.response.assembler._load_percentile", AsyncMock(return_value=87.3)),
+        )
+
+    def test_pro_full_includes_xs_fields(self, pro_client):
+        p1, p2, p3, p4 = self._patches()
+        with p1, p2, p3, p4, patch(
+            "api.response.assembler._load_xs", AsyncMock(return_value=self._XS)
+        ):
+            r = pro_client.get(
+                "/v1/sentiment/AAPL?detail=full", headers={"Authorization": "Bearer k"}
+            )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["score_raw_z"] == 1.42
+        assert body["score_raw_percentile"] == 91.5
+        assert body["sector_percentile"] == 88.0
+
+    def test_ticker_absent_from_tick_yields_nulls(self, pro_client):
+        p1, p2, p3, p4 = self._patches()
+        with p1, p2, p3, p4, patch(
+            "api.response.assembler._load_xs", AsyncMock(return_value=None)
+        ):
+            r = pro_client.get(
+                "/v1/sentiment/AAPL?detail=full", headers={"Authorization": "Bearer k"}
+            )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["score_raw_z"] is None
+        assert body["score_raw_percentile"] is None
+        assert body["sector_percentile"] is None
+
+    def test_free_tier_never_gets_xs_fields(self, free_client):
+        p1, p2, p3, p4 = self._patches()
+        with p1, p2, p3, p4:
+            r = free_client.get(
+                "/v1/sentiment/AAPL", headers={"Authorization": "Bearer k"}
+            )
+        assert r.status_code == 200
+        body = r.json()
+        for field in ("score_raw_z", "score_raw_percentile", "sector_percentile"):
+            assert field not in body

@@ -23,7 +23,7 @@ from datetime import datetime, timedelta, timezone
 from scripts.db.queries.sentiment_history import get_latest
 from scripts.db.redis import get_redis
 from pipeline.confidence.staleness import is_market_hours
-from pipeline.scoring.market_overview import PERCENTILE_KEY
+from pipeline.scoring.market_overview import PERCENTILE_KEY, XS_KEY
 
 from .labels import score_to_label
 from .schemas import (
@@ -96,6 +96,19 @@ async def _load_percentile(ticker: str) -> float | None:
         return float(raw) if raw is not None else None
     except Exception as exc:
         _log.warning("assembler: percentile read failed for %s: %s", ticker, exc)
+        return None
+
+
+async def _load_xs(ticker: str) -> dict | None:
+    """Cross-sectional raw-score stats ({raw_z, raw_pctl, sector_pctl}) from
+    the latest scoring tick; None if the ticker was not in that tick (or
+    Redis is unavailable)."""
+    try:
+        client = get_redis()
+        raw = await client.hget(XS_KEY, ticker.upper())
+        return json.loads(raw) if raw is not None else None
+    except Exception as exc:
+        _log.warning("assembler: xs read failed for %s: %s", ticker, exc)
         return None
 
 
@@ -227,7 +240,11 @@ def _build_free(state: dict) -> FreeTierResponse:
     )
 
 
-def _build_pro(state: dict, universe_percentile: float | None = None) -> ProTierResponse:
+def _build_pro(
+    state: dict,
+    universe_percentile: float | None = None,
+    xs: dict | None = None,
+) -> ProTierResponse:
     score = _composite_score(state)
     conf  = state.get("confidence") or {}
     confidence = _confidence_score(conf)
@@ -281,6 +298,9 @@ def _build_pro(state: dict, universe_percentile: float | None = None) -> ProTier
         score_change_1d     = change,
         score_change_1d_pct = change_pct,
         universe_percentile = universe_percentile,
+        score_raw_z          = (xs or {}).get("raw_z"),
+        score_raw_percentile = (xs or {}).get("raw_pctl"),
+        sector_percentile    = (xs or {}).get("sector_pctl"),
         ema_obs_count     = ema_obs_count,
         label             = score_to_label(score),
         confidence        = confidence,
@@ -328,5 +348,6 @@ async def assemble(
     use_full = (tier == "pro" and detail == "full")
     if use_full:
         percentile = await _load_percentile(ticker)
-        return _build_pro(state, universe_percentile=percentile)
+        xs = await _load_xs(ticker)
+        return _build_pro(state, universe_percentile=percentile, xs=xs)
     return _build_free(state)

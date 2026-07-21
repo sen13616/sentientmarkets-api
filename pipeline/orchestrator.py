@@ -353,6 +353,7 @@ class ScoreResult(NamedTuple):
     smoothed_score: float       # EMA-smoothed composite written to state
     score_change_1d: float | None       # vs 24-48h-old baseline; None if no baseline
     score_change_1d_pct: float | None   # same basis, as % of the baseline
+    raw_score: float | None = None      # divergence-capped raw composite (cross-sectional stats)
 
 
 async def _score_and_write(
@@ -535,6 +536,7 @@ async def _score_and_write(
         smoothed_score=round(smoothed_score, 2),
         score_change_1d=score_change_1d,
         score_change_1d_pct=score_change_1d_pct,
+        raw_score=round(effective_score, 2),
     )
 
 

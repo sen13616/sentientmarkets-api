@@ -81,6 +81,11 @@ class ProTierResponse(BaseModel):
     score_change_1d:     Optional[float] = None  # vs most recent tick 24-48h old; null across gaps
     score_change_1d_pct: Optional[float] = None
     universe_percentile: Optional[float] = None  # percentile within latest tick; null if not in it
+    # Cross-sectional stats on the RAW score, computed per tick over tickers
+    # scored in that tick (nowcasting plan, Phase 2); null when not in it.
+    score_raw_z:          Optional[float] = None  # (raw − μ)/σ over the universe; unclamped
+    score_raw_percentile: Optional[float] = None  # percentile of raw score in universe
+    sector_percentile:    Optional[float] = None  # percentile of raw score within GICS sector
     ema_obs_count:     Optional[int]    = None   # Monotonic EMA update counter
     label:             str
     confidence:        int

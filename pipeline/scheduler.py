@@ -16,7 +16,7 @@ Ingestion jobs:
     market_job       — weekdays 14:30–21:00 UTC, every 15 minutes (data only)
     market_eod_job   — weekdays 21:15 UTC (data only, captures closing prices)
     narrative_job    — every 30 minutes (data only)
-    influencer_job   — every 6 hours (data only)
+    influencer_job   — daily at 00:20/06:20/12:20/18:20 UTC (data only)
     macro_daily_job    — daily at 02:00 UTC (FRED Treasury signals, data only)
     macro_intraday_job — hourly weekdays 14:00–20:00 UTC (VIX + sector ETFs, data only)
     short_volume_job — weekdays at 21:30 UTC (FINRA REGSHO, data only)
@@ -64,7 +64,9 @@ from pipeline.orchestrator import ScoreResult, _score_and_write
 from pipeline.scoring.market_overview import (
     OVERVIEW_KEY,
     PERCENTILE_KEY,
+    XS_KEY,
     build_overview,
+    compute_cross_sectional,
     compute_percentiles,
 )
 from pipeline.rate_limits import job_counters
@@ -263,8 +265,10 @@ async def _publish_universe_stats(
     scores      = {t: r.smoothed_score for t, r in results.items()}
     changes     = {t: r.score_change_1d for t, r in results.items()}
     change_pcts = {t: r.score_change_1d_pct for t, r in results.items()}
+    raw_scores  = {t: r.raw_score for t, r in results.items() if r.raw_score is not None}
 
     pct_map  = compute_percentiles(scores)
+    xs_map   = compute_cross_sectional(raw_scores, sector_map)
     overview = build_overview(scores, changes, change_pcts, sector_map, now)
 
     try:
@@ -273,6 +277,9 @@ async def _publish_universe_stats(
         pipe.delete(PERCENTILE_KEY)
         if pct_map:
             pipe.hset(PERCENTILE_KEY, mapping=pct_map)
+        pipe.delete(XS_KEY)
+        if xs_map:
+            pipe.hset(XS_KEY, mapping={t: json.dumps(v) for t, v in xs_map.items()})
         pipe.set(OVERVIEW_KEY, json.dumps(overview))
         await pipe.execute()
         _log.info(
@@ -828,9 +835,9 @@ scheduler.add_job(
 
 scheduler.add_job(
     influencer_job,
-    trigger=IntervalTrigger(hours=6),
+    trigger=CronTrigger(hour="0,6,12,18", minute=20),
     id="influencer",
-    name="Influencer activity (6 h)",
+    name="Influencer activity (every 6 h at :20)",
     max_instances=1,
     coalesce=True,
     misfire_grace_time=300,
