@@ -133,3 +133,32 @@ async def test_zero_close_price_persisted():
 
     _, kwargs = mock_ps_insert.call_args
     assert kwargs["close"] == 0.0
+
+
+async def test_score_exo_persisted_and_zero_safe():
+    """score_exo flows to composite_score_exo; 0.0 must survive, absent → None."""
+    from pipeline.persistence.pg_writer import persist_scored_state
+
+    base = {
+        "ticker": "TEST",
+        "timestamp": datetime.now(timezone.utc),
+        "composite_score": 50.0,
+        "confidence": {"score": 80, "flags": []},
+        "freshness": {},
+    }
+
+    for exo_in, exo_out in [(0.0, 0.0), (57.42, 57.42), (None, None)]:
+        state = dict(base)
+        if exo_in is not None:
+            state["score_exo"] = exo_in
+        pool, conn = _mock_pool()
+        mock_sh_insert = AsyncMock()
+        with (
+            patch("pipeline.persistence.pg_writer.get_pool", new_callable=AsyncMock, return_value=pool),
+            patch("pipeline.persistence.pg_writer.sh_queries") as mock_sh,
+            patch("pipeline.persistence.pg_writer.ps_queries"),
+        ):
+            mock_sh.insert_row = mock_sh_insert
+            await persist_scored_state(state)
+        _, kwargs = mock_sh_insert.call_args
+        assert kwargs["composite_score_exo"] == exo_out

@@ -149,7 +149,8 @@ class TestSentimentFreeTier:
     def test_pro_fields_absent(self, free_client):
         data = self._request(free_client).json()
         for field in ("sub_indices", "top_drivers", "explanation", "freshness",
-                      "score_raw_z", "score_raw_percentile", "sector_percentile"):
+                      "score_raw_z", "score_raw_percentile", "sector_percentile",
+                      "score_exo", "score_exo_percentile"):
             assert field not in data, f"Pro-only field leaked to free tier: {field!r}"
 
     def test_score_label_confidence_values(self, free_client):

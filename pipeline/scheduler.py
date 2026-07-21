@@ -266,9 +266,10 @@ async def _publish_universe_stats(
     changes     = {t: r.score_change_1d for t, r in results.items()}
     change_pcts = {t: r.score_change_1d_pct for t, r in results.items()}
     raw_scores  = {t: r.raw_score for t, r in results.items() if r.raw_score is not None}
+    exo_scores  = {t: r.exo_score for t, r in results.items() if r.exo_score is not None}
 
     pct_map  = compute_percentiles(scores)
-    xs_map   = compute_cross_sectional(raw_scores, sector_map)
+    xs_map   = compute_cross_sectional(raw_scores, sector_map, exo_scores)
     overview = build_overview(scores, changes, change_pcts, sector_map, now)
 
     try:

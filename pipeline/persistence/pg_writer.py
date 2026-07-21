@@ -32,6 +32,7 @@ checked first, then a fallback alias.
     volume              volume               price.volume
     smoothed composite  composite_score_smoothed  (no alias)
     EMA obs count       ema_obs_count             (no alias)
+    exogenous composite score_exo                 (no alias; nullable)
 
 Required keys
     ticker      str
@@ -120,6 +121,10 @@ async def persist_scored_state(state: dict) -> None:
     composite_smoothed: float | None = float(_smoothed) if _smoothed is not None else None
     ema_obs_count: int = int(state.get("ema_obs_count") or 0)
 
+    # ── exogenous sentiment-only composite (None = all exo layers missing) ───
+    _exo = state.get("score_exo")
+    composite_exo: float | None = float(_exo) if _exo is not None else None
+
     # ── sub-indices: flat keys take priority, nested sub_indices as fallback ───
     sub_indices = state.get("sub_indices") or {}
     market_index     = _first_not_none(state.get("market_index"),     _sub_value(sub_indices, "market"))
@@ -170,6 +175,7 @@ async def persist_scored_state(state: dict) -> None:
                 timestamp                = timestamp,
                 composite_score_smoothed = composite_smoothed,
                 ema_obs_count            = ema_obs_count,
+                composite_score_exo      = composite_exo,
             )
 
             # Off-hours ticks would re-snapshot an unchanged close (~98% of

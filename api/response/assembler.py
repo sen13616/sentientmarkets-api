@@ -135,6 +135,7 @@ async def _load_from_db(ticker: str) -> dict | None:
             "composite_score":           smoothed if smoothed is not None else raw_score,
             "composite_score_raw":       raw_score,
             "composite_score_smoothed":  smoothed,
+            "score_exo":                 row.get("composite_score_exo"),
             "ema_obs_count":             row.get("ema_obs_count") or 0,
             "confidence":                {"score": row["confidence_score"], "flags": flags or []},
             "sub_indices": {
@@ -301,6 +302,8 @@ def _build_pro(
         score_raw_z          = (xs or {}).get("raw_z"),
         score_raw_percentile = (xs or {}).get("raw_pctl"),
         sector_percentile    = (xs or {}).get("sector_pctl"),
+        score_exo            = state.get("score_exo"),
+        score_exo_percentile = (xs or {}).get("exo_pctl"),
         ema_obs_count     = ema_obs_count,
         label             = score_to_label(score),
         confidence        = confidence,

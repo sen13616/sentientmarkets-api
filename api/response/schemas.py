@@ -86,6 +86,11 @@ class ProTierResponse(BaseModel):
     score_raw_z:          Optional[float] = None  # (raw − μ)/σ over the universe; unclamped
     score_raw_percentile: Optional[float] = None  # percentile of raw score in universe
     sector_percentile:    Optional[float] = None  # percentile of raw score within GICS sector
+    # Exogenous sentiment-only composite (nowcasting plan, Phase 3): narrative/
+    # influencer/macro with the price-derived market layer excluded. Raw
+    # (never smoothed); null when all three exo layers were missing.
+    score_exo:            Optional[float] = None
+    score_exo_percentile: Optional[float] = None  # percentile of score_exo in latest tick
     ema_obs_count:     Optional[int]    = None   # Monotonic EMA update counter
     label:             str
     confidence:        int
@@ -135,6 +140,7 @@ class HistoryEntry(BaseModel):
     timestamp:      datetime
     score:          int                       # Smoothed (with raw fallback for pre-EMA rows)
     score_raw:      Optional[int]    = None   # Unsmoothed composite
+    score_exo:      Optional[float]  = None   # Sentiment-only composite (no market layer)
     label:          str
     confidence:     int
     sub_indices:    HistorySubIndices

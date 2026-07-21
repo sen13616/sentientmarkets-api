@@ -27,6 +27,11 @@ LAYER_WEIGHTS: dict[str, float] = {
     "macro":      0.10,
 }
 
+#: The non-price layers. The market layer is derived from price/technicals,
+#: so a composite over these three is the exogenous "sentiment-only" view
+#: (nowcasting plan, Phase 3).
+EXO_LAYERS: tuple[str, ...] = ("narrative", "influencer", "macro")
+
 
 @dataclass(frozen=True)
 class CompositeResult:
@@ -79,3 +84,19 @@ def compute_composite(
         weights_used=weights_used,
         missing_layers=sorted(missing),
     )
+
+
+def compute_exo_composite(
+    sub_indices: dict[str, object | None],
+) -> CompositeResult | None:
+    """
+    Exogenous "sentiment-only" composite: narrative/influencer/macro with the
+    price-derived market layer excluded, weights renormalized over the present
+    exo layers (≈ 0.46/0.38/0.15 when all three are present).
+
+    Returns None — never a fabricated neutral 50 — when all three exo layers
+    are missing, so the API can serve null.
+    """
+    if all(sub_indices.get(layer) is None for layer in EXO_LAYERS):
+        return None
+    return compute_composite({**sub_indices, "market": None})

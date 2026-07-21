@@ -80,6 +80,7 @@ async def get_sentiment_history(
                 timestamp      = row["timestamp"],
                 score          = int(round(display_score)),
                 score_raw      = int(round(raw_score)),
+                score_exo      = row.get("composite_score_exo"),
                 label          = score_to_label(int(round(display_score))),
                 confidence     = int(row["confidence_score"]),
                 sub_indices    = HistorySubIndices(**layer_values),

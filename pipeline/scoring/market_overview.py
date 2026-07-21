@@ -67,6 +67,7 @@ def compute_percentiles(scores: dict[str, float]) -> dict[str, float]:
 def compute_cross_sectional(
     raw_scores: dict[str, float],
     sector_map: dict[str, str],
+    exo_scores: dict[str, float] | None = None,
 ) -> dict[str, dict]:
     """
     Cross-sectional standardization of the RAW (divergence-capped, unsmoothed)
@@ -81,6 +82,9 @@ def compute_cross_sectional(
       sector_pctl — compute_percentiles() within the ticker's GICS sector;
                     None if the sector is unknown or has <_MIN_SECTOR_SIZE
                     members this tick.
+      exo_pctl    — percentile of the exogenous sentiment-only composite
+                    (Phase 3) among tickers with a non-null exo score this
+                    tick; None when this ticker's exo is missing.
     """
     n = len(raw_scores)
     if n == 0:
@@ -104,11 +108,14 @@ def compute_cross_sectional(
         if len(members) >= _MIN_SECTOR_SIZE:
             sector_pctl.update(compute_percentiles(members))
 
+    exo_pctl = compute_percentiles(exo_scores) if exo_scores else {}
+
     return {
         t: {
             "raw_z": round((v - mean) / std, 2) if std and std > 1e-9 else None,
             "raw_pctl": raw_pctl[t],
             "sector_pctl": sector_pctl.get(t),
+            "exo_pctl": exo_pctl.get(t),
         }
         for t, v in raw_scores.items()
     }

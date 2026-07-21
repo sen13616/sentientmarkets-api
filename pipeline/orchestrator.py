@@ -55,7 +55,7 @@ from pipeline.features.normalize import (
 )
 from pipeline.persistence.pg_writer import persist_scored_state
 from pipeline.persistence.redis_writer import read_scored_state, write_scored_state
-from pipeline.scoring.composite import compute_composite
+from pipeline.scoring.composite import compute_composite, compute_exo_composite
 from pipeline.scoring.ema import compute_ema
 from pipeline.scoring.divergence import compute_divergence
 from pipeline.scoring.drivers import extract_drivers
@@ -354,6 +354,7 @@ class ScoreResult(NamedTuple):
     score_change_1d: float | None       # vs 24-48h-old baseline; None if no baseline
     score_change_1d_pct: float | None   # same basis, as % of the baseline
     raw_score: float | None = None      # divergence-capped raw composite (cross-sectional stats)
+    exo_score: float | None = None      # exogenous sentiment-only composite (no market layer)
 
 
 async def _score_and_write(
@@ -418,6 +419,11 @@ async def _score_and_write(
     composite_result           = compute_composite(sub_indices)
     present_values             = {k: v.value for k, v in sub_indices.items() if v is not None}
     div_result, effective_score = compute_divergence(present_values, composite_result.score)
+
+    # Exogenous sentiment-only composite (nowcasting plan, Phase 3): raw only —
+    # no EMA, no divergence cap (divergence is a market-vs-composite construct).
+    exo_result = compute_exo_composite(sub_indices)
+    score_exo: float | None = round(exo_result.score, 2) if exo_result is not None else None
 
     # ── EMA smoothing (Sprint 5a, G-C3) ────────────────────────────────────────
     prev_smoothed: float | None = None
@@ -484,6 +490,7 @@ async def _score_and_write(
         "composite_score":           round(smoothed_score, 2),
         "composite_score_raw":       round(effective_score, 2),
         "composite_score_smoothed":  round(smoothed_score, 2),
+        "score_exo":                 score_exo,
         "score_change_1d":           score_change_1d,
         "score_change_1d_pct":       score_change_1d_pct,
         "ema_obs_count":             ema_obs_count,
@@ -537,6 +544,7 @@ async def _score_and_write(
         score_change_1d=score_change_1d,
         score_change_1d_pct=score_change_1d_pct,
         raw_score=round(effective_score, 2),
+        exo_score=score_exo,
     )
 
 

@@ -485,3 +485,64 @@ class TestSentimentXsFields:
         body = r.json()
         for field in ("score_raw_z", "score_raw_percentile", "sector_percentile"):
             assert field not in body
+
+
+# ===========================================================================
+# score_exo fields (nowcasting plan, Phase 3)
+# ===========================================================================
+
+class TestScoreExoFields:
+
+    _STATE = {**_MOCK_STATE, "score_exo": 64.85}
+    _XS = {"raw_z": 1.42, "raw_pctl": 91.5, "sector_pctl": 88.0, "exo_pctl": 76.0}
+
+    def _patches(self, state):
+        return (
+            patch("api.rate_limit.check_rate_limit", AsyncMock()),
+            patch("api.routes.sentiment.is_supported_ticker", AsyncMock(return_value=True)),
+            patch("api.response.assembler._load_from_redis", AsyncMock(return_value=state)),
+            patch("api.response.assembler._load_percentile", AsyncMock(return_value=87.3)),
+        )
+
+    def test_exo_pctl_only_over_tickers_with_exo(self):
+        xs = compute_cross_sectional(
+            raw_scores={"A": 60.0, "B": 50.0, "C": 40.0},
+            sector_map={},
+            exo_scores={"A": 70.0, "C": 30.0},   # B has no exo this tick
+        )
+        assert xs["A"]["exo_pctl"] == 100.0
+        assert xs["C"]["exo_pctl"] == 0.0
+        assert xs["B"]["exo_pctl"] is None
+
+    def test_pro_full_includes_exo_fields(self, pro_client):
+        p1, p2, p3, p4 = self._patches(self._STATE)
+        with p1, p2, p3, p4, patch(
+            "api.response.assembler._load_xs", AsyncMock(return_value=self._XS)
+        ):
+            r = pro_client.get(
+                "/v1/sentiment/AAPL?detail=full", headers={"Authorization": "Bearer k"}
+            )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["score_exo"] == 64.85
+        assert body["score_exo_percentile"] == 76.0
+
+    def test_pre_feature_state_yields_null_exo(self, pro_client):
+        p1, p2, p3, p4 = self._patches(_MOCK_STATE)  # no score_exo key
+        with p1, p2, p3, p4, patch(
+            "api.response.assembler._load_xs", AsyncMock(return_value=None)
+        ):
+            r = pro_client.get(
+                "/v1/sentiment/AAPL?detail=full", headers={"Authorization": "Bearer k"}
+            )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["score_exo"] is None
+        assert body["score_exo_percentile"] is None
+
+    def test_free_tier_never_gets_exo(self, free_client):
+        p1, p2, p3, p4 = self._patches(self._STATE)
+        with p1, p2, p3, p4:
+            r = free_client.get("/v1/sentiment/AAPL", headers={"Authorization": "Bearer k"})
+        assert r.status_code == 200
+        assert "score_exo" not in r.json()
