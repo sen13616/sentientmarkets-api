@@ -16,7 +16,7 @@ from scripts.db.connection import get_pool
 _SENTIMENT_COLS = (
     "ticker, timestamp, composite_score, composite_score_smoothed, "
     "market_index, narrative_index, influencer_index, macro_index, "
-    "confidence_score"
+    "confidence_score, research_features"
 )
 
 

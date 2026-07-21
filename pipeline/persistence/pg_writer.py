@@ -129,6 +129,9 @@ async def persist_scored_state(state: dict) -> None:
     _surprise = state.get("narrative_surprise")
     narrative_surprise: float | None = float(_surprise) if _surprise is not None else None
 
+    # ── positioning research features (research-only JSONB; see positioning.py) ─
+    research_features: dict | None = state.get("research_features") or None
+
     # ── sub-indices: flat keys take priority, nested sub_indices as fallback ───
     sub_indices = state.get("sub_indices") or {}
     market_index     = _first_not_none(state.get("market_index"),     _sub_value(sub_indices, "market"))
@@ -181,6 +184,7 @@ async def persist_scored_state(state: dict) -> None:
                 ema_obs_count            = ema_obs_count,
                 composite_score_exo      = composite_exo,
                 narrative_surprise       = narrative_surprise,
+                research_features        = research_features,
             )
 
             # Off-hours ticks would re-snapshot an unchanged close (~98% of

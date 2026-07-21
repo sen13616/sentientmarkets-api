@@ -83,6 +83,7 @@ def test_research_retain_signal_types():
     assert set(RESEARCH_RETAIN_SIGNAL_TYPES) == {
         "short_volume_otc", "short_volume_total_otc", "short_volume_ratio_otc",
         "insider_net_shares",
+        "analyst_buy_pct", "analyst_target_price", "analyst_eps_estimate_mean",
     }
     for tier in (OHLCV_SIGNAL_TYPES, DERIVED_INTRADAY_SIGNAL_TYPES, QUOTE_SIGNAL_TYPES):
         assert not set(RESEARCH_RETAIN_SIGNAL_TYPES) & set(tier)

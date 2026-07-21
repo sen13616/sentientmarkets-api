@@ -185,6 +185,55 @@ class TestLeadLag:
         assert peak["corr"] > 0.9
 
 
+# ------------------------------------------------ research feature autoreg --
+
+
+class TestResearchFeatureAutoRegistration:
+    def _row(self, ticker, ts, raw, rf):
+        r = _sent_row(ticker, ts, raw, narrative=60)
+        r["research_features"] = rf
+        return r
+
+    def test_rf_columns_expand_from_dict_and_json_string(self):
+        s = analyze.prepare_daily(pd.DataFrame([
+            self._row("AAPL", "2026-01-05 21:00", 55, {"short_vol_z": 1.5}),
+            self._row("AAPL", "2026-01-06 21:00", 56, '{"short_vol_z": 2.0}'),
+        ]))
+        assert "rf_short_vol_z" in s.columns
+        assert s.sort_values("date")["rf_short_vol_z"].tolist() == [1.5, 2.0]
+
+    def test_rf_diff_column_created(self):
+        s = analyze.prepare_daily(pd.DataFrame([
+            self._row("AAPL", "2026-01-05 21:00", 55, {"short_vol_z": 1.0}),
+            self._row("AAPL", "2026-01-06 21:00", 56, {"short_vol_z": 1.6}),
+        ]))
+        assert "drf_short_vol_z_1" in s.columns
+        assert s.sort_values("date")["drf_short_vol_z_1"].iloc[-1] == pytest.approx(0.6)
+
+    def test_missing_and_null_features_are_nan_not_error(self):
+        s = analyze.prepare_daily(pd.DataFrame([
+            self._row("AAPL", "2026-01-05 21:00", 55, {"short_vol_z": 1.0}),
+            self._row("MSFT", "2026-01-05 21:00", 50, None),
+        ]))
+        assert s[s.ticker == "MSFT"]["rf_short_vol_z"].isna().all()
+
+    def test_no_rf_column_when_feature_absent(self):
+        s = analyze.prepare_daily(pd.DataFrame([
+            _sent_row("AAPL", "2026-01-05 21:00", 55, narrative=60),
+        ]))
+        assert analyze.research_feature_cols(s) == []
+
+    def test_rf_columns_survive_build_panel(self):
+        dates = pd.bdate_range("2026-01-05", periods=6)
+        closes = _closes(dates, ["AAPL"], drift=0.01)
+        s = analyze.prepare_daily(pd.DataFrame([
+            self._row("AAPL", "2026-01-05 21:00", 55, {"short_vol_z": 1.5}),
+        ]))
+        panel = analyze.build_panel(s, closes, gaps=[])
+        assert "rf_short_vol_z" in panel.columns
+        assert panel["rf_short_vol_z"].iloc[0] == 1.5
+
+
 # -------------------------------------------------------- quintile_ls cost --
 
 

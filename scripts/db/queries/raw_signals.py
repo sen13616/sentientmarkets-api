@@ -229,6 +229,10 @@ QUOTE_SIGNAL_TYPES: list[str] = ["bid", "ask", "bid_ask_spread"]
 RESEARCH_RETAIN_SIGNAL_TYPES: list[str] = [
     "short_volume_otc", "short_volume_total_otc", "short_volume_ratio_otc",
     "insider_net_shares",
+    # Analyst channel added 2026-07-22 (Track B2): likely future research input
+    # (earnings-revision derivation reads up to 120 rows of EPS history);
+    # was purging at 90 days.
+    "analyst_buy_pct", "analyst_target_price", "analyst_eps_estimate_mean",
 ]
 
 

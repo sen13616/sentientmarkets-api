@@ -580,7 +580,7 @@ Daily 03:30 UTC (`retention_job`):
 | Derived intraday signals (returns, RSI, order flow, etc.) | 45 d (z-window 500 obs ≈ 20 trading days, 2× margin) |
 | Quote telemetry | 14 d (no longer written) |
 | All other raw signals | 90 d (covers the 90-obs z-score windows) |
-| **Research-retained signals** (`short_volume_*`, `insider_net_shares` — `RESEARCH_RETAIN_SIGNAL_TYPES`) | **never purged** (2026-07-22 — candidate leading-signal inputs for the research program; ~100 B numeric rows, retention is effectively free) |
+| **Research-retained signals** (`short_volume_*`, `insider_net_shares`, `analyst_buy_pct`, `analyst_target_price`, `analyst_eps_estimate_mean` — `RESEARCH_RETAIN_SIGNAL_TYPES`) | **never purged** (2026-07-22 — candidate leading-signal inputs for the research program; ~100 B numeric rows, retention is effectively free) |
 | `raw_articles` | 365 d (raised from 30 d on 2026-07-22); rows older than 30 d have `title`/`summary`/`source_url` blanked in place, keeping `published_at`, the FinBERT tone scores, `relevance_score`, `source`, `ticker`, `event_cluster_id`, `content_hash`, `language` — the fields feature backfills need |
 | `sentiment_history`, `price_snapshots` | **never deleted** (research data); `top_drivers` older than 30 d are compacted to a fixed-order array encoding (`pipeline/scoring/driver_codec.py`) |
 
@@ -606,6 +606,28 @@ Requires ≥ 10 baseline articles and ≥ 7 populated baseline days; otherwise N
 to Redis state and `sentiment_history.narrative_surprise` (migration 011) for eval
 accumulation only — it never enters the composite or any API response until it beats the
 `narrative_index` baseline on the eval scorecard.
+
+### 15.1 Positioning features (`pipeline/features/positioning.py`, flag `ENABLE_POSITIONING_FEATURES`)
+
+Same research-only contract, stored in the `sentiment_history.research_features` JSONB
+(migration 012 — one column for all present and future research features; never in any
+API response, guarded by test):
+
+- **`short_vol_z`** — z-score of the latest `short_volume_ratio_otc` vs the ticker's
+  own trailing 20 sessions (`z = (x − μ)/σ`, ≥ 10 prior obs, None on zero variance).
+- **`insider_net_z`** — z-score of the current UTC day's summed `insider_net_shares`
+  vs the daily-net distribution over the prior 20 weekdays, zero-filled for quiet days;
+  None when the entire window plus today is zero (never a fabricated neutral). Caveat:
+  insider rows are stamped with the Finnhub *transactionDate* (filingDate fallback),
+  which can precede the public Form-4 filing by up to ~2 business days — a mild
+  timestamp optimism any evaluation must budget for.
+
+Raw z values, unclamped/unmapped. Backfilled over history by
+`scripts/eval/backfill_features.py` (point-in-time: a (ticker, day) only sees signals
+timestamped ≤ that tick; writes to the last tick per ET day — the row the harness daily
+loader selects). The eval harness auto-registers every `research_features` key as
+`rf_<key>` (+ `drf_<key>_1` diffs) in the IC/quintile/lead-lag tables — no per-feature
+plumbing. Evaluation of these features is experiment E003 (own pre-registration).
 
 ---
 

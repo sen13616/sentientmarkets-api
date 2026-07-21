@@ -152,13 +152,21 @@ async def _run(args) -> int:
     panel = analyze.build_panel(s, closes, gaps=gaps)
     panel.to_csv(out / "panel.csv", index=False)
 
-    ic = analyze.ic_table(panel)
+    # Auto-registered research features (Track B5): every key found in
+    # sentiment_history.research_features shows up here with no per-feature
+    # plumbing — levels (rf_*) and 1d changes (drf_*_1) enter the IC table,
+    # the quintile L/S grid, and the lead-lag diagnostics automatically.
+    rf_cols = analyze.research_feature_cols(s)
+    if rf_cols:
+        print(f"research features auto-registered: {', '.join(rf_cols)}")
+
+    ic = analyze.ic_table(panel, feats=analyze.DEFAULT_FEATURES + rf_cols)
     ic.to_csv(out / "ic_table.csv", index=False)
 
     ls_rows = []
-    for feat in ["score_raw", "xs_pct", "exo", "exo_pct",
-                 "dscore_raw_1", "dscore_raw_3", "dexo_1", "dexo_3", "dexo_5",
-                 "narrative", "influencer", "macro"]:
+    for feat in (["score_raw", "xs_pct", "exo", "exo_pct",
+                  "dscore_raw_1", "dscore_raw_3", "dexo_1", "dexo_3", "dexo_5",
+                  "narrative", "influencer", "macro"] + rf_cols):
         for h in [1, 2, 3, 5]:
             r = analyze.quintile_ls(panel, feat, h, neutral=True,
                                     cost_bps=args.cost_bps)
@@ -171,6 +179,13 @@ async def _run(args) -> int:
     ll_exo = analyze.lead_lag(s, closes, "dexo_1", gaps=gaps)
     ll_exo.to_csv(out / "leadlag_exo.csv", index=False)
 
+    leadlag_research: dict = {}
+    for col in [c for c in rf_cols if c.startswith("drf_")]:
+        ll = analyze.lead_lag(s, closes, col, gaps=gaps)
+        if not ll.empty:
+            ll.to_csv(out / f"leadlag_{col}.csv", index=False)
+            leadlag_research[col] = scorecard._leadlag_summary(ll)
+
     card = scorecard.build_scorecard(
         s, ic, ll_raw, ll_exo,
         meta={"start": args.start, "end": args.end, "window": args.window,
@@ -179,6 +194,8 @@ async def _run(args) -> int:
         latency=latency,
         ls=ls_rows,
     )
+    if leadlag_research:
+        card["leadlag_research"] = leadlag_research
 
     if args.intraday:
         print("loading raw sentiment ticks + intraday prices ...")

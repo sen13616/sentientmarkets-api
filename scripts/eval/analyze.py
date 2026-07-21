@@ -18,6 +18,8 @@ Pure functions over DataFrames — no I/O, no imports from pipeline/.
 
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pandas as pd
 
@@ -60,6 +62,26 @@ def prepare_daily(sent: pd.DataFrame) -> pd.DataFrame:
                 "macro", "confidence"]:
         s[col] = pd.to_numeric(s[col], errors="coerce")
     s["score"] = s["score"].fillna(s["score_raw"])
+
+    # Research-feature auto-registration (Track B5): every key found in the
+    # research_features JSONB becomes a numeric column `rf_<key>` — no
+    # per-feature plumbing. asyncpg returns JSONB as str; parse both shapes.
+    if "research_features" in s.columns:
+        def _parse(v):
+            if isinstance(v, str):
+                try:
+                    v = json.loads(v)
+                except Exception:
+                    return {}
+            return v if isinstance(v, dict) else {}
+        parsed = s["research_features"].map(_parse)
+        keys = sorted({k for d in parsed for k in d})
+        for k in keys:
+            col = f"rf_{k}"
+            if col not in s.columns:
+                s[col] = pd.to_numeric(parsed.map(lambda d: d.get(k)), errors="coerce")
+        s = s.drop(columns=["research_features"])
+
     s["ts"] = pd.to_datetime(s["timestamp"], utc=True)
     # ET calendar date of each tick, then keep the last tick per (ticker, date)
     s["date"] = (
@@ -88,7 +110,17 @@ def prepare_daily(sent: pd.DataFrame) -> pd.DataFrame:
     for k in [3, 5, 7]:
         s[f"dscore_raw_{k}"] = s.groupby("ticker")["score_raw"].diff(k)
         s[f"dexo_{k}"] = s.groupby("ticker")["exo"].diff(k)
+    # 1-day changes of every auto-registered research feature (Track B5)
+    for col in [c for c in s.columns if c.startswith("rf_")]:
+        s[f"d{col}_1"] = s.groupby("ticker")[col].diff(1)
     return s
+
+
+def research_feature_cols(s: pd.DataFrame) -> list[str]:
+    """Auto-registered research-feature columns (levels + their 1d diffs)."""
+    return sorted(
+        c for c in s.columns if c.startswith("rf_") or c.startswith("drf_")
+    )
 
 
 def daily_returns(closes: pd.DataFrame) -> pd.DataFrame:
@@ -125,6 +157,8 @@ def build_panel(
         "dexo_1", "dexo_3", "dexo_5",
         "dnarrative_1", "dinfluencer_1", "dmacro_1",
     ]
+    # Auto-registered research features ride along (Track B5)
+    keep += [c for c in research_feature_cols(s) if c not in keep]
     rows = []
     for _, r in s.iterrows():
         tk = r["ticker"]

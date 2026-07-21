@@ -40,6 +40,7 @@ async def insert_row(
     ema_obs_count: int = 0,
     composite_score_exo: float | None = None,
     narrative_surprise: float | None = None,
+    research_features: dict | None = None,
 ) -> None:
     """Insert one scored row into sentiment_history."""
     await conn.execute(
@@ -63,10 +64,11 @@ async def insert_row(
             composite_score_smoothed,
             ema_obs_count,
             composite_score_exo,
-            narrative_surprise
+            narrative_surprise,
+            research_features
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-            $11, $12, $13, $14, $15, $16, $17, $18, $19
+            $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
         )
         """,
         ticker,
@@ -88,6 +90,7 @@ async def insert_row(
         ema_obs_count,
         composite_score_exo,
         narrative_surprise,
+        json.dumps(research_features) if research_features is not None else None,
     )
 
 
