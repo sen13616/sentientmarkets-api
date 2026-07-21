@@ -289,3 +289,42 @@ async def purge_articles_before(cutoff: datetime) -> int:
             cutoff,
         )
     return int(tag.split()[-1]) if tag else 0
+
+
+async def get_article_scores_between(
+    ticker: str,
+    since: datetime,
+    until: datetime,
+) -> list[dict]:
+    """
+    FinBERT-scored articles in [since, until), deduplicated by event cluster
+    (same rules as get_articles_since). Windowed variant used by the
+    narrative-surprise feature (nowcasting plan, Phase 5b) to build a
+    trailing coverage baseline that excludes the current window.
+
+    Returns oldest-first rows: published_at, finbert_score, relevance_score.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT published_at, finbert_score, relevance_score
+            FROM (
+                SELECT DISTINCT ON (COALESCE(event_cluster_id, id::text))
+                       published_at, finbert_score, relevance_score
+                FROM raw_articles
+                WHERE ticker            = $1
+                  AND published_at     >= $2
+                  AND published_at     <  $3
+                  AND finbert_score IS NOT NULL
+                ORDER BY COALESCE(event_cluster_id, id::text),
+                         relevance_score DESC NULLS LAST,
+                         published_at DESC
+            ) deduped
+            ORDER BY published_at ASC
+            """,
+            ticker,
+            since,
+            until,
+        )
+    return [dict(r) for r in rows]

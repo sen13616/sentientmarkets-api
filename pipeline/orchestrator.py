@@ -55,6 +55,7 @@ from pipeline.features.normalize import (
 )
 from pipeline.persistence.pg_writer import persist_scored_state
 from pipeline.persistence.redis_writer import read_scored_state, write_scored_state
+from pipeline.features import surprise
 from pipeline.scoring.composite import compute_composite, compute_exo_composite
 from pipeline.scoring.ema import compute_ema
 from pipeline.scoring.divergence import compute_divergence
@@ -478,6 +479,16 @@ async def _score_and_write(
     drivers     = extract_drivers(all_sigs)
     explanation = generate_explanation(drivers)
 
+    # ── Narrative surprise (Phase 5b — flag-off by default, research-only) ────
+    # Accumulates in Redis/DB for the eval gate; never enters the composite or
+    # any served score. Flag off ⇒ no query, no state key.
+    narrative_surprise: float | None = None
+    if surprise.enabled():
+        try:
+            narrative_surprise = await surprise.compute_narrative_surprise(ticker, now)
+        except Exception as exc:
+            _log.debug("[%s] narrative surprise failed: %s", ticker, exc)
+
     # ── Assemble state ─────────────────────────────────────────────────────────
     # In Redis, composite_score stores the SMOOTHED value (served as API score).
     # composite_score_raw stores the raw value (served as API score_raw, pro only).
@@ -520,6 +531,8 @@ async def _score_and_write(
             "volume": None,  # populated by market fetcher in raw_signals; snapshot uses close only
         },
     }
+    if surprise.enabled():
+        state["narrative_surprise"] = narrative_surprise
 
     # ── Persist ────────────────────────────────────────────────────────────────
     await write_scored_state(ticker, state)

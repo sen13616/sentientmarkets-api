@@ -39,6 +39,7 @@ async def insert_row(
     composite_score_smoothed: float | None = None,
     ema_obs_count: int = 0,
     composite_score_exo: float | None = None,
+    narrative_surprise: float | None = None,
 ) -> None:
     """Insert one scored row into sentiment_history."""
     await conn.execute(
@@ -61,10 +62,11 @@ async def insert_row(
             timestamp,
             composite_score_smoothed,
             ema_obs_count,
-            composite_score_exo
+            composite_score_exo,
+            narrative_surprise
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-            $11, $12, $13, $14, $15, $16, $17, $18
+            $11, $12, $13, $14, $15, $16, $17, $18, $19
         )
         """,
         ticker,
@@ -85,6 +87,7 @@ async def insert_row(
         composite_score_smoothed,
         ema_obs_count,
         composite_score_exo,
+        narrative_surprise,
     )
 
 

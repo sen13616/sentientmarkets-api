@@ -125,6 +125,10 @@ async def persist_scored_state(state: dict) -> None:
     _exo = state.get("score_exo")
     composite_exo: float | None = float(_exo) if _exo is not None else None
 
+    # ── narrative surprise (research-only, flag-gated; see surprise.py) ──────
+    _surprise = state.get("narrative_surprise")
+    narrative_surprise: float | None = float(_surprise) if _surprise is not None else None
+
     # ── sub-indices: flat keys take priority, nested sub_indices as fallback ───
     sub_indices = state.get("sub_indices") or {}
     market_index     = _first_not_none(state.get("market_index"),     _sub_value(sub_indices, "market"))
@@ -176,6 +180,7 @@ async def persist_scored_state(state: dict) -> None:
                 composite_score_smoothed = composite_smoothed,
                 ema_obs_count            = ema_obs_count,
                 composite_score_exo      = composite_exo,
+                narrative_surprise       = narrative_surprise,
             )
 
             # Off-hours ticks would re-snapshot an unchanged close (~98% of
