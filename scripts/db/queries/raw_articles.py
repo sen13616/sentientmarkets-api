@@ -291,6 +291,33 @@ async def purge_articles_before(cutoff: datetime) -> int:
     return int(tag.split()[-1]) if tag else 0
 
 
+async def strip_article_text_before(cutoff: datetime) -> int:
+    """Blank title/summary/source_url on rows with published_at < cutoff.
+
+    Research-retention compaction (2026-07-22): old articles keep the fields
+    the research program needs — published_at, finbert_* tone scores,
+    relevance_score, source, ticker, event_cluster_id, content_hash (Stage-1
+    dedup), language — while the free-text (~60% of the row) is dropped.
+    `title` is NOT NULL so it is set to '' rather than NULL. Only rows not
+    already stripped are touched, so the daily pass is cheap. Safe because
+    dedup clustering and FinBERT only ever read articles ≤48h old.
+
+    Returns rows updated.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        tag = await conn.execute(
+            """
+            UPDATE raw_articles
+            SET title = '', summary = NULL, source_url = NULL
+            WHERE published_at < $1
+              AND (title <> '' OR summary IS NOT NULL OR source_url IS NOT NULL)
+            """,
+            cutoff,
+        )
+    return int(tag.split()[-1]) if tag else 0
+
+
 async def get_article_scores_between(
     ticker: str,
     since: datetime,

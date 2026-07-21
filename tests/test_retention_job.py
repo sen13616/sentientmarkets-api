@@ -28,9 +28,11 @@ def test_ohlcv_signal_types_cover_market_layer():
 
 
 def test_retention_constants():
-    """Retention tiers: 365 OHLCV / 45 derived / 14 quotes / 90 catch-all / 30 articles+compaction."""
+    """Retention tiers: 365 OHLCV / 45 derived / 14 quotes / 90 catch-all /
+    365 articles (text stripped at 30) / 30 driver compaction."""
     from pipeline.scheduler import (
         ARTICLE_RETENTION_DAYS,
+        ARTICLE_TEXT_COMPACT_DAYS,
         DERIVED_RETENTION_DAYS,
         DRIVER_COMPACT_DAYS,
         OHLCV_RETENTION_DAYS,
@@ -42,7 +44,8 @@ def test_retention_constants():
     assert SIGNAL_RETENTION_DAYS  == 90
     assert DERIVED_RETENTION_DAYS == 45
     assert QUOTE_RETENTION_DAYS   == 14
-    assert ARTICLE_RETENTION_DAYS == 30
+    assert ARTICLE_RETENTION_DAYS == 365
+    assert ARTICLE_TEXT_COMPACT_DAYS == 30
     assert DRIVER_COMPACT_DAYS    == 30
 
 
@@ -65,6 +68,24 @@ def test_tier_signal_type_lists():
     assert not set(DERIVED_INTRADAY_SIGNAL_TYPES) & set(QUOTE_SIGNAL_TYPES)
     assert not set(DERIVED_INTRADAY_SIGNAL_TYPES) & set(OHLCV_SIGNAL_TYPES)
     assert not set(QUOTE_SIGNAL_TYPES) & set(OHLCV_SIGNAL_TYPES)
+
+
+def test_research_retain_signal_types():
+    """Research-retained types (never purged) cover FINRA short volume + insider,
+    and are disjoint from every purge tier."""
+    from scripts.db.queries.raw_signals import (
+        DERIVED_INTRADAY_SIGNAL_TYPES,
+        OHLCV_SIGNAL_TYPES,
+        QUOTE_SIGNAL_TYPES,
+        RESEARCH_RETAIN_SIGNAL_TYPES,
+    )
+
+    assert set(RESEARCH_RETAIN_SIGNAL_TYPES) == {
+        "short_volume_otc", "short_volume_total_otc", "short_volume_ratio_otc",
+        "insider_net_shares",
+    }
+    for tier in (OHLCV_SIGNAL_TYPES, DERIVED_INTRADAY_SIGNAL_TYPES, QUOTE_SIGNAL_TYPES):
+        assert not set(RESEARCH_RETAIN_SIGNAL_TYPES) & set(tier)
 
 
 def test_retention_job_registered():
@@ -99,6 +120,7 @@ async def test_retention_job_calls_purges_with_correct_cutoffs():
     with (
         patch("pipeline.scheduler.purge_signals_before", new_callable=AsyncMock, return_value=0) as mock_signals,
         patch("pipeline.scheduler.purge_articles_before", new_callable=AsyncMock, return_value=0) as mock_articles,
+        patch("pipeline.scheduler.strip_article_text_before", new_callable=AsyncMock, return_value=0) as mock_strip,
         patch("pipeline.scheduler.compact_drivers_before", new_callable=AsyncMock, return_value=0) as mock_compact,
         patch("pipeline.scheduler._record_run", new_callable=AsyncMock),
         patch("pipeline.scheduler.datetime") as mock_dt,
@@ -130,16 +152,24 @@ async def test_retention_job_calls_purges_with_correct_cutoffs():
     assert quote_call.args[1] == QUOTE_SIGNAL_TYPES
     assert quote_call.kwargs.get("exclude", False) is False
 
-    # Catch-all purge: cutoff at -90d, excludes ALL tiered lists
+    # Catch-all purge: cutoff at -90d, excludes ALL tiered lists AND the
+    # research-retained types (never purged)
+    from scripts.db.queries.raw_signals import RESEARCH_RETAIN_SIGNAL_TYPES
     assert other_call.args[0] == fixed_now - timedelta(days=SIGNAL_RETENTION_DAYS)
     assert other_call.args[1] == (
-        OHLCV_SIGNAL_TYPES + DERIVED_INTRADAY_SIGNAL_TYPES + QUOTE_SIGNAL_TYPES
+        OHLCV_SIGNAL_TYPES + DERIVED_INTRADAY_SIGNAL_TYPES
+        + QUOTE_SIGNAL_TYPES + RESEARCH_RETAIN_SIGNAL_TYPES
     )
     assert other_call.kwargs["exclude"] is True
 
-    # Articles purge: cutoff at -30d
+    # Articles purge: cutoff at -365d
     mock_articles.assert_called_once()
     assert mock_articles.call_args.args[0] == fixed_now - timedelta(days=ARTICLE_RETENTION_DAYS)
+
+    # Article text strip: cutoff at -30d
+    from pipeline.scheduler import ARTICLE_TEXT_COMPACT_DAYS
+    mock_strip.assert_called_once()
+    assert mock_strip.call_args.args[0] == fixed_now - timedelta(days=ARTICLE_TEXT_COMPACT_DAYS)
 
     # Driver compaction: cutoff at -30d
     from pipeline.scheduler import DRIVER_COMPACT_DAYS
@@ -161,6 +191,11 @@ async def test_retention_job_swallows_per_purge_failures():
             return_value=7,
         ) as mock_articles,
         patch(
+            "pipeline.scheduler.strip_article_text_before",
+            new_callable=AsyncMock,
+            return_value=11,
+        ) as mock_strip,
+        patch(
             "pipeline.scheduler.compact_drivers_before",
             new_callable=AsyncMock,
             return_value=3,
@@ -172,6 +207,7 @@ async def test_retention_job_swallows_per_purge_failures():
 
     assert mock_signals.call_count == 4
     mock_articles.assert_called_once()
+    mock_strip.assert_called_once()
     mock_compact.assert_called_once()
 
 
@@ -180,6 +216,7 @@ async def test_retention_job_swallows_compaction_failure():
     with (
         patch("pipeline.scheduler.purge_signals_before", new_callable=AsyncMock, return_value=0) as mock_signals,
         patch("pipeline.scheduler.purge_articles_before", new_callable=AsyncMock, return_value=0) as mock_articles,
+        patch("pipeline.scheduler.strip_article_text_before", new_callable=AsyncMock, return_value=0) as mock_strip,
         patch(
             "pipeline.scheduler.compact_drivers_before",
             new_callable=AsyncMock,
@@ -192,5 +229,6 @@ async def test_retention_job_swallows_compaction_failure():
 
     assert mock_signals.call_count == 4
     mock_articles.assert_called_once()
+    mock_strip.assert_called_once()
     mock_compact.assert_called_once()
     mock_record.assert_awaited_once()

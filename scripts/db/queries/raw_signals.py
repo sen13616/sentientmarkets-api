@@ -221,6 +221,16 @@ DERIVED_INTRADAY_SIGNAL_TYPES: list[str] = [
 # drains the remainder.
 QUOTE_SIGNAL_TYPES: list[str] = ["bid", "ask", "bid_ask_spread"]
 
+# Research raw material — NEVER purged (2026-07-22, research program). FINRA
+# short volume and insider transactions are candidate leading-signal inputs;
+# purging them at 90 days would permanently cap the feature-backfill window.
+# ~100-byte numeric rows accruing ~1.5k/day universe-wide — retention is
+# effectively free. Excluded from the retention_job catch-all purge.
+RESEARCH_RETAIN_SIGNAL_TYPES: list[str] = [
+    "short_volume_otc", "short_volume_total_otc", "short_volume_ratio_otc",
+    "insider_net_shares",
+]
+
 
 async def purge_signals_before(
     cutoff: datetime,

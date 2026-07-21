@@ -49,11 +49,15 @@ from apscheduler.triggers.interval import IntervalTrigger
 from tqdm import tqdm as _tqdm
 from tqdm.asyncio import tqdm as _atqdm
 
-from scripts.db.queries.raw_articles import purge_articles_before
+from scripts.db.queries.raw_articles import (
+    purge_articles_before,
+    strip_article_text_before,
+)
 from scripts.db.queries.raw_signals import (
     DERIVED_INTRADAY_SIGNAL_TYPES,
     OHLCV_SIGNAL_TYPES,
     QUOTE_SIGNAL_TYPES,
+    RESEARCH_RETAIN_SIGNAL_TYPES,
     purge_signals_before,
 )
 from scripts.db.queries.sentiment_history import compact_drivers_before, get_baseline_scores
@@ -707,7 +711,8 @@ OHLCV_RETENTION_DAYS = 365
 SIGNAL_RETENTION_DAYS = 90
 DERIVED_RETENTION_DAYS = 45
 QUOTE_RETENTION_DAYS = 14
-ARTICLE_RETENTION_DAYS = 30
+ARTICLE_RETENTION_DAYS = 365
+ARTICLE_TEXT_COMPACT_DAYS = 30
 DRIVER_COMPACT_DAYS = 30
 
 
@@ -720,12 +725,21 @@ async def retention_job() -> None:
         observations ~ 20 trading days; 2x margin)
       - quote telemetry (bid/ask/bid_ask_spread) older than 14 days
         (write-only; no longer written since 2026-07-20)
-      - everything else older than 90 days
-      - raw_articles older than 30 days
+      - everything else older than 90 days, EXCEPT the research-retained
+        types (FINRA short volume + insider transactions,
+        RESEARCH_RETAIN_SIGNAL_TYPES) which are never purged (2026-07-22 —
+        candidate leading-signal inputs; purging capped the feature-backfill
+        window)
+      - raw_articles older than 365 days (was 30 — raised 2026-07-22 for the
+        research program)
 
-    Plus one in-place rewrite: sentiment_history `top_drivers` older than
-    30 days are re-encoded to the compact array format (description dropped
-    — originals archived offline; see pipeline/scoring/driver_codec.py).
+    Plus two in-place rewrites:
+      - articles older than 30 days have title/summary/source_url blanked
+        (tone scores, relevance, source, timestamps, cluster id, content
+        hash all kept — the fields research needs)
+      - sentiment_history `top_drivers` older than 30 days are re-encoded to
+        the compact array format (description dropped — originals archived
+        offline; see pipeline/scoring/driver_codec.py).
 
     Deliberately does NOT delete rows from `sentiment_history` or
     `price_snapshots`: both are the research paper's raw material (score
@@ -740,11 +754,13 @@ async def retention_job() -> None:
     derived_cutoff = now - timedelta(days=DERIVED_RETENTION_DAYS)
     quote_cutoff   = now - timedelta(days=QUOTE_RETENTION_DAYS)
     article_cutoff = now - timedelta(days=ARTICLE_RETENTION_DAYS)
+    article_text_cutoff = now - timedelta(days=ARTICLE_TEXT_COMPACT_DAYS)
     compact_cutoff = now - timedelta(days=DRIVER_COMPACT_DAYS)
 
     _log.info("retention_job: starting")
 
     n_ohlcv = n_derived = n_quotes = n_signals = n_articles = n_compacted = 0
+    n_text_stripped = 0
     try:
         n_ohlcv = await purge_signals_before(ohlcv_cutoff, OHLCV_SIGNAL_TYPES)
     except Exception as exc:
@@ -765,7 +781,8 @@ async def retention_job() -> None:
     try:
         n_signals = await purge_signals_before(
             signal_cutoff,
-            OHLCV_SIGNAL_TYPES + DERIVED_INTRADAY_SIGNAL_TYPES + QUOTE_SIGNAL_TYPES,
+            OHLCV_SIGNAL_TYPES + DERIVED_INTRADAY_SIGNAL_TYPES
+            + QUOTE_SIGNAL_TYPES + RESEARCH_RETAIN_SIGNAL_TYPES,
             exclude=True,
         )
     except Exception as exc:
@@ -775,6 +792,11 @@ async def retention_job() -> None:
         n_articles = await purge_articles_before(article_cutoff)
     except Exception as exc:
         _log.warning("retention_job: articles purge failed: %s", exc, exc_info=True)
+
+    try:
+        n_text_stripped = await strip_article_text_before(article_text_cutoff)
+    except Exception as exc:
+        _log.warning("retention_job: article text strip failed: %s", exc, exc_info=True)
 
     try:
         n_compacted = await compact_drivers_before(compact_cutoff)
@@ -787,12 +809,13 @@ async def retention_job() -> None:
     _log.info(
         "retention_job complete: ohlcv=%d (>%dd), derived=%d (>%dd), "
         "quotes=%d (>%dd), other_signals=%d (>%dd), articles=%d (>%dd), "
-        "drivers_compacted=%d (>%dd) in %.1fs",
+        "article_text_stripped=%d (>%dd), drivers_compacted=%d (>%dd) in %.1fs",
         n_ohlcv, OHLCV_RETENTION_DAYS,
         n_derived, DERIVED_RETENTION_DAYS,
         n_quotes, QUOTE_RETENTION_DAYS,
         n_signals, SIGNAL_RETENTION_DAYS,
         n_articles, ARTICLE_RETENTION_DAYS,
+        n_text_stripped, ARTICLE_TEXT_COMPACT_DAYS,
         n_compacted, DRIVER_COMPACT_DAYS,
         elapsed,
     )

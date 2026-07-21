@@ -580,7 +580,8 @@ Daily 03:30 UTC (`retention_job`):
 | Derived intraday signals (returns, RSI, order flow, etc.) | 45 d (z-window 500 obs ≈ 20 trading days, 2× margin) |
 | Quote telemetry | 14 d (no longer written) |
 | All other raw signals | 90 d (covers the 90-obs z-score windows) |
-| `raw_articles` | 30 d |
+| **Research-retained signals** (`short_volume_*`, `insider_net_shares` — `RESEARCH_RETAIN_SIGNAL_TYPES`) | **never purged** (2026-07-22 — candidate leading-signal inputs for the research program; ~100 B numeric rows, retention is effectively free) |
+| `raw_articles` | 365 d (raised from 30 d on 2026-07-22); rows older than 30 d have `title`/`summary`/`source_url` blanked in place, keeping `published_at`, the FinBERT tone scores, `relevance_score`, `source`, `ticker`, `event_cluster_id`, `content_hash`, `language` — the fields feature backfills need |
 | `sentiment_history`, `price_snapshots` | **never deleted** (research data); `top_drivers` older than 30 d are compacted to a fixed-order array encoding (`pipeline/scoring/driver_codec.py`) |
 
 Idempotency: `raw_signals` inserts are deduplicated via a `NOT EXISTS` guard on the
