@@ -79,6 +79,7 @@ class TestOriginGate:
         assert origin_allowed("https://sentientmarkets.ai")
         assert origin_allowed("https://www.sentientmarkets.ai")
         assert origin_allowed("https://sentientmarkets.vercel.app")
+        assert origin_allowed("https://sentientmarkets-ai.vercel.app")
 
     def test_railway_wildcard_matches_any_subdomain(self):
         assert origin_allowed("https://myapp.up.railway.app")

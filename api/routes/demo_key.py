@@ -46,6 +46,7 @@ router = APIRouter()
 # if SITE_ORIGINS is set on Railway it fully replaces them.
 _DEFAULT_SITE_ORIGINS = (
     "https://sentientmarkets.vercel.app,"
+    "https://sentientmarkets-ai.vercel.app,"
     "https://themarketmood-ai.vercel.app,"
     "https://sentientmarkets.ai,"
     "https://www.sentientmarkets.ai,"

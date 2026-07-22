@@ -18,7 +18,7 @@ and how to verify the whole flow end to end.
 | `POST /v1/demo-key` | this API, public | Mints or refreshes an anonymous free-tier demo key |
 | Sliding expiry | auth path | Every authenticated request a demo key makes pushes its `expires_at` to now + 7 days |
 | Cleanup job | scheduler, hourly at :50 UTC | Deletes demo keys past `expires_at`; never touches standard keys |
-| CORS | API | `POST` now allowed; origins: `sentientmarkets.vercel.app`, `themarketmood-ai.vercel.app`, `sentientmarkets.ai` (+`www`), **any `*.up.railway.app` site**, `localhost:3000`, `localhost:8000` |
+| CORS | API | `POST` now allowed; origins: `sentientmarkets.vercel.app`, `sentientmarkets-ai.vercel.app`, `themarketmood-ai.vercel.app`, `sentientmarkets.ai` (+`www`), **any `*.up.railway.app` site**, `localhost:3000`, `localhost:8000` |
 
 Demo keys are `tier='free'`: **10 requests/minute**, free-tier response fields.
 The plaintext looks like `sk-sm-free-<43 url-safe chars>`; only its SHA-256 is
