@@ -123,6 +123,21 @@ def research_feature_cols(s: pd.DataFrame) -> list[str]:
     )
 
 
+def add_lagged_feature(s: pd.DataFrame, col: str, lag: int) -> str:
+    """Add `<col>_lag<lag>`: the feature shifted `lag` trading days per ticker.
+
+    Point-in-time-safe by construction — day d receives the value from d−lag,
+    only ever moving information FORWARD in time. Eval-time correction for
+    features whose stamp precedes public knowability (E003:
+    insider_net_z_lag2 — Form-4 transactionDate can lead the filing by ~2
+    business days). `s` must be the prepare_daily frame (ticker/date sorted).
+    """
+    new_col = f"{col}_lag{lag}"
+    s2 = s.sort_values(["ticker", "date"])
+    s[new_col] = s2.groupby("ticker")[col].shift(lag)
+    return new_col
+
+
 def daily_returns(closes: pd.DataFrame) -> pd.DataFrame:
     """Wide close panel -> daily log returns (index = trading days)."""
     return np.log(closes.sort_index()).diff()

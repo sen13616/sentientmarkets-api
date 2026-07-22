@@ -223,6 +223,21 @@ class TestResearchFeatureAutoRegistration:
         ]))
         assert analyze.research_feature_cols(s) == []
 
+    def test_add_lagged_feature_shifts_per_ticker(self):
+        rows = []
+        for i, day in enumerate(["2026-01-05", "2026-01-06", "2026-01-07"]):
+            rows.append(self._row("AAPL", f"{day} 21:00", 55, {"insider_net_z": float(i)}))
+            rows.append(self._row("MSFT", f"{day} 21:00", 50, {"insider_net_z": float(10 + i)}))
+        s = analyze.prepare_daily(pd.DataFrame(rows))
+        col = analyze.add_lagged_feature(s, "rf_insider_net_z", 2)
+        assert col == "rf_insider_net_z_lag2"
+        aapl = s[s.ticker == "AAPL"].sort_values("date")
+        # day 3 gets day 1's value; first two days are NaN (no look-back data)
+        assert aapl[col].iloc[:2].isna().all()
+        assert aapl[col].iloc[2] == 0.0
+        msft = s[s.ticker == "MSFT"].sort_values("date")
+        assert msft[col].iloc[2] == 10.0  # never leaks across tickers
+
     def test_rf_columns_survive_build_panel(self):
         dates = pd.bdate_range("2026-01-05", periods=6)
         closes = _closes(dates, ["AAPL"], drift=0.01)

@@ -32,6 +32,15 @@ The frozen dates live in `scripts/eval/run.py` (`RESEARCH_START`, `RESEARCH_END`
 `HOLDOUT_START`). Do not move them. If a new outage ever splits the holdout itself, add a
 gap via `--gap`, do not redraw the windows.
 
+## Booked confirmations (won-research, awaiting the ≥40-trading-day mark)
+
+Earliest evaluation date: **~2026-08-28** (40 trading days after 2026-07-03).
+One evaluation each, then a row in the log below — win or lose.
+
+| Booked | Candidate (experiment ID) | Cells to confirm | Pass threshold |
+|---|---|---|---|
+| 2026-07-22 | `insider_net_z_lag2` (E003) | IC × h∈{2,3,5}, market-neutral, levels | \|IC\| ≥ 0.02, \|t\| ≥ 2.0, positive sign (per §E003 pre-registration) |
+
 ## Holdout evaluation log
 
 Every `--window holdout` run against a candidate gets one row — no exceptions, including
