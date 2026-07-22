@@ -12,6 +12,9 @@ path is pure Redis; the Postgres lookup — which also writes last_used_at —
 runs at most once per key per TTL.  Consequences of the TTL:
     - Deactivating a key takes up to 60s to propagate.
     - last_used_at is now accurate only to ~60s.
+    - An expired demo key may authenticate for up to 60s past expires_at
+      (same latency as revocation), and its sliding expiry only advances
+      on cache misses — fine for a 7-day TTL.
 Unknown keys are cached too (as a miss marker), so repeated bad keys
 cannot hammer Postgres.  If Redis is unavailable, auth falls back to the
 direct DB lookup rather than failing.

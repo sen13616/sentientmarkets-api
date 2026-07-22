@@ -60,6 +60,7 @@ from scripts.db.queries.raw_signals import (
     RESEARCH_RETAIN_SIGNAL_TYPES,
     purge_signals_before,
 )
+from scripts.db.queries.api_keys import delete_expired_demo_keys
 from scripts.db.queries.sentiment_history import compact_drivers_before, get_baseline_scores
 from scripts.db.queries.universe import get_active_tickers, get_ticker_sector_map
 from scripts.db.redis import get_redis
@@ -853,6 +854,26 @@ async def retention_job() -> None:
     )
 
 
+async def demo_key_cleanup_job() -> None:
+    """Hourly: prune expired demo keys (docs/APIACCESSPAGE.md §4.4).
+
+    Never touches standard keys — the DELETE requires key_type='demo',
+    and standard keys have expires_at NULL. This pruning is what keeps
+    api_keys bounded on the storage-constrained Postgres.
+    """
+    t_start = time.monotonic()
+    n = 0
+    try:
+        n = await delete_expired_demo_keys()
+    except Exception as exc:
+        _log.warning("demo_key_cleanup_job failed: %s", exc, exc_info=True)
+    await _record_run("demo_key_cleanup")
+    _log.info(
+        "demo_key_cleanup_job complete: %d expired demo keys deleted in %.1fs",
+        n, time.monotonic() - t_start,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Scheduler instance
 # ---------------------------------------------------------------------------
@@ -961,6 +982,19 @@ scheduler.add_job(
     trigger=CronTrigger(hour=3, minute=30),
     id="retention",
     name="Data retention (daily 03:30 UTC)",
+    max_instances=1,
+    coalesce=True,
+    misfire_grace_time=600,
+)
+
+scheduler.add_job(
+    demo_key_cleanup_job,
+    # CronTrigger, not IntervalTrigger: low-frequency jobs must be
+    # wall-clock anchored (see tests/test_scheduler_triggers.py). :50
+    # avoids every existing job slot.
+    trigger=CronTrigger(minute=50),
+    id="demo_key_cleanup",
+    name="Demo key cleanup (hourly at :50)",
     max_instances=1,
     coalesce=True,
     misfire_grace_time=600,

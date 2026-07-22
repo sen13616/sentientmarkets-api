@@ -28,6 +28,14 @@ def test_all_expected_jobs_registered():
     expected = {
         "market", "market_eod", "narrative", "influencer", "macro_daily",
         "macro_intraday", "short_volume", "scoring_tick", "retention",
-        "options",
+        "options", "demo_key_cleanup",
     }
     assert {job.id for job in scheduler.get_jobs()} == expected
+
+
+def test_demo_key_cleanup_uses_cron_trigger():
+    job = scheduler.get_job("demo_key_cleanup")
+    assert job is not None
+    assert isinstance(job.trigger, CronTrigger)
+    fields = {f.name: str(f) for f in job.trigger.fields}
+    assert fields["minute"] == "50"

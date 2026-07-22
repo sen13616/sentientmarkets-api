@@ -127,6 +127,17 @@ class ErrorResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Demo key (/v1/demo-key)
+# ---------------------------------------------------------------------------
+
+class DemoKeyResponse(BaseModel):
+    api_key:            str        # plaintext — sandbox credential, returned once
+    tier:               str
+    expires_at:         datetime
+    rate_limit_per_min: int
+
+
+# ---------------------------------------------------------------------------
 # History endpoint
 # ---------------------------------------------------------------------------
 

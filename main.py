@@ -14,7 +14,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routes import health, history, market, sentiment, status, tickers
+from api.routes import demo_key, health, history, market, sentiment, status, tickers
+from api.routes.demo_key import SITE_ORIGINS
 from scripts.db.connection import close_pool, init_pool
 from scripts.db.redis import close_redis, init_redis
 from pipeline.scheduler import scheduler
@@ -49,14 +50,11 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://sentientmarkets.vercel.app",
-        "https://themarketmood-ai.vercel.app",
-        "http://localhost:3000",
-        "http://localhost:8000",
-    ],
+    # Single-sourced with the /v1/demo-key origin gate so CORS and the
+    # mint allowlist can never drift apart (SITE_ORIGINS env overrides).
+    allow_origins=list(SITE_ORIGINS),
     allow_credentials=True,
-    allow_methods=["GET", "OPTIONS"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
 
@@ -67,3 +65,4 @@ app.include_router(history.router,   prefix="/v1")
 app.include_router(market.router,    prefix="/v1")
 app.include_router(tickers.router,   prefix="/v1")
 app.include_router(status.router,    prefix="/v1")
+app.include_router(demo_key.router,  prefix="/v1")
