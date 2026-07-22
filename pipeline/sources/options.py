@@ -35,15 +35,16 @@ needs a constant-maturity series.
 Spot: the ticker's latest stored close (DB), not a live quote — one fewer
 yfinance call per ticker, and at 21:20 UTC the stored close IS today's close.
 
-Guards (missing = absent row, never zero):
-  * zero/NaN call volume → no pcr_volume
-  * pcr_oi requires OI > 0 on BOTH sides — a large-cap chain with zero OI on
-    either side is a data outage (verified: yfinance zeroes OI after hours),
-    not a real market state
-  * IVs must lie in (0.01, 5.0), AND the chain must show IV DISPERSION
-    (≥3 distinct sane IV values): after hours yfinance serves flat
-    placeholder IVs (all calls 0.00001, all puts 0.250007 — observed
-    2026-07-22); a flat surface means no real IV data → no atm/skew
+Guards (missing = absent row, never zero; thresholds tuned on the first
+manual sweep, 2026-07-22, which ran after hours and surfaced every failure
+mode at once):
+  * pcr_volume / pcr_oi require REAL DEPTH on both sides (≥50 contracts
+    volume / ≥100 contracts OI per side) — one-sided zeroed or thin data is
+    an after-hours artifact (observed: pcr_oi of 104–343 on mega-caps)
+  * IVs must lie in (0.05, 5.0) — yfinance serves TWO placeholder IV levels
+    after hours (0.00001 and ~0.0156); no real 30-day equity IV is below ~5%
+  * the chain must show IV DISPERSION (≥3 distinct sane IVs): flat
+    placeholder surfaces (all puts 0.250007 — observed) mean no real IV data
   * ATM needs at least one sane leg; skew needs both legs AND both located
     strikes within 10% of their moneyness target
   * no expiries / no chain / no spot → ticker skipped (logged at debug)
@@ -64,7 +65,14 @@ _log = logging.getLogger(__name__)
 
 _SOURCE = "yfinance_options"
 _TARGET_DAYS = 30
-_IV_MIN, _IV_MAX = 0.01, 5.0
+# Plausibility floors, tightened after the first manual sweep (2026-07-22):
+# after-hours yfinance serves a SECOND placeholder IV ~0.0156 (above the old
+# 0.01 floor) — no real 30-day equity IV sits below ~5%. And one-sided OI
+# zeroing produced pcr_oi artifacts of 100-343x on mega-caps; require real
+# depth on both sides before trusting either ratio.
+_IV_MIN, _IV_MAX = 0.05, 5.0
+_MIN_SIDE_VOLUME = 50    # contracts per side for pcr_volume
+_MIN_SIDE_OI = 100       # contracts per side for pcr_oi
 _SKEW_MONEYNESS = 0.05          # "25-delta ≈ 5% OTM" approximation
 _SKEW_STRIKE_TOLERANCE = 0.10   # located strike must be within 10% of target
 
@@ -155,13 +163,13 @@ def derive_options_signals(
         return float(pd.to_numeric(df[col], errors="coerce").fillna(0).clip(lower=0).sum())
 
     call_vol, put_vol = _total(calls, "volume"), _total(puts, "volume")
-    if call_vol > 0:
+    if call_vol >= _MIN_SIDE_VOLUME and put_vol >= _MIN_SIDE_VOLUME:
         out["pcr_volume"] = round(put_vol / call_vol, 4)
 
-    # Both sides must carry OI: one-sided zero on a large-cap chain is an
-    # after-hours data artifact, not a market state.
+    # Both sides must carry REAL depth: one-sided zero/thin OI on a large-cap
+    # chain is an after-hours data artifact, not a market state.
     call_oi, put_oi = _total(calls, "openInterest"), _total(puts, "openInterest")
-    if call_oi > 0 and put_oi > 0:
+    if call_oi >= _MIN_SIDE_OI and put_oi >= _MIN_SIDE_OI:
         out["pcr_oi"] = round(put_oi / call_oi, 4)
 
     # Placeholder-surface detection: after hours yfinance serves FLAT IVs

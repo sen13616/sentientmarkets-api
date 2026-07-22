@@ -122,6 +122,22 @@ class TestDerivation:
         s = derive_options_signals(calls, puts, SPOT)
         assert "pcr_oi" not in s
 
+    def test_second_placeholder_iv_level_rejected(self):
+        # observed after-hours placeholder ~0.0156 — below the 5% floor
+        calls = _chain([95, 100, 105], [0.0156, 0.0157, 0.0158])
+        puts = _chain([95, 100, 105], [0.0156, 0.0157, 0.0158])
+        s = derive_options_signals(calls, puts, SPOT)
+        assert "atm_iv_30d" not in s
+        assert "iv_skew_25d" not in s
+
+    def test_thin_depth_omits_ratios(self):
+        # 10 contracts a side is noise, not flow — observed pcr artifacts
+        calls = _chain([100], [0.25], volumes=[10], ois=[40])
+        puts = _chain([100], [0.30], volumes=[10], ois=[40])
+        s = derive_options_signals(calls, puts, SPOT)
+        assert "pcr_volume" not in s
+        assert "pcr_oi" not in s
+
     def test_bad_spot_returns_nothing(self):
         assert derive_options_signals(CALLS, PUTS, 0.0) == {}
         assert derive_options_signals(CALLS, PUTS, None) == {}
