@@ -461,16 +461,19 @@ composite:
 
 ```
 smoothed_t = α · raw_t + (1 − α) · smoothed_{t−1}
-α = 1 − 0.5^(dt / T½),   T½ = 4 hours   (env-tunable: EMA_HALF_LIFE_HOURS)
+α = 1 − 0.5^(dt / T½),   T½ = 2 hours   (env-tunable: EMA_HALF_LIFE_HOURS;
+                                          4 h → 2 h shipped 2026-07-22 per E004)
 ```
 
 - **Cold start:** first-ever score → `smoothed = raw` (seeded, `ema_obs_count = 1`).
-- **Gaps:** handled naturally — as dt → ∞, α → 1 (after a 24 h gap α ≈ 0.984, effectively
+- **Gaps:** handled naturally — as dt → ∞, α → 1 (after a 24 h gap α ≈ 0.9998 at T½ = 2 h, effectively
   a reset). No threshold-based reset logic.
 - `dt = 0` → previous smoothed value unchanged.
 - `ema_obs_count` increments every tick and **never resets**.
-- The 4 h default only changes if `scripts/eval/experiments/ema_halflife.py` wins on the
-  eval scorecard.
+- The default changed 4 h → 2 h on 2026-07-22 after experiment E004 (replay-based
+  nowcast evaluation: −33% mean |score − score_raw| at 1.34× label flips, within the
+  pre-registered stability gates; see `scripts/eval/EXPERIMENTS.md` §E004). Any further
+  change requires the same discipline — a pre-registered experiment plus re-baselining.
 
 **`score` (served) = smoothed. `score_raw` (served) = unsmoothed effective composite.**
 In the DB, `sentiment_history.composite_score` stores the **raw** value and

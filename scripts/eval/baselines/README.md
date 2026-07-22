@@ -16,14 +16,22 @@ ported engine reproduces the study's headline numbers (composite std 8.3 vs
 8.2, lead-lag peak at offset 0 with corr +0.40 vs +0.43, best IC `dexo_3`
 ≈ 0.036/t 4.3 vs 0.033/t 4.2).
 
+## Baseline files
+
+| File | What it is |
+|---|---|
+| `BASELINE_2026-07-22_ema2h.json` | **Current release-gate baseline.** Full history 2026-04-24 → 2026-07-22, cut immediately after the E004 EMA change (T½ 4h→2h) went live. Gate new scoring changes against this |
+| `BASELINE_2026-07-21.json` | Previous gate baseline (pre-EMA-change history; superseded 2026-07-22, kept for the record — never edit) |
+| `RESEARCH_E000_2026-07-22.json` | E000 research-window reference for candidate ranking (never a gate target, never edit) |
+
 ## Running the gate
 
 ```bash
 # full run + gate against the committed baseline
 python3 -m scripts.eval.run \
-    --start 2026-04-24 --end <today> \
+    --window all --start 2026-04-24 --end <today> \
     --out exports/eval \
-    --baseline scripts/eval/baselines/BASELINE_2026-07-21.json
+    --baseline scripts/eval/baselines/BASELINE_2026-07-22_ema2h.json
 
 # optional intraday lead-lag (heavier: pulls every scoring tick)
 #   --intraday [--prices yfinance]
