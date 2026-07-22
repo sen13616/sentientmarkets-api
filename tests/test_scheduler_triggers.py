@@ -28,5 +28,6 @@ def test_all_expected_jobs_registered():
     expected = {
         "market", "market_eod", "narrative", "influencer", "macro_daily",
         "macro_intraday", "short_volume", "scoring_tick", "retention",
+        "options",
     }
     assert {job.id for job in scheduler.get_jobs()} == expected

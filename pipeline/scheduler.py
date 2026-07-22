@@ -80,6 +80,7 @@ from pipeline.sources.macro import fetch_macro_signals
 from pipeline.sources.market import fetch_market_signals, to_yahoo_symbol
 from pipeline.nlp.dedup import cluster_articles
 from pipeline.sources.narrative import fetch_narrative_signals
+from pipeline.sources.options import ingest_options
 from pipeline.sources.short_volume import ingest_short_volume
 
 _log = logging.getLogger(__name__)
@@ -661,6 +662,37 @@ async def short_volume_job() -> None:
     _log.info("short_volume_job complete: %d tickers in %.1fs", n_tickers, elapsed)
 
 
+async def options_job() -> None:
+    """Options snapshot job — weekdays at 21:20 UTC (staggered after the
+    21:15 market EOD batch so the two jobs don't hammer yfinance together).
+
+    Research-data-only: one options-flow snapshot per ticker per trading day
+    (pcr_volume / pcr_oi / atm_iv_30d / iv_skew_25d from the nearest-30d
+    expiry chain). Nothing reads these yet — evaluation is a future
+    registered experiment. Per-ticker failures skip; the sweep never aborts.
+    """
+    t_start = time.monotonic()
+    _log.info("options_job: starting")
+    tickers = await get_active_tickers()
+
+    succeeded, attempted = await ingest_options(tickers)
+
+    await _record_run("options")
+    elapsed = time.monotonic() - t_start
+    coverage = succeeded / attempted if attempted else 0.0
+    if coverage < 0.5:
+        _log.warning(
+            "options_job LOW COVERAGE: %d/%d tickers (%.0f%%) in %.1fs — "
+            "wrote what it got; investigate yfinance availability",
+            succeeded, attempted, 100 * coverage, elapsed,
+        )
+    else:
+        _log.info(
+            "options_job complete: %d/%d tickers (%.0f%%) in %.1fs",
+            succeeded, attempted, 100 * coverage, elapsed,
+        )
+
+
 async def scoring_tick_job() -> None:
     """
     Global scoring tick — every 15 minutes during market hours
@@ -892,6 +924,16 @@ scheduler.add_job(
     trigger=CronTrigger(day_of_week="mon-fri", hour=21, minute=30),
     id="short_volume",
     name="FINRA short volume (21:30 UTC weekdays)",
+    max_instances=1,
+    coalesce=True,
+    misfire_grace_time=600,
+)
+
+scheduler.add_job(
+    options_job,
+    trigger=CronTrigger(day_of_week="mon-fri", hour=21, minute=20),
+    id="options",
+    name="Options snapshots (21:20 UTC weekdays, research-only)",
     max_instances=1,
     coalesce=True,
     misfire_grace_time=600,

@@ -60,6 +60,12 @@ POLYGON_DELAY = 0.85
 #: servers or the event loop's thread pool.
 YF_INFO_SEM = asyncio.Semaphore(10)
 
+#: yfinance option chains (options_job): two blocking HTTP round-trips per
+#: ticker (expiry list + chain). yfinance is fragile at 500-ticker scale —
+#: throttle politely: 4 concurrent + 0.15 s spacing ≈ full sweep in ~10 min.
+YF_OPTIONS_SEM = asyncio.Semaphore(4)
+YF_OPTIONS_DELAY = 0.15
+
 #: FRED (St. Louis Fed): documented 120 req/min with API key. The macro
 #: daily job makes 3 calls; the optional backfill makes 3 × 90 = 270 calls
 #: spread over ~5 minutes. Conservative settings keep us well clear.

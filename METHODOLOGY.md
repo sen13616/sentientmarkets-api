@@ -67,6 +67,7 @@ throughout the codebase.
 | `macro_daily_job` | Daily 02:00 | FRED Treasury signals (10y, 2y, 10y−2y slope) |
 | `macro_intraday_job` | Weekdays, hourly 14:00–20:00 | VIX + 11 sector ETF closes / 20-day returns |
 | `short_volume_job` | Weekdays 21:30 | FINRA REGSHO daily short volume (published ~21:30) |
+| `options_job` | Weekdays 21:20 | Research-only: one yfinance option-chain snapshot per ticker (nearest-30-day expiry) → `pcr_volume`, `pcr_oi`, `atm_iv_30d`, `iv_skew_25d` (5%-OTM moneyness proxy for 25Δ). Guards reject after-hours placeholder surfaces (flat IVs, one-sided zero OI). **Feeds no score** — future registered experiment |
 | `retention_job` | Daily 03:30 | Tiered purges (§14) — never touches `sentiment_history` or `price_snapshots` |
 
 All jobs run with `max_instances=1` and `coalesce=True`.
@@ -583,7 +584,7 @@ Daily 03:30 UTC (`retention_job`):
 | Derived intraday signals (returns, RSI, order flow, etc.) | 45 d (z-window 500 obs ≈ 20 trading days, 2× margin) |
 | Quote telemetry | 14 d (no longer written) |
 | All other raw signals | 90 d (covers the 90-obs z-score windows) |
-| **Research-retained signals** (`short_volume_*`, `insider_net_shares`, `analyst_buy_pct`, `analyst_target_price`, `analyst_eps_estimate_mean` — `RESEARCH_RETAIN_SIGNAL_TYPES`) | **never purged** (2026-07-22 — candidate leading-signal inputs for the research program; ~100 B numeric rows, retention is effectively free) |
+| **Research-retained signals** (`short_volume_*`, `insider_net_shares`, `analyst_buy_pct`, `analyst_target_price`, `analyst_eps_estimate_mean`, `pcr_volume`, `pcr_oi`, `atm_iv_30d`, `iv_skew_25d` — `RESEARCH_RETAIN_SIGNAL_TYPES`) | **never purged** (2026-07-22 — candidate leading-signal inputs for the research program; ~100 B numeric rows, retention is effectively free) |
 | `raw_articles` | 365 d (raised from 30 d on 2026-07-22); rows older than 30 d have `title`/`summary`/`source_url` blanked in place, keeping `published_at`, the FinBERT tone scores, `relevance_score`, `source`, `ticker`, `event_cluster_id`, `content_hash`, `language` — the fields feature backfills need |
 | `sentiment_history`, `price_snapshots` | **never deleted** (research data); `top_drivers` older than 30 d are compacted to a fixed-order array encoding (`pipeline/scoring/driver_codec.py`) |
 

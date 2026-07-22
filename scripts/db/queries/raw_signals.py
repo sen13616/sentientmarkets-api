@@ -233,6 +233,10 @@ RESEARCH_RETAIN_SIGNAL_TYPES: list[str] = [
     # (earnings-revision derivation reads up to 120 rows of EPS history);
     # was purging at 90 days.
     "analyst_buy_pct", "analyst_target_price", "analyst_eps_estimate_mean",
+    # Options snapshots (2026-07-22, pipeline/sources/options.py): daily
+    # yfinance chain snapshots — UNBACKFILLABLE; every purged day is lost
+    # evaluation data forever.
+    "pcr_volume", "pcr_oi", "atm_iv_30d", "iv_skew_25d",
 ]
 
 
