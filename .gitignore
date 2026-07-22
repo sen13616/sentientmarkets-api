@@ -25,21 +25,19 @@ env/
 .DS_Store
 Thumbs.db
 
-# Tool outputs
-tools/exports/
+# Tool outputs / archives (local only)
 exports/
 *.log
 
 # Build artifacts
 build/
 dist/
+
+# Local-only working documents (not shipped in the repo)
 CLAUDE.md
-masterchecklist.md 
-sprintrules.md
-Research Paper Doc.pdf
-docs/
-.claude/CLAUDE.md
-Research Paper Doc.pdf
-.claude/
 INTEGRATION.md
 API_CHANGES.md
+masterchecklist.md
+sprintrules.md
+Research Paper Doc.pdf
+.claude/

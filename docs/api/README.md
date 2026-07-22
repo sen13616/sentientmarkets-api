@@ -16,8 +16,8 @@ API keys are available in two tiers:
 
 | Tier | Rate Limit | Access |
 |---|---|---|
-| Free | 10 requests/min | Composite score and label only |
-| Pro | 600 requests/min | Full breakdown with sub-indices, drivers, and explanation |
+| Free | 10 requests/min | Composite score (`score` + unsmoothed `score_raw`), label, 1-day change, confidence |
+| Pro | 600 requests/min | Full breakdown: sub-indices, drivers, explanation, cross-sectional stats, `score_exo`, market overview |
 
 ---
 
@@ -123,7 +123,7 @@ curl -H "Authorization: Bearer sk-sm-your-key" \
 }
 ```
 
-Pro-tier fields beyond the Free set: `score_raw` (unsmoothed composite), `universe_percentile` (percentile of this ticker's smoothed score within the latest scoring tick; `null` if the ticker was absent from that tick), `ema_obs_count` (EMA update counter), `sub_indices`, `missing_layers`, `divergence`, `top_drivers`, `explanation`, `freshness`, and `confidence_flags`. Each driver has exactly `signal`, `description`, `direction`, `magnitude`, and `source_layer` — there is no per-driver `confidence`.
+Pro-tier fields beyond the Free set: `universe_percentile` (percentile of this ticker's smoothed score within the latest scoring tick; `null` if the ticker was absent from that tick), the cross-sectional raw-score stats `score_raw_z` / `score_raw_percentile` / `sector_percentile`, `score_exo` + `score_exo_percentile` (sentiment-only composite, price-derived market layer excluded), `ema_obs_count` (EMA update counter), `sub_indices`, `missing_layers`, `divergence`, `top_drivers`, `explanation`, `freshness`, and `confidence_flags`. (`score_raw` itself is on **both** tiers since 2026-07-21.) Each driver has exactly `signal`, `description`, `direction`, `magnitude`, and `source_layer` — there is no per-driver `confidence`.
 
 > Storage note: API responses are always built from the most recent scoring tick, which stores drivers in the full format above. Rows older than 30 days are re-encoded server-side to a compact storage format, but those rows are never served by any endpoint — response shapes are unaffected.
 

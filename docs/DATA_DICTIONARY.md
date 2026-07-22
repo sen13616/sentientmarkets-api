@@ -1,18 +1,22 @@
 # Data Dictionary
 
-**Updated:** 2026-05-16 (Phase 5 Group B)
+**Updated:** 2026-07-22 (post research-program build-out; EMA half-life change E004)
 **Scope:** All PostgreSQL tables touched by the methodology described in the research paper "How to Quantify Stock Sentiment".
 
 This document maps every column in the production schema to the methodology it implements. Use it as a Rosetta stone when reading the paper alongside the code.
 
-The schema is defined across:
-- [`migrations.sql`](../migrations.sql) — base migrations 001–004
-- [`migrations/005_add_company_name.sql`](../migrations/005_add_company_name.sql)
-- [`migrations/006_add_smoothed_score.sql`](../migrations/006_add_smoothed_score.sql)
-- [`migrations/007_finbert_columns.sql`](../migrations/007_finbert_columns.sql)
-- [`migrations/008_add_ticker_sector.sql`](../migrations/008_add_ticker_sector.sql)
+The schema is defined across the numbered migrations in [`scripts/migrations/`](../scripts/migrations/):
 
-Apply order: `migrations.sql` first, then `005`–`008` in numeric order. All migrations after 001-004 are additive (`ADD COLUMN IF NOT EXISTS` / `ADD COLUMN`) and idempotent in practice.
+- `000_initial_schema.sql` — base tables
+- `005_add_company_name.sql`, `006_add_smoothed_score.sql`, `007_finbert_columns.sql`, `008_add_ticker_sector.sql`
+- `009_api_key_labels.sql` — per-consumer key labels
+- `010_add_score_exo.sql` — `sentiment_history.composite_score_exo`
+- `011_add_narrative_surprise.sql` — `sentiment_history.narrative_surprise` (research-only)
+- `012_research_features.sql` — `sentiment_history.research_features` JSONB (research-only feature store)
+
+Apply order: `000` first, then `005`–`012` in numeric order. All migrations after 000 are additive (`ADD COLUMN IF NOT EXISTS`) and idempotent in practice.
+
+> **Schema changes of 2026-07-20 (storage reclaim), reflected below:** `raw_signals` and `price_snapshots` have **no primary key** (the `id` columns remain but `raw_signals_pkey` / `price_snapshots_pkey` were dropped, along with `idx_price_snapshots_ticker_ts`); `price_snapshots` is written only during US market hours.
 
 ---
 
@@ -20,7 +24,9 @@ Apply order: `migrations.sql` first, then `005`–`008` in numeric order. All mi
 
 **Purpose.** The numeric signal store. Every quantitative observation the pipeline ingests — an OHLCV bar, an RSI reading, a VIX print, an insider net-shares total, a 20-day sector ETF return — is appended here as a single row. Layer 07 (`pipeline/features/normalize.py`) reads this table to compute z-scores, parametric fallbacks, and the per-signal weight `w_i`.
 
-**No `UNIQUE` constraint.** Per-tick deduplication is done at write time by checking `COUNT(*)` for the (ticker, signal_type, timestamp) tuple before inserting. The two indexes (`idx_raw_signals_lookup`, `idx_raw_signals_ticker_ts`) make these checks cheap.
+**No `UNIQUE` constraint, no primary key** (since 2026-07-20 — `raw_signals_pkey` dropped for storage; the `id` column remains but nothing queries by it). Per-tick deduplication is done at write time via a `NOT EXISTS` guard on the natural key `(ticker, signal_type, timestamp, value, source)` in `insert_signals()`. The two indexes (`idx_raw_signals_lookup`, `idx_raw_signals_ticker_ts`) make these checks cheap.
+
+**Retention tiers** (`retention_job`, daily 03:30 UTC): OHLCV > 365 d; derived intraday signals > 45 d; quote telemetry > 14 d; everything else > 90 d — **except `RESEARCH_RETAIN_SIGNAL_TYPES`, which are never purged** (`short_volume_*`, `insider_net_shares`, `analyst_buy_pct`, `analyst_target_price`, `analyst_eps_estimate_mean`, and the four options snapshot types — unbackfillable research raw material; see `scripts/db/queries/raw_signals.py`).
 
 | Column | Type | Nullable | Meaning |
 |---|---|---|---|
@@ -28,7 +34,7 @@ Apply order: `migrations.sql` first, then `005`–`008` in numeric order. All mi
 | `ticker` | `VARCHAR(10)` | NO | US-listed equity symbol. The reserved value `_MACRO_` is used for market-wide signals (VIX, FRED Treasuries, the TED-substitute) that are not per-ticker. Sector ETF closes are stored under the **ETF symbol** itself (`XLK`, `XLV`, …), then resolved per-ticker via the GICS routing introduced in P4.2. |
 | `signal_type` | `VARCHAR(50)` | NO | The canonical name of the signal — see the [Signal type catalog](#signal-type-catalog) below. Used as the join key for everything downstream: parametric scorer lookup (`_SIMPLE_SCORERS`), z-score window config (`_ZSCORE_CONFIG`), signal-channel weight override (`_INFLUENCER_SIGNAL_WEIGHT`), signal-channel half-life override (`_INFLUENCER_SIGNAL_HALF_LIFE_H`), and sub-index component routing. |
 | `value` | `FLOAT` | NO | The raw observation. Units depend on `signal_type` (price, percent, count of shares, basis points, …). Stored uninterpreted; direction correction and z-score normalization happen in Layer 07. |
-| `source` | `VARCHAR(50)` | NO | Data provider label. Drives the per-source credibility weight `w_src` in `_SOURCE_WEIGHTS` (`normalize.py`). Current valid values: `alpha_vantage`, `finnhub`, `yfinance`, `polygon`, `computed`, `finra_regsho`, `fred`. The historical label `sec_edgar` was retired in P3.4 (Form 4 path removed) and Phase 5 (Sprint C 8-K retraction). |
+| `source` | `VARCHAR(50)` | NO | Data provider label. Drives the per-source credibility weight `w_src` in `_SOURCE_WEIGHTS` (`normalize.py`). Current valid values: `alpha_vantage`, `finnhub`, `yfinance`, `polygon`, `computed`, `finra_regsho`, `fred`, `yfinance_options` (research-only, feeds no score). The historical label `sec_edgar` was retired in P3.4 (Form 4 path removed) and Phase 5 (Sprint C 8-K retraction). |
 | `upload_type` | `VARCHAR(20)` | NO | Either `'manual_backfill'` (rows loaded by `backfill/*.py`) or `'live'` (rows written by `pipeline/sources/*.py`). Used to distinguish bootstrap history from live observations during diagnostics. Has no effect on scoring. |
 | `timestamp` | `TIMESTAMPTZ` | NO | The **observation time** — when the underlying market event happened, NOT when the row was written. Drives the time decay `e^(−λΔt)` in the weight formula. |
 | `created_at` | `TIMESTAMPTZ` | NO (default NOW) | When the row was inserted. Used only for diagnostic audits (ingestion lag, drift detection). |
@@ -42,13 +48,13 @@ The complete enumeration of `signal_type` values currently written by the pipeli
 | `signal_type` | `source` | Layer 03 role |
 |---|---|---|
 | `yf_open`, `yf_high`, `yf_low`, `yf_close`, `yf_volume` | `yfinance` | Live OHLCV (primary). |
-| `ohlcv_open`, `ohlcv_high`, `ohlcv_low`, `ohlcv_close`, `ohlcv_volume` | `alpha_vantage`, `polygon` | Historical backfill + Polygon live fallback. |
+| `ohlcv_open`, `ohlcv_high`, `ohlcv_low`, `ohlcv_close`, `ohlcv_volume` | `alpha_vantage`, `polygon` | Historical backfill naming (also used for sector-ETF closes). Polygon is **backfill-only** — its `/prev` endpoint returns the prior day's bar, so it is deliberately not a live fallback. |
 | `rsi_14` | `computed` | Wilder's 14-period RSI, derived locally from close history. |
 | `return_1d`, `return_5d`, `return_20d` | `computed` | Log returns over the named window. |
 | `volume_ratio` | `computed` | Current volume / 20-day average volume. |
 | `order_flow_imbalance` | `computed` | Close-location value (CLV) in `[−1, +1]`. |
 | `buy_pressure`, `sell_pressure` | `computed` | Decomposed CLV-derived buy/sell fractions in `[0, 1]`. Used for drivers, not for the market sub-index. |
-| `bid_ask_spread_bps` | `polygon`, `yfinance` | Bid-ask spread in basis points. |
+| `bid_ask_spread_bps` | `yfinance` | Bid-ask spread in basis points, market hours only. (Raw `bid`/`ask`/`bid_ask_spread` stopped being written 2026-07-20 — they were write-only telemetry.) |
 
 **Short-volume layer (per-ticker, FINRA daily file)**
 
@@ -68,6 +74,17 @@ The complete enumeration of `signal_type` values currently written by the pipeli
 | `analyst_eps_estimate_mean` | `yfinance` | Mean analyst current-year EPS estimate. Stored as the raw input; the *delta* (period-over-period relative change) is what feeds the sub-index. |
 | `earnings_estimate_revision` | `computed` | Period-over-period relative delta of `analyst_eps_estimate_mean`. `w_src = 0.80`. |
 
+**Options snapshots (per-ticker, daily 21:20 UTC — research-only, feeds no score)**
+
+Commissioned 2026-07-22 (`pipeline/sources/options.py`, `options_job`). One snapshot per ticker per trading day from the yfinance option chain at the expiry nearest 30 calendar days. Unbackfillable — all four types are in `RESEARCH_RETAIN_SIGNAL_TYPES` and never purged. Evaluation is a future registered experiment (`scripts/eval/EXPERIMENTS.md` § Queued).
+
+| `signal_type` | `source` | Role |
+|---|---|---|
+| `pcr_volume` | `yfinance_options` | Put/call volume ratio at the chosen expiry (both sides ≥ 50 contracts required). |
+| `pcr_oi` | `yfinance_options` | Put/call open-interest ratio (both sides ≥ 100 contracts required). |
+| `atm_iv_30d` | `yfinance_options` | At-the-money implied vol — mean of the call/put IV at the strike nearest spot; IVs sane-bounded to (0.05, 5.0) with flat-placeholder-surface rejection. |
+| `iv_skew_25d` | `yfinance_options` | 25-delta skew **approximated by moneyness** (5% OTM put IV − 5% OTM call IV; yfinance provides no greeks). Positive = downside protection bid. |
+
 **Macro layer**
 
 | `signal_type` | `source` | Ticker key | Layer 06 role |
@@ -85,6 +102,8 @@ The complete enumeration of `signal_type` values currently written by the pipeli
 **Purpose.** Stores the text-bearing inputs to the Narrative channel. One row per article. Layer 05 reads this table, scores each row with FinBERT, computes `w_conf` from the class probabilities, applies relevance filtering, and assembles the narrative sub-index.
 
 The unique index `(ticker, content_hash)` provides hash-based dedup at insert time (Stage 1). Semantic dedup (Stage 2) runs after the fetch phase of `narrative_job` and writes the cluster ID back to existing rows — see `event_cluster_id` below.
+
+**Retention (changed 2026-07-22):** rows are kept **365 days** (was 30). Rows older than 30 days have `title`/`summary`/`source_url` blanked in place by the daily retention job (`title` set to `''` — it is NOT NULL); `published_at`, the FinBERT tone scores, `relevance_score`, `source`, `ticker`, `event_cluster_id`, `content_hash`, and `language` are all kept — the fields research feature-backfills need. `created_at` is the verified **ingestion timestamp** (`DEFAULT NOW()` at insert; 0 NULLs, 0 anomalies as of 2026-07-22) — `created_at − published_at` is the publication→ingestion latency measure used by the E002 audit.
 
 | Column | Type | Nullable | Meaning |
 |---|---|---|---|
@@ -126,7 +145,7 @@ sub-index     →  Σ(w · finbert_score) / Σ(w), then volume-shrinkage
 
 ## `sentiment_history`
 
-**Purpose.** Append-only record of every scored output. One row per ticker per `scoring_tick_job` execution (every 30 minutes). This table backs the `/v1/sentiment/{ticker}/history` API endpoint and is the canonical source for offline backtests.
+**Purpose.** Append-only record of every scored output. One row per ticker per `scoring_tick_job` execution (**every 15 minutes during US market hours, 30 minutes off-hours**). This table backs the `/v1/sentiment/{ticker}/history` API endpoint and is the canonical source for offline backtests and the eval harness (`scripts/eval/`).
 
 Composite scores are stored twice: `composite_score` is the raw weighted average; `composite_score_smoothed` is the EMA-smoothed value that the API serves as `score`. The `ema_obs_count` column is the per-ticker monotonic update counter that determines when EMA leaves cold-start.
 
@@ -135,7 +154,10 @@ Composite scores are stored twice: `composite_score` is the raw weighted average
 | `id` | `SERIAL PRIMARY KEY` | NO | Surrogate key. |
 | `ticker` | `VARCHAR(10)` | NO | Ticker scored. |
 | `composite_score` | `FLOAT` | NO | The **raw** composite — `0.35·M + 0.30·N + 0.25·I + 0.10·Mac`, with missing-layer redistribution applied. The Pro tier returns this as `score_raw`. |
-| `composite_score_smoothed` | `DOUBLE PRECISION` | YES | The EMA-smoothed composite (4-hour half-life). The API returns this as `score`. NULL only during cold-start for tickers with no prior history. (Added in migration 006.) |
+| `composite_score_smoothed` | `DOUBLE PRECISION` | YES | The EMA-smoothed composite (**2-hour half-life since 2026-07-22 per experiment E004**; 4 h before that — historical rows written pre-change carry the 4 h smoothing). The API returns this as `score`. NULL only for pre-EMA-era rows. (Added in migration 006.) |
+| `composite_score_exo` | `DOUBLE PRECISION` | YES | The **exogenous sentiment-only composite**: narrative/influencer/macro renormalized with the price-derived market layer excluded. Served as `score_exo` (pro). NULL = all three exo layers missing — never a fabricated neutral. Unsmoothed, no divergence cap. (Migration 010.) |
+| `narrative_surprise` | `DOUBLE PRECISION` | YES | **Research-only** (flag `ENABLE_NARRATIVE_SURPRISE`): z-score of the last-24h relevance-weighted FinBERT tone vs the ticker's own trailing-14-day baseline, mapped to [0, 100]. Never served, never enters the composite. Accumulating since 2026-07-21. (Migration 011.) |
+| `research_features` | `JSONB` | YES | **Research-only feature store** (migration 012): `{feature_name: value}` — one column for all present and future research features, no schema change per feature. Current keys: `short_vol_z`, `insider_net_z` (`pipeline/features/positioning.py`, flag `ENABLE_POSITIONING_FEATURES`; point-in-time backfilled by `scripts/eval/backfill_features.py`). Read only by the eval harness, which auto-registers every key; never serialized into any API response (test-guarded). |
 | `ema_obs_count` | `INTEGER` | NO (default 0) | Monotonic count of EMA updates for this ticker. Used to determine when the smoother leaves cold-start (raw-composite seeding) and starts applying the exponential blend. (Added in migration 006.) |
 | `market_index` | `FLOAT` | YES | Market sub-index (`compute_market_sub_index`). NULL when 5 of 6 components were missing. |
 | `narrative_index` | `FLOAT` | YES | Narrative sub-index. NULL when no scored articles within the lookback. |
@@ -187,6 +209,8 @@ Composite scores are stored twice: `composite_score` is the raw weighted average
 
 **Purpose.** Captures the price at the moment each `sentiment_history` row was written, so that backtest forward-return computation can join to a price that genuinely existed at the score timestamp (rather than relying on later-vintage data that may include corporate-action adjustments).
 
+**Write-only research data.** Nothing in the app reads this table. Since 2026-07-20 it has **no primary key and no indexes** (dropped for storage — eval queries are sequential scans by design) and receives rows **only during US market hours** (off-hours rows were ~98% exact repeats of the prior close). Never purged.
+
 | Column | Type | Nullable | Meaning |
 |---|---|---|---|
 | `id` | `SERIAL PRIMARY KEY` | NO | |
@@ -200,7 +224,7 @@ Composite scores are stored twice: `composite_score` is the raw weighted average
 
 ## `backtest_results`
 
-**Purpose.** Precomputed forward returns, populated asynchronously some time after the original score row was written. Backs the offline correlation / IC analysis the paper cites for validation.
+**Purpose.** Precomputed forward returns, populated asynchronously some time after the original score row was written. **Currently unused (0 rows)** — the async backfill was never built; forward-return analysis is done by the eval harness (`scripts/eval/analyze.py`) directly from `sentiment_history` + `raw_signals` closes instead. Retained in the schema for a possible future materialization.
 
 | Column | Type | Nullable | Meaning |
 |---|---|---|---|
@@ -225,8 +249,9 @@ Composite scores are stored twice: `composite_score` is the raw weighted average
 | `idx_raw_articles_cluster` | `raw_articles` | `(ticker, event_cluster_id)` | Stage-2 dedup writes back the cluster ID; also used by the `DISTINCT ON` cluster collapse at read time. |
 | `idx_raw_articles_hash` | `raw_articles` | `(ticker, content_hash)`, UNIQUE | Stage-1 dedup at insert (`ON CONFLICT DO NOTHING`). |
 | `idx_sentiment_history_ticker_ts` | `sentiment_history` | `(ticker, timestamp DESC)` | The `/history` API endpoint. |
-| `idx_price_snapshots_ticker_ts` | `price_snapshots` | `(ticker, timestamp DESC)` | Backtest forward-return joins. |
-| `idx_backtest_ticker_ts` | `backtest_results` | `(ticker, score_timestamp DESC)` | Validation queries. |
+| `idx_backtest_ticker_ts` | `backtest_results` | `(ticker, score_timestamp DESC)` | Validation queries (table currently unused). |
+
+Dropped 2026-07-20 (storage reclaim; nothing read them): `raw_signals_pkey`, `price_snapshots_pkey`, `idx_price_snapshots_ticker_ts`.
 | `idx_ticker_universe_tier` | `ticker_universe` | `(tier)` | Filtered scans of the active universe in `scoring_tick_job`. |
 
 ---

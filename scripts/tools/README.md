@@ -6,10 +6,10 @@ Terminal UI for inspecting the SentimentAPI pipeline state, data quality, and sc
 
 ```bash
 # From the project root (requires .venv with asyncpg, redis, rich, dotenv):
-python3 tools/db_viewer.py
+python3 scripts/tools/db_viewer.py
 
 # Install dev-only chart dependencies (plotext + matplotlib for PNG export):
-pip install -r tools/requirements-dev.txt
+pip install -r scripts/tools/requirements-dev.txt
 ```
 
 ## Navigation
@@ -73,7 +73,7 @@ tools/exports/deepdive_AAPL_20260506_143022/
   confidence.png
 ```
 
-Requires `matplotlib` (install via `tools/requirements-dev.txt`).
+Requires `matplotlib` (install via `scripts/tools/requirements-dev.txt`).
 
 ## CSV export
 

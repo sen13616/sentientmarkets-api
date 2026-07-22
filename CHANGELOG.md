@@ -1,5 +1,15 @@
 # Changelog
 
+## Phase 7 — Nowcasting-first + the research program
+
+### 2026-07-22 — Research program day one (E000–E004) + options collection
+
+Frozen holdout split (research window 2026-04-24→06-22; post-outage holdout confirmation-only; enforced via `scripts/eval/run.py --window`) and the pre-registered experiment ledger (`scripts/eval/EXPERIMENTS.md`). Experiments run: **E000** research-window baseline (lead-lag peak at offset 0 — mirror, not headlight); **E001** dexo rejected ("drift or noise" — zero intraday footprint, cost overlay eats the spread; harness gained a turnover-based transaction-cost overlay on quintile L/S); **E002** latency audit (both prior numbers wrong — survivorship artifact vs outage inflation; operative steady state AV 4.1h / FH 2.4h all-articles, 96/122 min fresh-news; heavy latency builds deferred); **E003** positioning features (`short_vol_z` rejected on thin sample; `insider_net_z_lag2` **won-research** — IC +0.053–0.057, t ≥ 4.2, net-of-cost L/S t 1.84 — holdout confirmation booked ~2026-08-28); **E004** EMA half-life via the new replay scorer (`scripts/eval/replay.py`, identity-validated to rounding precision) — **shipped: served `score` now smooths at a 2-hour half-life** (was 4h; `EMA_HALF_LIFE_HOURS=2`, live-verified implied α, release gate re-baselined). Infrastructure: migration 012 (`sentiment_history.research_features` JSONB), flag-gated positioning features + point-in-time backfill (31,686 rows), harness auto-registration of research-feature keys, retention protection for research raw material (research signal types never purged; articles 365d with text compaction at 30d), and the **options collection job** (`options_job`, weekdays 21:20 UTC — daily yfinance chain snapshots: `pcr_volume`, `pcr_oi`, `atm_iv_30d`, `iv_skew_25d`; research-only, unbackfillable, guards tuned against after-hours placeholder surfaces). Docs refreshed end-to-end (METHODOLOGY.md, DATA_DICTIONARY, REPRODUCIBILITY, README).
+
+### 2026-07-21 — Nowcasting refactor (commits 21e459c…0ec151b)
+
+Response to the external backtest study (`docs/SUMMARYOFTESTING.md` findings: scores coincident-to-lagging, no predictive lead). All additive — the headline score byte-identical: eval harness ported from the study as a release gate (`scripts/eval/`, committed baseline), per-consumer API keys (migration 009), cross-sectional calibration fields (`score_raw_z`/percentiles, migration 010's `score_exo`), information-time stamping, and flag-gated `narrative_surprise` (migration 011). Full mapping in [`docs/CHANGES.md`](docs/CHANGES.md).
+
 ## Phase 6
 
 ### Sprint P6.2 — Tiered raw_signals retention (2026-07-20)

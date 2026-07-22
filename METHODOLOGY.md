@@ -111,6 +111,13 @@ one retry after 2 s; 403/404 (auth failures, don't consume quota) → 50 ms cour
 
 DB queries accept both `yf_*` and legacy `ohlcv_*` naming via `IN (...)`.
 
+**Research-only ingestion (feeds no score):** `options_job` (weekdays 21:20 UTC,
+`pipeline/sources/options.py`) snapshots the yfinance option chain at the expiry nearest
+30 calendar days per ticker: `pcr_volume`, `pcr_oi` (both-side depth minimums),
+`atm_iv_30d`, `iv_skew_25d` (5%-OTM moneyness proxy for 25Δ; IV sanity bounds + flat
+placeholder-surface rejection). Source `yfinance_options`; never purged; evaluation is a
+future registered experiment.
+
 ### 3.2 Narrative layer (`pipeline/sources/narrative.py`)
 
 - **Sources:** Alpha Vantage `NEWS_SENTIMENT` (limit 50; provides per-ticker
