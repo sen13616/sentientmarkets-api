@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import secrets
 
 from fastapi import APIRouter, HTTPException, Request
@@ -38,12 +39,17 @@ _log = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Default mirrors main.py's historical CORS list so an unset env var
-# degrades to today's behavior; production should still set SITE_ORIGINS
-# explicitly on Railway.
+# Entries may be exact origins or wildcard patterns (`*` = one or more DNS
+# labels, e.g. https://*.up.railway.app matches any Railway-hosted site).
+# The list feeds BOTH the mint origin gate and main.py's CORS config, so
+# they can never drift apart. An unset env var falls back to these defaults;
+# if SITE_ORIGINS is set on Railway it fully replaces them.
 _DEFAULT_SITE_ORIGINS = (
     "https://sentientmarkets.vercel.app,"
     "https://themarketmood-ai.vercel.app,"
+    "https://sentientmarkets.ai,"
+    "https://www.sentientmarkets.ai,"
+    "https://*.up.railway.app,"
     "http://localhost:3000,"
     "http://localhost:8000"
 )
@@ -52,6 +58,34 @@ SITE_ORIGINS: tuple[str, ...] = tuple(
     for o in os.getenv("SITE_ORIGINS", _DEFAULT_SITE_ORIGINS).split(",")
     if o.strip()
 )
+
+EXACT_ORIGINS: tuple[str, ...] = tuple(o for o in SITE_ORIGINS if "*" not in o)
+_WILDCARD_ORIGINS: tuple[str, ...] = tuple(o for o in SITE_ORIGINS if "*" in o)
+
+# `*` must only match whole DNS labels: https://*.up.railway.app matches
+# https://myapp.up.railway.app but never https://evilup.railway.app or
+# https://x.up.railway.app.evil.com (the regex is fully anchored).
+_LABELS = r"[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*"
+
+
+def _pattern_to_regex(pattern: str) -> str:
+    return re.escape(pattern).replace(r"\*", _LABELS)
+
+
+# Starlette's CORSMiddleware takes this as allow_origin_regex (None = no
+# wildcards configured); the mint gate compiles the same expression.
+CORS_ORIGIN_REGEX: str | None = (
+    "^(?:" + "|".join(_pattern_to_regex(p) for p in _WILDCARD_ORIGINS) + ")$"
+    if _WILDCARD_ORIGINS
+    else None
+)
+_WILDCARD_RE = re.compile(CORS_ORIGIN_REGEX) if CORS_ORIGIN_REGEX else None
+
+
+def origin_allowed(origin: str) -> bool:
+    if origin in EXACT_ORIGINS:
+        return True
+    return bool(_WILDCARD_RE and _WILDCARD_RE.fullmatch(origin))
 
 DEMO_KEY_IP_CAP = int(os.getenv("DEMO_KEY_IP_CAP", "5"))
 DEMO_KEY_IP_WINDOW = int(os.getenv("DEMO_KEY_IP_WINDOW", "86400"))
@@ -106,7 +140,7 @@ async def _check_mint_cap(ip: str) -> None:
 )
 async def mint_demo_key(body: DemoKeyRequest, request: Request) -> DemoKeyResponse:
     origin = (request.headers.get("origin") or "").rstrip("/")
-    if origin not in SITE_ORIGINS:
+    if not origin_allowed(origin):
         raise HTTPException(
             status_code=403,
             detail={

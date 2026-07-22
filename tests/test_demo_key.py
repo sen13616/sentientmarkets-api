@@ -26,7 +26,14 @@ from starlette.middleware.cors import CORSMiddleware
 
 import scripts.db.queries.api_keys as api_keys_queries
 from api.auth import authenticate
-from api.routes.demo_key import DEMO_KEY_IP_CAP, SITE_ORIGINS, _client_ip
+from api.routes.demo_key import (
+    CORS_ORIGIN_REGEX,
+    DEMO_KEY_IP_CAP,
+    EXACT_ORIGINS,
+    SITE_ORIGINS,
+    _client_ip,
+    origin_allowed,
+)
 from main import app
 
 ALLOWED_ORIGIN = SITE_ORIGINS[0]
@@ -67,6 +74,38 @@ class TestOriginGate:
         )
         assert r.status_code == 403
         assert r.json()["detail"]["error"] == "origin_not_allowed"
+
+    def test_production_domains_are_allowed(self):
+        assert origin_allowed("https://sentientmarkets.ai")
+        assert origin_allowed("https://www.sentientmarkets.ai")
+        assert origin_allowed("https://sentientmarkets.vercel.app")
+
+    def test_railway_wildcard_matches_any_subdomain(self):
+        assert origin_allowed("https://myapp.up.railway.app")
+        assert origin_allowed("https://frontend-production-1a2b.up.railway.app")
+
+    def test_wildcard_matches_whole_labels_only(self):
+        # No subdomain / wrong suffix boundary / suffix-forgery must all fail.
+        assert not origin_allowed("https://up.railway.app")
+        assert not origin_allowed("https://evilup.railway.app")
+        assert not origin_allowed("https://x.up.railway.app.evil.com")
+        assert not origin_allowed("http://myapp.up.railway.app")  # scheme matters
+        assert not origin_allowed("https://evil.example.com")
+        assert not origin_allowed("")
+
+    def test_wildcard_origin_can_mint(self, client):
+        with patch(
+            "api.routes.demo_key.insert_demo_key",
+            AsyncMock(return_value=FUTURE),
+        ), patch(
+            "api.routes.demo_key.get_redis", return_value=_redis_mock()
+        ):
+            r = client.post(
+                "/v1/demo-key",
+                json={"existing_key": None},
+                headers={"Origin": "https://myapp.up.railway.app"},
+            )
+        assert r.status_code == 200
 
     def test_trailing_slash_origin_is_normalized(self, client):
         with patch(
@@ -314,10 +353,20 @@ class TestWiring:
         assert "POST" in self._cors_kwargs()["allow_methods"]
 
     def test_cors_origins_single_sourced_with_mint_gate(self):
-        assert self._cors_kwargs()["allow_origins"] == list(SITE_ORIGINS)
+        kwargs = self._cors_kwargs()
+        assert kwargs["allow_origins"] == list(EXACT_ORIGINS)
+        assert kwargs["allow_origin_regex"] == CORS_ORIGIN_REGEX
+
+    def test_cors_regex_matches_what_the_mint_gate_matches(self):
+        import re
+
+        rx = re.compile(CORS_ORIGIN_REGEX)
+        assert rx.fullmatch("https://myapp.up.railway.app")
+        assert not rx.fullmatch("https://x.up.railway.app.evil.com")
 
     def test_default_origins_match_historical_list(self):
         # Guard: unset SITE_ORIGINS env must degrade to the pre-existing
         # production allowlist, not brick CORS.
         assert "https://sentientmarkets.vercel.app" in SITE_ORIGINS
+        assert "https://sentientmarkets.ai" in SITE_ORIGINS
         assert "http://localhost:3000" in SITE_ORIGINS

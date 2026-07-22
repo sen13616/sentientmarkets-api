@@ -15,7 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes import demo_key, health, history, market, sentiment, status, tickers
-from api.routes.demo_key import SITE_ORIGINS
+from api.routes.demo_key import CORS_ORIGIN_REGEX, EXACT_ORIGINS
 from scripts.db.connection import close_pool, init_pool
 from scripts.db.redis import close_redis, init_redis
 from pipeline.scheduler import scheduler
@@ -51,8 +51,10 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     # Single-sourced with the /v1/demo-key origin gate so CORS and the
-    # mint allowlist can never drift apart (SITE_ORIGINS env overrides).
-    allow_origins=list(SITE_ORIGINS),
+    # mint allowlist can never drift apart (SITE_ORIGINS env overrides;
+    # wildcard entries like https://*.up.railway.app arrive via the regex).
+    allow_origins=list(EXACT_ORIGINS),
+    allow_origin_regex=CORS_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
