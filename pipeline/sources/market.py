@@ -27,7 +27,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
-import os
 from datetime import datetime, timezone
 
 _log = logging.getLogger(__name__)
@@ -41,57 +40,9 @@ from scripts.db.queries.raw_signals import (
     insert_signals,
 )
 from pipeline.confidence.staleness import is_market_hours
-from pipeline.rate_limits import (
-    POLYGON_SEM, POLYGON_DELAY,
-    YF_INFO_SEM,
-    guarded_get,
-)
+from pipeline.rate_limits import YF_INFO_SEM
 
 load_dotenv(override=False)
-
-_POLYGON_KEY  = os.environ.get("POLYGON_KEY", "")
-_POLYGON_BASE = "https://api.polygon.io"
-
-
-# ---------------------------------------------------------------------------
-# OHLCV helpers
-# ---------------------------------------------------------------------------
-
-async def _ohlcv_polygon(ticker: str, client: httpx.AsyncClient) -> dict | None:
-    """Polygon /v2/aggs/ticker/{ticker}/prev fallback."""
-    resp = await guarded_get(
-        client, f"{_POLYGON_BASE}/v2/aggs/ticker/{ticker}/prev",
-        params={"adjusted": "true", "apiKey": _POLYGON_KEY},
-        sem=POLYGON_SEM, delay=POLYGON_DELAY, label=f"Polygon prev-day {ticker}",
-    )
-    if resp is None or resp.status_code != 200:
-        return None
-
-    try:
-        body = resp.json()
-    except Exception as exc:
-        _log.warning("Polygon prev-day JSON parse error for %s: %s", ticker, exc)
-        return None
-
-    results = body.get("results", [])
-    if not results:
-        return None
-
-    try:
-        r = results[0]
-        ts = datetime.fromtimestamp(r["t"] / 1000, tz=timezone.utc)
-        return {
-            "open":      float(r["o"]),
-            "high":      float(r["h"]),
-            "low":       float(r["l"]),
-            "close":     float(r["c"]),
-            "volume":    float(r["v"]),
-            "timestamp": ts,
-            "source":    "polygon",
-        }
-    except (KeyError, ValueError) as exc:
-        _log.warning("Polygon prev-day parse error for %s: %s", ticker, exc)
-        return None
 
 
 # ---------------------------------------------------------------------------
@@ -302,8 +253,8 @@ async def _run_market(
     # --- OHLCV (yfinance batch only in live cycle) ---
     # Polygon /prev is NOT used as a live fallback because it returns
     # yesterday's bar, which downstream treats as today's — poisoning
-    # return calculations and order flow.  _ohlcv_polygon remains
-    # defined for backfill scripts that legitimately want prior-day data.
+    # return calculations and order flow. The live path reads only the
+    # yfinance batch below.
     ohlcv = (ohlcv_batch or {}).get(ticker)
 
     if ohlcv:

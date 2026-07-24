@@ -36,14 +36,45 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
-# US equity market hours in UTC (9:30 am – 4:00 pm Eastern = 14:30 – 21:00 UTC)
-_MARKET_OPEN_UTC  = (14, 30)   # (hour, minute)
-_MARKET_CLOSE_UTC = (21,  0)
+# US equity regular session in *Eastern* time. Using a DST-aware timezone
+# (not a fixed UTC window) keeps the session correct year-round: 9:30 am –
+# 4:00 pm ET is 14:30 – 21:00 UTC in winter (EST) but 13:30 – 20:00 UTC in
+# summer (EDT). The previous hardcoded UTC window was a full hour off for the
+# ~8 months of EDT each year.
+_EASTERN = ZoneInfo("America/New_York")
+_SESSION_OPEN_ET  = (9, 30)    # (hour, minute) Eastern
+_SESSION_CLOSE_ET = (16, 0)    # (hour, minute) Eastern
 
 # How long after the most-recent market close the end-of-day score is still fresh.
 # Set to 30 minutes so the EOD job at 21:15 UTC has plenty of margin.
 _EOD_GRACE = timedelta(minutes=30)
+
+
+def _as_utc(dt: datetime) -> datetime:
+    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+
+
+def _session_close_utc(now: datetime) -> datetime:
+    """UTC instant of the most-recent weekday 16:00-ET close at or before *now*."""
+    et = _as_utc(now).astimezone(_EASTERN)
+    close_et = et.replace(hour=_SESSION_CLOSE_ET[0], minute=_SESSION_CLOSE_ET[1],
+                          second=0, microsecond=0)
+    cand = et if et >= close_et else et - timedelta(days=1)
+    while cand.isoweekday() > 5:                       # walk back to a weekday
+        cand -= timedelta(days=1)
+    close_et = cand.replace(hour=_SESSION_CLOSE_ET[0], minute=_SESSION_CLOSE_ET[1],
+                            second=0, microsecond=0)
+    return close_et.astimezone(timezone.utc)
+
+
+def _session_open_utc(close_utc: datetime) -> datetime:
+    """UTC instant of the 9:30-ET open for the trading day of *close_utc*."""
+    et = close_utc.astimezone(_EASTERN)
+    open_et = et.replace(hour=_SESSION_OPEN_ET[0], minute=_SESSION_OPEN_ET[1],
+                         second=0, microsecond=0)
+    return open_et.astimezone(timezone.utc)
 
 STALENESS_THRESHOLDS: dict[str, timedelta] = {
     "market":  timedelta(minutes=90),
@@ -56,42 +87,28 @@ STALENESS_THRESHOLDS: dict[str, timedelta] = {
 
 def is_market_hours(now: datetime) -> bool:
     """
-    Return True if *now* falls within US equity market hours.
+    Return True if *now* falls within US equity regular market hours.
 
-    Market hours: weekdays 14:30–21:00 UTC (9:30 am – 4:00 pm Eastern).
+    Session: weekdays 9:30 am – 4:00 pm US/Eastern (DST-aware).
     """
-    if now.tzinfo is None:
-        now = now.replace(tzinfo=timezone.utc)
+    et = _as_utc(now).astimezone(_EASTERN)
     # isoweekday: Monday=1 … Friday=5, Saturday=6, Sunday=7
-    if now.isoweekday() > 5:
+    if et.isoweekday() > 5:
         return False
-    open_minutes  = _MARKET_OPEN_UTC[0]  * 60 + _MARKET_OPEN_UTC[1]
-    close_minutes = _MARKET_CLOSE_UTC[0] * 60 + _MARKET_CLOSE_UTC[1]
-    now_minutes   = now.hour * 60 + now.minute
+    open_minutes  = _SESSION_OPEN_ET[0]  * 60 + _SESSION_OPEN_ET[1]
+    close_minutes = _SESSION_CLOSE_ET[0] * 60 + _SESSION_CLOSE_ET[1]
+    now_minutes   = et.hour * 60 + et.minute
     return open_minutes <= now_minutes < close_minutes
 
 
 def _last_market_close(now: datetime) -> datetime:
     """
-    Return the UTC datetime of the most-recent weekday market close (21:00 UTC).
+    Return the UTC datetime of the most-recent weekday market close (16:00 ET).
 
-    If today is a weekday and markets have already closed, that is today's 21:00.
-    If today is a weekday before open, or a weekend, walk back to the previous
-    weekday's 21:00.
+    If markets have already closed today (a weekday), that is today's close;
+    otherwise walk back to the previous weekday's close. DST-aware.
     """
-    if now.tzinfo is None:
-        now = now.replace(tzinfo=timezone.utc)
-
-    close_today = now.replace(hour=_MARKET_CLOSE_UTC[0], minute=_MARKET_CLOSE_UTC[1],
-                               second=0, microsecond=0)
-
-    candidate = now if now >= close_today else now - timedelta(days=1)
-    # Walk back until we land on a weekday
-    while candidate.isoweekday() > 5:
-        candidate -= timedelta(days=1)
-
-    return candidate.replace(hour=_MARKET_CLOSE_UTC[0], minute=_MARKET_CLOSE_UTC[1],
-                              second=0, microsecond=0)
+    return _session_close_utc(now)
 
 
 def _market_stale(ts: datetime, now: datetime) -> bool:
@@ -247,6 +264,11 @@ _SHORT_VOLUME_TYPES = frozenset({
 # the expected publication time (22:00 UTC) before flagging stale.
 _SV_EXPECTED_PUBLISH_UTC = (22, 0)   # hour, minute — when we expect data
 _SV_GRACE = timedelta(hours=2)       # grace window past expected publish
+# Nominal daily close used to bound short-volume freshness. Kept as a fixed
+# UTC time (not the DST-aware ET session close): FINRA's daily file is a
+# once-per-day artifact and the 2-hour publish grace absorbs the ≤1-hour DST
+# shift, so a fixed nominal keeps this daily-cadence check simple and stable.
+_SV_NOMINAL_CLOSE_UTC = (21, 0)      # hour, minute
 
 
 def _short_volume_stale(ts: datetime, now: datetime) -> bool:
@@ -302,7 +324,7 @@ def _short_volume_stale(ts: datetime, now: datetime) -> bool:
     # timestamp should be at or after ref_date's market close (21:00 UTC)
     # minus a grace window (the EOD job may write signals a bit before close).
     expected_close = ref_date.replace(
-        hour=_MARKET_CLOSE_UTC[0], minute=_MARKET_CLOSE_UTC[1],
+        hour=_SV_NOMINAL_CLOSE_UTC[0], minute=_SV_NOMINAL_CLOSE_UTC[1],
         second=0, microsecond=0,
     )
     freshness_cutoff = expected_close - _EOD_GRACE
@@ -379,8 +401,4 @@ def market_lookback_since(now: datetime) -> datetime:
         return now - timedelta(minutes=90)
     # Outside hours: need signals from the entire last trading session
     last_close = _last_market_close(now)
-    last_open = last_close.replace(
-        hour=_MARKET_OPEN_UTC[0], minute=_MARKET_OPEN_UTC[1],
-        second=0, microsecond=0,
-    )
-    return last_open
+    return _session_open_utc(last_close)

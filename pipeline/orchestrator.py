@@ -83,6 +83,17 @@ _SECTOR_ETFS  = [
     "XLK", "XLP", "XLRE", "XLU", "XLV", "XLY",
 ]
 
+# Which staleness sources each composite layer owns. Used to avoid
+# double-penalising a missing layer (missing_layer + stale_source) in the
+# confidence score — influencer maps to two sources, so an absent influencer
+# layer would otherwise be penalised three times.
+_LAYER_SOURCES: dict[str, tuple[str, ...]] = {
+    "market":     ("market",),
+    "narrative":  ("news",),
+    "influencer": ("analyst", "insider"),
+    "macro":      ("macro",),
+}
+
 # Maximum age of the last-scored timestamp before falling back to Redis cache.
 # These are STALENESS thresholds — they determine when a layer's sub-index is
 # considered too stale to trust and Redis cached state is used instead.
@@ -464,6 +475,19 @@ async def _score_and_write(
         "macro":   macro_as_of,
     }
     stale_list  = stale_sources(as_of_map, now=now)
+
+    # A layer already counted as missing (sub-index is None) must not ALSO be
+    # charged the per-source stale penalty — that double-counts a single
+    # absence, and triple-counts influencer, which owns two sources
+    # (analyst + insider). The missing_layer penalty already accounts for it,
+    # so drop the stale flags of any source whose owning layer is missing.
+    _missing = set(composite_result.missing_layers)
+    _suppressed = {
+        src
+        for layer in _missing
+        for src in _LAYER_SOURCES.get(layer, ())
+    }
+    stale_list = [s for s in stale_list if s not in _suppressed]
 
     all_sigs    = market_sigs + narrative_sigs + influencer_sigs + macro_sigs
     n_signals   = sum(1 for s in all_sigs if (s.get("weight") or 0) > 0)

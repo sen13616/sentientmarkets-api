@@ -12,31 +12,32 @@ from apscheduler.triggers.cron import CronTrigger
 
 
 def _market_trigger() -> CronTrigger:
-    """Reconstruct the market_job trigger from scheduler.py configuration."""
-    return CronTrigger(day_of_week="mon-fri", hour="14-20", minute="*/15", timezone="UTC")
+    """Reconstruct the market_job trigger from scheduler.py configuration.
+    hour 13-20 UTC covers both DST regimes (EDT open 13:30 UTC, EST 14:30)."""
+    return CronTrigger(day_of_week="mon-fri", hour="13-20", minute="*/15", timezone="UTC")
 
 
 def test_market_job_fires_within_utc_market_window():
-    """Next fire time after Mon 13:00 UTC must be within 14:00-20:45 UTC."""
+    """Next fire time after Mon 12:00 UTC must be the 13:00 UTC EDT-open slot."""
     trigger = _market_trigger()
-    # Monday 2026-05-04 at 13:00 UTC (before market open)
-    ref = datetime(2026, 5, 4, 13, 0, tzinfo=timezone.utc)
+    # Monday 2026-05-04 at 12:00 UTC (before the earliest, EDT, open)
+    ref = datetime(2026, 5, 4, 12, 0, tzinfo=timezone.utc)
     nxt = trigger.get_next_fire_time(None, ref)
     assert nxt is not None
-    # Must fire at 14:00 UTC (first eligible slot)
-    assert nxt.hour == 14
+    # First eligible slot is now 13:00 UTC (covers the 13:30 EDT open)
+    assert nxt.hour == 13
     assert nxt.minute == 0
 
 
-def test_market_job_does_not_fire_before_14_utc():
-    """Trigger must not fire during 9-13 UTC (old broken window)."""
+def test_market_job_does_not_fire_before_13_utc():
+    """Trigger must not fire before 13 UTC (ahead of even the EDT open)."""
     trigger = _market_trigger()
     # Monday at 09:00 UTC
     ref = datetime(2026, 5, 4, 9, 0, tzinfo=timezone.utc)
     nxt = trigger.get_next_fire_time(None, ref)
     assert nxt is not None
-    # Should jump to 14:00, not fire at 09:00 or 09:15
-    assert nxt.hour >= 14
+    # Should jump to 13:00, not fire at 09:00 or 09:15
+    assert nxt.hour >= 13
 
 
 def test_market_job_last_fire_is_2045_utc():
@@ -46,9 +47,9 @@ def test_market_job_last_fire_is_2045_utc():
     ref = datetime(2026, 5, 4, 20, 46, tzinfo=timezone.utc)
     nxt = trigger.get_next_fire_time(None, ref)
     assert nxt is not None
-    # Should be next day (Tuesday) at 14:00
+    # Should be next day (Tuesday) at 13:00
     assert nxt.day == 5
-    assert nxt.hour == 14
+    assert nxt.hour == 13
 
 
 # ---------------------------------------------------------------------------
@@ -63,8 +64,7 @@ def _scoring_tick_trigger():
     from apscheduler.triggers.combining import OrTrigger
     return OrTrigger([
         CronTrigger(minute="0,30", timezone="UTC"),
-        CronTrigger(day_of_week="mon-fri", hour=14, minute=45, timezone="UTC"),
-        CronTrigger(day_of_week="mon-fri", hour="15-20", minute="15,45", timezone="UTC"),
+        CronTrigger(day_of_week="mon-fri", hour="13-20", minute="15,45", timezone="UTC"),
     ])
 
 
@@ -80,8 +80,9 @@ def test_scoring_tick_job_registered():
     job = scheduler.get_job("scoring_tick")
     assert job is not None, "scoring_tick job not found in scheduler"
     assert isinstance(job.trigger, OrTrigger)
-    # Three sub-triggers: base 30-min cadence + two market-hours fills
-    assert len(job.trigger.triggers) == 3
+    # Two sub-triggers: base 30-min cadence + one market-hours :15/:45 fill
+    # (hour 13-20 UTC, covering both DST regimes).
+    assert len(job.trigger.triggers) == 2
 
     # Spot-check the fire schedule against a UTC-anchored equivalent trigger.
     trig = _scoring_tick_trigger()
@@ -136,14 +137,15 @@ def test_macro_daily_job_registered():
 
 
 def test_macro_intraday_job_registered():
-    """macro_intraday job (VIX + ETFs) must run hourly weekdays 14:00–20:00 UTC."""
+    """macro_intraday job (VIX + ETFs) must run hourly weekdays 13:00–20:00 UTC
+    (hour 13 covers the EDT session open)."""
     from pipeline.scheduler import scheduler
 
     job = scheduler.get_job("macro_intraday")
     assert job is not None, "macro_intraday job not found in scheduler"
     fields = {f.name: str(f) for f in job.trigger.fields}
     assert fields["day_of_week"] == "mon-fri"
-    assert fields["hour"]        == "14-20"
+    assert fields["hour"]        == "13-20"
     assert fields["minute"]      == "0"
 
 

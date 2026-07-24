@@ -9,14 +9,18 @@ Paper specification (Execution Architecture § Data Collection and Computation L
 
     α = 1 - 0.5^(dt / T½)
 
-where T½ = 4 hours (default half-life).
+where T½ is the half-life. The in-code default is 4 h, but PRODUCTION runs
+T½ = 2 h via EMA_HALF_LIFE_HOURS=2 on Railway (experiment E004, 2026-07-22).
+The env var is read once at import (see below), so the effective default
+tracks whatever is set in the environment.
 
 Cold-start: when prev_smoothed is None (first-ever score for a ticker),
 smoothed_t = raw_t.  This seeds the EMA with the first raw composite.
 
 Gap behavior: large dt values are handled naturally by the α formula.
-As dt → ∞, α → 1, so smoothed → raw.  After a 24-hour gap, α ≈ 0.984,
-effectively resetting the EMA.  No threshold-based reset logic is used.
+As dt → ∞, α → 1, so smoothed → raw.  After a 24-hour gap α ≈ 0.9998 at the
+2 h production half-life (≈ 0.984 at the 4 h default), effectively resetting
+the EMA.  No threshold-based reset logic is used.
 
 ema_obs_count: a monotonically increasing counter that tracks how many
 EMA updates a ticker has received.  It starts at 1 on cold-start and
@@ -28,9 +32,9 @@ from __future__ import annotations
 import math
 import os
 
-# Tunable via env for offline experiments and a future gated change; the 4h
-# default only changes if scripts/eval/experiments/ema_halflife.py wins on
-# the eval scorecard. Read once at import (uvicorn restarts pick up changes).
+# Tunable via env. The 4h literal is only the fallback default; production
+# sets EMA_HALF_LIFE_HOURS=2 on Railway (experiment E004 won on the eval
+# scorecard, 2026-07-22). Read once at import (uvicorn restarts pick up changes).
 _HALF_LIFE_HOURS: float = float(os.getenv("EMA_HALF_LIFE_HOURS", "4.0"))
 
 
@@ -48,7 +52,9 @@ def compute_ema(
     raw_t           : Current raw (unsmoothed) composite score.
     prev_smoothed   : Previous smoothed value, or None for cold-start.
     dt_hours        : Time elapsed since the previous scoring tick, in hours.
-    half_life_hours : EMA half-life in hours (default 4.0).
+    half_life_hours : EMA half-life in hours (defaults to _HALF_LIFE_HOURS,
+                      i.e. the EMA_HALF_LIFE_HOURS env value — 2.0 in prod,
+                      4.0 fallback).
 
     Returns
     -------

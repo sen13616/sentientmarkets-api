@@ -227,30 +227,30 @@ class TestMarketLookbackSince:
     def test_saturday_returns_friday_open(self):
         now = _utc(2026, 4, 25, 10, 0)  # Saturday 10:00 UTC
         since = market_lookback_since(now)
-        # Last close = Friday 21:00, last open = Friday 14:30
-        expected = _utc(2026, 4, 24, 14, 30)
+        # April = EDT: Friday close = 20:00 UTC (16:00 ET), open = 13:30 UTC (9:30 ET)
+        expected = _utc(2026, 4, 24, 13, 30)
         assert since == expected
 
     def test_sunday_returns_friday_open(self):
         now = _utc(2026, 4, 26, 18, 0)  # Sunday 18:00 UTC
         since = market_lookback_since(now)
-        expected = _utc(2026, 4, 24, 14, 30)
+        expected = _utc(2026, 4, 24, 13, 30)   # Friday 9:30 ET (EDT)
         assert since == expected
 
     def test_monday_preopen_returns_friday_open(self):
         now = _utc(2026, 4, 27, 8, 0)   # Monday 08:00 UTC (before open)
         since = market_lookback_since(now)
-        # Last close = Friday 21:00 (Monday 08:00 < Monday 21:00 → candidate = Sunday →
-        # walk back to Friday), last open = Friday 14:30
-        expected = _utc(2026, 4, 24, 14, 30)
+        # Monday 08:00 UTC is before Monday's open → walk back to Friday's session;
+        # last open = Friday 9:30 ET = 13:30 UTC (EDT)
+        expected = _utc(2026, 4, 24, 13, 30)
         assert since == expected
 
     def test_weeknight_after_close_returns_same_day_open(self):
         now = _utc(2026, 4, 28, 22, 0)  # Tuesday 22:00 UTC (after close)
         since = market_lookback_since(now)
-        # Last close = Tuesday 21:00 (22:00 >= 21:00 → candidate = Tuesday, weekday),
-        # last open = Tuesday 14:30
-        expected = _utc(2026, 4, 28, 14, 30)
+        # 22:00 UTC ≥ Tuesday close (20:00 UTC EDT) → same-day session;
+        # last open = Tuesday 9:30 ET = 13:30 UTC
+        expected = _utc(2026, 4, 28, 13, 30)
         assert since == expected
 
 

@@ -18,6 +18,13 @@ If ANY layer sub-index > 85 AND ANY layer sub-index < 30, cap the
 composite score at 75.  This prevents runaway optimism when one strong
 bearish signal contradicts an otherwise bullish picture.
 
+The cap is DELIBERATELY one-directional: it only restrains bullish
+composites (min with 75); a bearish-divergent composite is intentionally
+left with no symmetric floor. Rationale — an over-optimistic score that
+ignores a strong bearish outlier is the costlier error for a sentiment
+nowcast to make, so only that side is guarded. (Reviewed 2026-07-24: kept
+asymmetric by design, not an oversight.)
+
 Fewer than two available layers: spread is 0, flag is "aligned",
 no cap is applied.
 """
@@ -66,6 +73,8 @@ def compute_divergence(
         flag = "aligned"
 
     cap_applied = any(v > 85 for v in values) and any(v < 30 for v in values)
+    # One-directional by design (see module docstring): cap bullish composites
+    # only; no symmetric floor for bearish-divergent ones.
     effective   = min(composite, 75.0) if cap_applied else composite
 
     return (

@@ -390,6 +390,14 @@ def _score_bid_ask_spread_bps(bps: float) -> float:
     return max(0.0, min(100.0, 50.0 - 50.0 * math.tanh((bps - 10.0) / 30.0)))
 
 
+def _score_short_volume_ratio(ratio: float) -> float:
+    """FINRA short-volume ratio (short / total OTC volume). ~0.5 is neutral;
+    a higher short share is bearish (matches the negated z-scorer). Parametric
+    cold-start fallback used when <45 daily observations exist for the rolling
+    z-score. Half-scale at ±0.15 around the ~0.5 universe mean."""
+    return max(0.0, min(100.0, 50.0 - 50.0 * math.tanh((ratio - 0.5) / 0.15)))
+
+
 def _score_insider_shares(shares: float) -> float:
     """Net insider shares bought (positive) / sold (negative)."""
     return max(0.0, min(100.0, 50.0 + 50.0 * math.tanh(shares / 100_000.0)))
@@ -468,6 +476,7 @@ _SIMPLE_SCORERS: dict[str, object] = {
     "buy_pressure":         _score_buy_pressure,
     "sell_pressure":        _score_sell_pressure,
     "bid_ask_spread_bps":   _score_bid_ask_spread_bps,
+    "short_volume_ratio_otc": _score_short_volume_ratio,
     "insider_net_shares":   _score_insider_shares,
     "analyst_buy_pct":      _score_analyst_buy_pct,
     "vix":                  _score_vix,

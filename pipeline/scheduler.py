@@ -61,6 +61,7 @@ from scripts.db.queries.raw_signals import (
     purge_signals_before,
 )
 from scripts.db.queries.api_keys import delete_expired_demo_keys
+from scripts.db.queries.price_snapshots import estimate_row_count as estimate_price_snapshot_rows
 from scripts.db.queries.sentiment_history import compact_drivers_before, get_baseline_scores
 from scripts.db.queries.universe import get_active_tickers, get_ticker_sector_map
 from scripts.db.redis import get_redis
@@ -295,12 +296,6 @@ async def _publish_universe_stats(
         )
     except Exception as exc:
         _log.warning("_publish_universe_stats: Redis write failed: %s", exc)
-
-
-def _fmt_elapsed(seconds: float) -> str:
-    """Format elapsed seconds as 'Xm Ys'."""
-    mins, secs = divmod(int(seconds), 60)
-    return f"{mins}m {secs}s"
 
 
 # ---------------------------------------------------------------------------
@@ -836,13 +831,23 @@ async def retention_job() -> None:
     except Exception as exc:
         _log.warning("retention_job: driver compaction failed: %s", exc, exc_info=True)
 
+    # price_snapshots is intentionally never purged (write-only research data
+    # for the paper). Log its estimated size each run so the deliberate
+    # unbounded growth stays observable — nothing is deleted here.
+    ps_rows = 0
+    try:
+        ps_rows = await estimate_price_snapshot_rows()
+    except Exception as exc:
+        _log.debug("retention_job: price_snapshots size probe failed: %s", exc)
+
     await _record_run("retention")
 
     elapsed = time.monotonic() - t_start
     _log.info(
         "retention_job complete: ohlcv=%d (>%dd), derived=%d (>%dd), "
         "quotes=%d (>%dd), other_signals=%d (>%dd), articles=%d (>%dd), "
-        "article_text_stripped=%d (>%dd), drivers_compacted=%d (>%dd) in %.1fs",
+        "article_text_stripped=%d (>%dd), drivers_compacted=%d (>%dd); "
+        "price_snapshots≈%d rows (retained) in %.1fs",
         n_ohlcv, OHLCV_RETENTION_DAYS,
         n_derived, DERIVED_RETENTION_DAYS,
         n_quotes, QUOTE_RETENTION_DAYS,
@@ -850,6 +855,7 @@ async def retention_job() -> None:
         n_articles, ARTICLE_RETENTION_DAYS,
         n_text_stripped, ARTICLE_TEXT_COMPACT_DAYS,
         n_compacted, DRIVER_COMPACT_DAYS,
+        ps_rows,
         elapsed,
     )
 
@@ -882,9 +888,12 @@ scheduler = AsyncIOScheduler(timezone="UTC")
 
 scheduler.add_job(
     market_job,
-    trigger=CronTrigger(day_of_week="mon-fri", hour="14-20", minute="*/15"),
+    # hour 13-20 covers both DST regimes: the EDT session opens at 13:30 UTC
+    # (9:30 ET) and the EST session at 14:30 UTC. The EST close (21:00 UTC) is
+    # captured by the ongoing runs + the 21:15 EOD job.
+    trigger=CronTrigger(day_of_week="mon-fri", hour="13-20", minute="*/15"),
     id="market",
-    name="Market data (15 min, 14:30-21:00 UTC)",
+    name="Market data (15 min, DST-aware 13:30–21:00 UTC session)",
     max_instances=1,
     coalesce=True,
     misfire_grace_time=60,
@@ -932,9 +941,10 @@ scheduler.add_job(
 
 scheduler.add_job(
     macro_intraday_job,
-    trigger=CronTrigger(day_of_week="mon-fri", hour="14-20", minute=0),
+    # hour 13-20: cover the EDT session open (13:30 UTC) as well as EST.
+    trigger=CronTrigger(day_of_week="mon-fri", hour="13-20", minute=0),
     id="macro_intraday",
-    name="Macro intraday (VIX + ETFs, hourly weekdays 14:00–20:00 UTC)",
+    name="Macro intraday (VIX + ETFs, hourly weekdays 13:00–20:00 UTC)",
     max_instances=1,
     coalesce=True,
     misfire_grace_time=300,
@@ -965,10 +975,10 @@ scheduler.add_job(
     trigger=OrTrigger([
         # Base cadence: every 30 minutes around the clock (:00 and :30).
         CronTrigger(minute="0,30"),
-        # Market-hours fills (mon-fri 14:30-21:00 UTC): add :15 and :45 marks
-        # so the effective cadence is 15 min while markets are open.
-        CronTrigger(day_of_week="mon-fri", hour=14, minute=45),
-        CronTrigger(day_of_week="mon-fri", hour="15-20", minute="15,45"),
+        # Market-hours fills: add :15 and :45 marks weekdays 13:00–20:45 UTC so
+        # the effective cadence is 15 min throughout the session in BOTH DST
+        # regimes (EDT session 13:30–20:00, EST session 14:30–21:00 UTC).
+        CronTrigger(day_of_week="mon-fri", hour="13-20", minute="15,45"),
     ]),
     id="scoring_tick",
     name="Global scoring tick (15 min market hours, 30 min off-hours)",
