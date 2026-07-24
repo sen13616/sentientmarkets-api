@@ -151,6 +151,11 @@ async def test_retention_job_calls_purges_with_correct_cutoffs():
         patch(
             "pipeline.scheduler.compact_drivers_before", new_callable=AsyncMock, return_value=0
         ) as mock_compact,
+        patch(
+            "pipeline.scheduler.estimate_price_snapshot_rows",
+            new_callable=AsyncMock,
+            return_value=0,
+        ),
         patch("pipeline.scheduler._record_run", new_callable=AsyncMock),
         patch("pipeline.scheduler.datetime") as mock_dt,
     ):
@@ -235,6 +240,11 @@ async def test_retention_job_swallows_per_purge_failures():
             new_callable=AsyncMock,
             return_value=3,
         ) as mock_compact,
+        patch(
+            "pipeline.scheduler.estimate_price_snapshot_rows",
+            new_callable=AsyncMock,
+            return_value=0,
+        ),
         patch("pipeline.scheduler._record_run", new_callable=AsyncMock),
     ):
         from pipeline.scheduler import retention_job
