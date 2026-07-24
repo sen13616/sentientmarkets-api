@@ -115,8 +115,12 @@ class TestSentimentAuth:
         assert r.status_code == 401
 
     def test_invalid_key_returns_401(self, plain_client):
-        # Valid header format but key not in DB → get_key_tier returns None → 401
-        with patch("api.auth.get_key_tier", AsyncMock(return_value=None)):
+        # Valid header format but key not in DB → tier lookup returns None → 401.
+        # No Redis in this test, so auth takes the read-only fallback path;
+        # patch both lookups so it resolves to None regardless of path.
+        with patch("api.auth.get_key_tier", AsyncMock(return_value=None)), patch(
+            "api.auth.get_key_tier_readonly", AsyncMock(return_value=None)
+        ):
             r = plain_client.get(
                 "/v1/sentiment/AAPL",
                 headers={"Authorization": "Bearer sk-sm-invalid-key"},

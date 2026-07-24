@@ -16,8 +16,10 @@ runs at most once per key per TTL.  Consequences of the TTL:
       (same latency as revocation), and its sliding expiry only advances
       on cache misses — fine for a 7-day TTL.
 Unknown keys are cached too (as a miss marker), so repeated bad keys
-cannot hammer Postgres.  If Redis is unavailable, auth falls back to the
-direct DB lookup rather than failing.
+cannot hammer Postgres.  If Redis is unavailable, auth falls back to a
+read-only DB lookup (get_key_tier_readonly) rather than failing — no
+last_used_at write on the degraded path, so a Redis outage can't be turned
+into a per-request DB-write amplifier.
 """
 from __future__ import annotations
 
@@ -26,7 +28,7 @@ import hashlib
 from fastapi import HTTPException, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from scripts.db.queries.api_keys import get_key_tier
+from scripts.db.queries.api_keys import get_key_tier, get_key_tier_readonly
 from scripts.db.redis import get_redis
 
 _bearer = HTTPBearer(auto_error=False)
@@ -46,7 +48,9 @@ async def _lookup_tier(key_hash: str) -> str | None:
         client = get_redis()
         cached = await client.get(cache_key)
     except Exception:
-        return await get_key_tier(key_hash)
+        # Redis down: authenticate read-only so a flood of requests (incl.
+        # unthrottled /health) can't drive one last_used_at write per token.
+        return await get_key_tier_readonly(key_hash)
 
     if cached is not None:
         return None if cached == _TIER_CACHE_MISS else cached

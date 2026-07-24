@@ -32,6 +32,7 @@ from api.routes.demo_key import (
     EXACT_ORIGINS,
     SITE_ORIGINS,
     _client_ip,
+    _pattern_to_regex,
     origin_allowed,
 )
 from main import app
@@ -81,32 +82,28 @@ class TestOriginGate:
         assert origin_allowed("https://sentientmarkets.vercel.app")
         assert origin_allowed("https://sentientmarkets-ai.vercel.app")
 
-    def test_railway_wildcard_matches_any_subdomain(self):
-        assert origin_allowed("https://myapp.up.railway.app")
-        assert origin_allowed("https://frontend-production-1a2b.up.railway.app")
+    def test_no_wildcard_origins_by_default(self):
+        # *.up.railway.app was removed as a default (shared domain — see S2).
+        # With no wildcard patterns configured, no wildcard regex is built and
+        # no Railway subdomain is trusted out of the box.
+        assert CORS_ORIGIN_REGEX is None
+        assert not any("*" in o for o in SITE_ORIGINS)
+        assert not origin_allowed("https://myapp.up.railway.app")
 
-    def test_wildcard_matches_whole_labels_only(self):
-        # No subdomain / wrong suffix boundary / suffix-forgery must all fail.
-        assert not origin_allowed("https://up.railway.app")
-        assert not origin_allowed("https://evilup.railway.app")
-        assert not origin_allowed("https://x.up.railway.app.evil.com")
-        assert not origin_allowed("http://myapp.up.railway.app")  # scheme matters
-        assert not origin_allowed("https://evil.example.com")
-        assert not origin_allowed("")
+    def test_wildcard_pattern_mechanism_matches_whole_labels_only(self):
+        # The wildcard-expansion mechanism is still exercised (an operator may
+        # re-add an explicit wildcard via SITE_ORIGINS). `*` must only match
+        # whole DNS labels and the regex must be fully anchored against
+        # suffix-forgery and scheme confusion.
+        import re
 
-    def test_wildcard_origin_can_mint(self, client):
-        with patch(
-            "api.routes.demo_key.insert_demo_key",
-            AsyncMock(return_value=FUTURE),
-        ), patch(
-            "api.routes.demo_key.get_redis", return_value=_redis_mock()
-        ):
-            r = client.post(
-                "/v1/demo-key",
-                json={"existing_key": None},
-                headers={"Origin": "https://myapp.up.railway.app"},
-            )
-        assert r.status_code == 200
+        rx = re.compile(_pattern_to_regex("https://*.up.railway.app"))
+        assert rx.fullmatch("https://myapp.up.railway.app")
+        assert rx.fullmatch("https://frontend-production-1a2b.up.railway.app")
+        assert not rx.fullmatch("https://up.railway.app")
+        assert not rx.fullmatch("https://evilup.railway.app")
+        assert not rx.fullmatch("https://x.up.railway.app.evil.com")
+        assert not rx.fullmatch("http://myapp.up.railway.app")  # scheme matters
 
     def test_trailing_slash_origin_is_normalized(self, client):
         with patch(
@@ -165,8 +162,9 @@ class TestMint:
             return "free" if h == key_hash else None
 
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=plaintext)
+        # Redis down → auth uses the read-only DB lookup (S3).
         with patch("api.auth.get_redis", side_effect=Exception("no redis")), patch(
-            "api.auth.get_key_tier", AsyncMock(side_effect=db_lookup)
+            "api.auth.get_key_tier_readonly", AsyncMock(side_effect=db_lookup)
         ):
             assert await authenticate(creds) == "free"
 
@@ -328,9 +326,12 @@ class TestClientIp:
             client=SimpleNamespace(host=client_host) if client_host else None,
         )
 
-    def test_first_hop_of_xff(self):
+    def test_rightmost_hop_of_xff(self):
+        # S1: the real client IP is the LAST hop (appended by Railway's proxy).
+        # The leftmost entries are client-supplied and must not be trusted, or
+        # the per-IP mint cap becomes trivially bypassable.
         req = self._request({"x-forwarded-for": "203.0.113.7, 10.0.0.2"})
-        assert _client_ip(req) == "203.0.113.7"
+        assert _client_ip(req) == "10.0.0.2"
 
     def test_falls_back_to_peer_when_no_xff(self):
         assert _client_ip(self._request({})) == "10.0.0.1"
@@ -358,12 +359,12 @@ class TestWiring:
         assert kwargs["allow_origins"] == list(EXACT_ORIGINS)
         assert kwargs["allow_origin_regex"] == CORS_ORIGIN_REGEX
 
-    def test_cors_regex_matches_what_the_mint_gate_matches(self):
-        import re
-
-        rx = re.compile(CORS_ORIGIN_REGEX)
-        assert rx.fullmatch("https://myapp.up.railway.app")
-        assert not rx.fullmatch("https://x.up.railway.app.evil.com")
+    def test_cors_regex_single_sourced_with_mint_gate(self):
+        # CORS's allow_origin_regex is the exact same object the mint gate
+        # compiles, so the two can never drift. With no wildcard defaults it
+        # is None (no wildcard origins trusted).
+        assert self._cors_kwargs()["allow_origin_regex"] == CORS_ORIGIN_REGEX
+        assert CORS_ORIGIN_REGEX is None
 
     def test_default_origins_match_historical_list(self):
         # Guard: unset SITE_ORIGINS env must degrade to the pre-existing
@@ -371,3 +372,5 @@ class TestWiring:
         assert "https://sentientmarkets.vercel.app" in SITE_ORIGINS
         assert "https://sentientmarkets.ai" in SITE_ORIGINS
         assert "http://localhost:3000" in SITE_ORIGINS
+        # S2: the shared-domain Railway wildcard is not a default.
+        assert "https://*.up.railway.app" not in SITE_ORIGINS

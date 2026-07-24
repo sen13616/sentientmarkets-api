@@ -66,26 +66,32 @@ class TestLookupTier:
             f"auth:tier:{KEY_HASH}", _TIER_CACHE_MISS, ex=_TIER_CACHE_TTL
         )
 
-    async def test_redis_unavailable_falls_back_to_db(self):
+    async def test_redis_unavailable_falls_back_to_readonly_db(self):
+        # S3: the Redis-down path uses the READ-ONLY lookup (no last_used_at
+        # write), and must NOT call the writing get_key_tier.
         with (
             patch(
                 "api.auth.get_redis",
                 side_effect=RuntimeError("Redis client not initialised"),
             ),
-            patch("api.auth.get_key_tier", AsyncMock(return_value="pro")) as db,
+            patch("api.auth.get_key_tier_readonly", AsyncMock(return_value="pro")) as db_ro,
+            patch("api.auth.get_key_tier", AsyncMock()) as db_write,
         ):
             assert await _lookup_tier(KEY_HASH) == "pro"
-        db.assert_awaited_once_with(KEY_HASH)
+        db_ro.assert_awaited_once_with(KEY_HASH)
+        db_write.assert_not_awaited()
 
-    async def test_redis_get_error_falls_back_to_db(self):
+    async def test_redis_get_error_falls_back_to_readonly_db(self):
         redis = _fake_redis(None)
         redis.get = AsyncMock(side_effect=ConnectionError("redis down"))
         with (
             patch("api.auth.get_redis", return_value=redis),
-            patch("api.auth.get_key_tier", AsyncMock(return_value="free")) as db,
+            patch("api.auth.get_key_tier_readonly", AsyncMock(return_value="free")) as db_ro,
+            patch("api.auth.get_key_tier", AsyncMock()) as db_write,
         ):
             assert await _lookup_tier(KEY_HASH) == "free"
-        db.assert_awaited_once_with(KEY_HASH)
+        db_ro.assert_awaited_once_with(KEY_HASH)
+        db_write.assert_not_awaited()
 
     async def test_redis_set_error_does_not_break_lookup(self):
         redis = _fake_redis(None)

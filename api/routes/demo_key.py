@@ -50,7 +50,11 @@ _DEFAULT_SITE_ORIGINS = (
     "https://themarketmood-ai.vercel.app,"
     "https://sentientmarkets.ai,"
     "https://www.sentientmarkets.ai,"
-    "https://*.up.railway.app,"
+    # NB: *.up.railway.app is deliberately NOT a default. It is a shared
+    # domain — anyone can deploy under it — so trusting it here would hand a
+    # credentialed-CORS grant and demo-mint access to every Railway-hosted
+    # site. If a specific Railway origin is ever genuinely needed, add it
+    # explicitly via the SITE_ORIGINS env var (which fully replaces this list).
     "http://localhost:3000,"
     "http://localhost:8000"
 )
@@ -98,12 +102,17 @@ class DemoKeyRequest(BaseModel):
 
 
 def _client_ip(request: Request) -> str:
-    """First hop of X-Forwarded-For (Railway sits behind a proxy),
-    falling back to the direct peer address."""
+    """Real client IP for the per-IP mint cap.
+
+    Railway sits in front of the app as a single trusted proxy and appends
+    the true peer address as the LAST hop of X-Forwarded-For. We therefore
+    take the rightmost entry, not the leftmost: the leftmost hops are
+    client-supplied and trivially spoofable, which would let a caller rotate
+    the mint-cap key at will. Falls back to the direct peer address."""
     xff = request.headers.get("x-forwarded-for", "")
-    first = xff.split(",")[0].strip()
-    if first:
-        return first
+    last = xff.split(",")[-1].strip() if xff else ""
+    if last:
+        return last
     return request.client.host if request.client else "unknown"
 
 

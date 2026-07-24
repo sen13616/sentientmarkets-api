@@ -49,6 +49,34 @@ async def get_key_tier(key_hash: str) -> str | None:
     return row["tier"] if row else None
 
 
+async def get_key_tier_readonly(key_hash: str) -> str | None:
+    """
+    SELECT-only tier lookup — same validity rule as get_key_tier() but with
+    no last_used_at write and no demo-key expiry slide.
+
+    Used only on the degraded (Redis-unavailable) auth path: when the tier
+    cache is down, every request would otherwise fall back to get_key_tier()
+    and drive one DB UPDATE per request. An unauthenticated, unthrottled
+    /health flood of arbitrary tokens could turn that into a DB-write
+    amplifier. This read-only variant keeps authentication working during a
+    Redis outage without the write cost (last_used_at telemetry simply
+    doesn't advance while Redis is down).
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT tier
+              FROM api_keys
+             WHERE key_hash   = $1
+               AND is_active  = TRUE
+               AND (expires_at IS NULL OR expires_at > now())
+            """,
+            key_hash,
+        )
+    return row["tier"] if row else None
+
+
 async def extend_demo_key(key_hash: str) -> datetime | None:
     """
     Refresh the sliding expiry of a still-valid demo key.
