@@ -325,9 +325,15 @@ def quintile_ls(
     net = daily - cost_rt * pd.Series(turnovers, index=dates)
 
     def _stats(series: pd.Series) -> tuple[float, float, float, float]:
-        t = series.mean() / (series.std(ddof=1) / np.sqrt(len(series)))
-        ann = series.mean() / h * 252
-        sharpe = (series.mean() / h) / (series.std(ddof=1) / np.sqrt(h)) * np.sqrt(252)
+        mean = series.mean()
+        sd   = series.std(ddof=1)
+        se   = sd / np.sqrt(len(series))
+        # A zero-variance (constant) series has an undefined t-stat / Sharpe;
+        # return 0.0 instead of dividing by zero. Only degenerate/synthetic
+        # inputs hit this — real multi-day L/S series always have variance.
+        t      = mean / se if se else 0.0
+        ann    = mean / h * 252
+        sharpe = (mean / h) / (sd / np.sqrt(h)) * np.sqrt(252) if sd else 0.0
         return t, ann, sharpe, (series > 0).mean()
 
     t, ann, sharpe, win = _stats(daily)
