@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from scripts.db.connection import get_pool
+from scripts.db.queries.as_of import cutoff
 
 
 async def get_signals_since(
@@ -16,7 +17,8 @@ async def get_signals_since(
     signal_types: list[str] | None = None,
 ) -> list[dict]:
     """
-    Return raw_signals rows for `ticker` with timestamp >= `since`.
+    Return raw_signals rows for `ticker` with timestamp >= `since`
+    (and <= the as-of cutoff when an offline replay has set one).
 
     Parameters
     ----------
@@ -28,34 +30,28 @@ async def get_signals_since(
     -------
     list of dicts with keys: signal_type, value, source, timestamp.
     """
+    params: list = [ticker, since]
+    filters = ""
+    if signal_types:
+        params.append(signal_types)
+        filters += f" AND signal_type = ANY(${len(params)}::text[])"
+    as_of = cutoff()
+    if as_of is not None:
+        params.append(as_of)
+        filters += f" AND timestamp <= ${len(params)}"
+
     pool = await get_pool()
     async with pool.acquire() as conn:
-        if signal_types:
-            rows = await conn.fetch(
-                """
-                SELECT signal_type, value, source, timestamp
-                FROM raw_signals
-                WHERE ticker      = $1
-                  AND timestamp  >= $2
-                  AND signal_type = ANY($3::text[])
-                ORDER BY timestamp DESC
-                """,
-                ticker,
-                since,
-                signal_types,
-            )
-        else:
-            rows = await conn.fetch(
-                """
-                SELECT signal_type, value, source, timestamp
-                FROM raw_signals
-                WHERE ticker     = $1
-                  AND timestamp >= $2
-                ORDER BY timestamp DESC
-                """,
-                ticker,
-                since,
-            )
+        rows = await conn.fetch(
+            f"""
+            SELECT signal_type, value, source, timestamp
+            FROM raw_signals
+            WHERE ticker     = $1
+              AND timestamp >= $2{filters}
+            ORDER BY timestamp DESC
+            """,
+            *params,
+        )
     return [dict(r) for r in rows]
 
 
@@ -159,43 +155,53 @@ async def get_signal_history(
     limit: int = 20,
 ) -> list[float]:
     """
-    Return the most recent `limit` values for a given signal_type, oldest first.
+    Return the most recent `limit` values for a given signal_type, oldest first
+    (most recent at or before the as-of cutoff when a replay has set one).
 
     Used for rolling z-score normalizers (e.g. short_volume_ratio_otc) that
     need a lookback window of historical daily values.
     """
+    as_of = cutoff()
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            """
+            f"""
             SELECT value
             FROM raw_signals
             WHERE ticker      = $1
               AND signal_type = $2
+              {"AND timestamp <= $4" if as_of else ""}
             ORDER BY timestamp DESC
             LIMIT $3
             """,
             ticker,
             signal_type,
             limit,
+            *([as_of] if as_of else []),
         )
     return [float(r["value"]) for r in reversed(rows)]
 
 
 async def get_latest_close(ticker: str) -> float | None:
-    """Return the most recent close price (yf_close or ohlcv_close), or None."""
+    """Return the most recent close price (yf_close or ohlcv_close), or None.
+
+    Bounded by the as-of cutoff when an offline replay has set one.
+    """
+    as_of = cutoff()
     pool = await get_pool()
     async with pool.acquire() as conn:
         val = await conn.fetchval(
-            """
+            f"""
             SELECT value
             FROM raw_signals
             WHERE ticker      = $1
               AND signal_type IN ('yf_close', 'ohlcv_close')
+              {"AND timestamp <= $2" if as_of else ""}
             ORDER BY timestamp DESC
             LIMIT 1
             """,
             ticker,
+            *([as_of] if as_of else []),
         )
     return float(val) if val is not None else None
 

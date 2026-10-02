@@ -85,13 +85,24 @@ async def compute_narrative_surprise(ticker: str, now: datetime) -> float | None
     baseline_start = current_start - timedelta(days=BASELINE_DAYS)
 
     current_rows = await get_article_scores_between(ticker, current_start, now)
-    current = _weighted_mean(current_rows)
-    if current is None:
+    if _weighted_mean(current_rows) is None:
         return None
 
     baseline_rows = await get_article_scores_between(
         ticker, baseline_start, current_start
     )
+    return surprise_from_rows(current_rows, baseline_rows)
+
+
+def surprise_from_rows(current_rows: list[dict], baseline_rows: list[dict]) -> float | None:
+    """
+    Pure core of compute_narrative_surprise: current-window rows vs the
+    trailing-baseline rows (each as get_article_scores_between returns them).
+    Used directly by offline rebuilds that hold the articles in memory.
+    """
+    current = _weighted_mean(current_rows)
+    if current is None:
+        return None
     if len(baseline_rows) < MIN_BASELINE_ARTICLES:
         return None
 

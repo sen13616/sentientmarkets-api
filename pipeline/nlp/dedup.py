@@ -78,6 +78,44 @@ def _union(parent: list[int], x: int, y: int) -> None:
 # Public API
 # ---------------------------------------------------------------------------
 
+def cluster_members(
+    articles: list[dict],
+    embeddings,
+    window_hours: float = 4.0,
+) -> list[list[int]]:
+    """
+    Group article indices into multi-member event clusters.
+
+    Two articles join when published within ``window_hours`` of each other
+    AND their unit-normalised title embeddings have cosine similarity above
+    SIMILARITY_THRESHOLD (transitively, via union-find). Pure — no I/O — so
+    the news backfill can cluster in memory before inserting.
+
+    Returns lists of indices into ``articles``; singletons are omitted.
+    """
+    import numpy as np  # noqa: PLC0415 — deferred to avoid torch at startup
+
+    n = len(articles)
+    parent = list(range(n))
+    window_sec = window_hours * 3600
+
+    for i in range(n):
+        pub_i: datetime = articles[i]["published_at"]
+        for j in range(i + 1, n):
+            pub_j: datetime = articles[j]["published_at"]
+            dt = abs((pub_i - pub_j).total_seconds())
+            if dt > window_sec:
+                continue
+            sim = float(np.dot(embeddings[i], embeddings[j]))
+            if sim > SIMILARITY_THRESHOLD:
+                _union(parent, i, j)
+
+    roots: dict[int, list[int]] = {}
+    for i in range(n):
+        roots.setdefault(_find(parent, i), []).append(i)
+    return [members for members in roots.values() if len(members) >= 2]
+
+
 async def cluster_articles(
     ticker: str,
     window_hours: float = 4.0,
@@ -105,7 +143,6 @@ async def cluster_articles(
         return 0
 
     # --- Encode titles --------------------------------------------------
-    import numpy as np  # noqa: PLC0415 — deferred to avoid torch at startup
     titles = [a["title"] or "" for a in articles]
     # Model load + encode are sync CPU torch work; run off the event loop so
     # the in-process FastAPI keeps serving during the narrative job.
@@ -118,35 +155,14 @@ async def cluster_articles(
         )
     )  # shape (n, dim)
 
-    # --- Build time-aware similarity graph via union-find ----------------
-    parent = list(range(n))
-    window_sec = window_hours * 3600
-
-    for i in range(n):
-        pub_i: datetime = articles[i]["published_at"]
-        for j in range(i + 1, n):
-            pub_j: datetime = articles[j]["published_at"]
-            dt = abs((pub_i - pub_j).total_seconds())
-            if dt > window_sec:
-                continue
-            sim = float(np.dot(embeddings[i], embeddings[j]))
-            if sim > SIMILARITY_THRESHOLD:
-                _union(parent, i, j)
-
-    # --- Collect multi-member clusters -----------------------------------
-    roots: dict[int, list[int]] = {}
-    for i in range(n):
-        r = _find(parent, i)
-        roots.setdefault(r, []).append(i)
-
-    multi_clusters = [(root, members) for root, members in roots.items() if len(members) >= 2]
+    multi_clusters = cluster_members(articles, embeddings, window_hours)
 
     if not multi_clusters:
         _log.debug("cluster_articles(%s): no clusters found among %d articles", ticker, n)
         return 0
 
     # --- Write cluster IDs to DB -----------------------------------------
-    for _root, members in multi_clusters:
+    for members in multi_clusters:
         cluster_id = str(uuid.uuid4())
         art_ids = [articles[i]["id"] for i in members]
         await set_cluster_ids(art_ids, cluster_id)

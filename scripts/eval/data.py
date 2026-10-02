@@ -26,20 +26,29 @@ def _to_frame(rows) -> pd.DataFrame:
 
 
 async def load_sentiment_panel(
-    start: datetime, end: datetime, granularity: str = "daily"
+    start: datetime,
+    end: datetime,
+    granularity: str = "daily",
+    include_replay: bool = False,
 ) -> pd.DataFrame:
     """Sentiment rows in [start, end).
+
+    Rows written by an offline replay (``replay_run IS NOT NULL``, migration
+    014) are excluded unless ``include_replay`` — the harness scores what was
+    actually served.
 
     granularity="daily" collapses to the last tick per (ticker, ET calendar
     day) in SQL — the input the daily analysis wants and ~50x less transfer.
     granularity="raw" returns every scoring tick (intraday analysis).
     """
+    replay_filter = "" if include_replay else "AND replay_run IS NULL"
     if granularity == "daily":
         query = f"""
             SELECT DISTINCT ON (ticker, ((timestamp AT TIME ZONE 'America/New_York')::date))
                    {_SENTIMENT_COLS}
               FROM sentiment_history
              WHERE timestamp >= $1 AND timestamp < $2
+               {replay_filter}
              ORDER BY ticker,
                       ((timestamp AT TIME ZONE 'America/New_York')::date),
                       timestamp DESC
@@ -49,6 +58,7 @@ async def load_sentiment_panel(
             SELECT {_SENTIMENT_COLS}
               FROM sentiment_history
              WHERE timestamp >= $1 AND timestamp < $2
+               {replay_filter}
              ORDER BY ticker, timestamp
         """
     else:

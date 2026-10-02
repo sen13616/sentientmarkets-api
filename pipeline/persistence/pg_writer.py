@@ -85,19 +85,17 @@ def _as_datetime(value: str | datetime | None) -> datetime | None:
     return dt
 
 
-async def persist_scored_state(state: dict) -> None:
+def history_row_from_state(state: dict) -> tuple[dict, object, object]:
     """
-    Write one scored state to sentiment_history and price_snapshots atomically.
+    Map a scored state (flat or nested layout) to ``sentiment_history.insert_row``
+    keyword arguments.
 
-    Accepts both flat and nested key layouts.  See module docstring for the
-    full alias table.
+    Returns (row_kwargs, close, volume_raw); the latter two feed price_snapshots.
 
     Raises
     ------
     ValueError
         If neither composite_score nor score is present.
-    RuntimeError
-        If the DB pool has not been initialised.
     """
     ticker    = state["ticker"]
     timestamp = _as_datetime(state["timestamp"])
@@ -160,32 +158,52 @@ async def persist_scored_state(state: dict) -> None:
     close       = _first_not_none(state.get("close_price"), price_info.get("close"))
     volume_raw  = _first_not_none(state.get("volume"),      price_info.get("volume"))
 
+    row = dict(
+        ticker                   = ticker,
+        composite_score          = composite,
+        market_index             = market_index,
+        narrative_index          = narrative_index,
+        influencer_index         = influencer_index,
+        macro_index              = macro_index,
+        confidence_score         = conf_score,
+        confidence_flags         = conf_flags,
+        top_drivers              = top_drivers,
+        divergence               = divergence,
+        market_as_of             = market_as_of,
+        narrative_as_of          = narrative_as_of,
+        influencer_as_of         = influencer_as_of,
+        macro_as_of              = macro_as_of,
+        timestamp                = timestamp,
+        composite_score_smoothed = composite_smoothed,
+        ema_obs_count            = ema_obs_count,
+        composite_score_exo      = composite_exo,
+        narrative_surprise       = narrative_surprise,
+        research_features        = research_features,
+    )
+    return row, close, volume_raw
+
+
+async def persist_scored_state(state: dict) -> None:
+    """
+    Write one scored state to sentiment_history and price_snapshots atomically.
+
+    Accepts both flat and nested key layouts.  See module docstring for the
+    full alias table.
+
+    Raises
+    ------
+    ValueError
+        If neither composite_score nor score is present.
+    RuntimeError
+        If the DB pool has not been initialised.
+    """
+    row, close, volume_raw = history_row_from_state(state)
+    timestamp = row["timestamp"]
+
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
-            await sh_queries.insert_row(
-                conn,
-                ticker                   = ticker,
-                composite_score          = composite,
-                market_index             = market_index,
-                narrative_index          = narrative_index,
-                influencer_index         = influencer_index,
-                macro_index              = macro_index,
-                confidence_score         = conf_score,
-                confidence_flags         = conf_flags,
-                top_drivers              = top_drivers,
-                divergence               = divergence,
-                market_as_of             = market_as_of,
-                narrative_as_of          = narrative_as_of,
-                influencer_as_of         = influencer_as_of,
-                macro_as_of              = macro_as_of,
-                timestamp                = timestamp,
-                composite_score_smoothed = composite_smoothed,
-                ema_obs_count            = ema_obs_count,
-                composite_score_exo      = composite_exo,
-                narrative_surprise       = narrative_surprise,
-                research_features        = research_features,
-            )
+            await sh_queries.insert_row(conn, **row)
 
             # Off-hours ticks would re-snapshot an unchanged close (~98% of
             # off-hours rows were exact repeats); the last in-hours tick at
@@ -193,8 +211,20 @@ async def persist_scored_state(state: dict) -> None:
             if close is not None and is_market_hours(timestamp):
                 await ps_queries.insert_row(
                     conn,
-                    ticker    = ticker,
+                    ticker    = row["ticker"],
                     close     = float(close),
                     volume    = int(volume_raw) if volume_raw is not None else None,
                     timestamp = timestamp,
                 )
+
+
+async def persist_replay_row(state: dict, replay_run: str) -> None:
+    """
+    Write one offline-replayed state to sentiment_history only, tagged with
+    ``replay_run`` (migration 014). Never writes price_snapshots — replayed
+    rows must not fabricate prices observed "at scoring time".
+    """
+    row, _close, _volume = history_row_from_state(state)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await sh_queries.insert_row(conn, **row, replay_run=replay_run)

@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from scripts.db.connection import get_pool
+from scripts.db.queries.as_of import cutoff
 
 
 async def hash_exists(ticker: str, content_hash: str) -> bool:
@@ -116,10 +117,11 @@ async def get_articles_since(
     list of dicts with keys: published_at, finbert_score, relevance_score,
     source, finbert_pos, finbert_neg, finbert_neu.
     """
+    as_of = cutoff()
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            """
+            f"""
             SELECT published_at, finbert_score, relevance_score, source,
                    finbert_pos, finbert_neg, finbert_neu
             FROM (
@@ -129,6 +131,7 @@ async def get_articles_since(
                 FROM raw_articles
                 WHERE ticker            = $1
                   AND published_at     >= $2
+                  {"AND published_at <= $3" if as_of else ""}
                   AND finbert_score IS NOT NULL
                 ORDER BY COALESCE(event_cluster_id, id::text),
                          relevance_score DESC NULLS LAST,
@@ -138,6 +141,7 @@ async def get_articles_since(
             """,
             ticker,
             since,
+            *([as_of] if as_of else []),
         )
     return [dict(r) for r in rows]
 
@@ -353,5 +357,138 @@ async def get_article_scores_between(
             ticker,
             since,
             until,
+        )
+    return [dict(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# News backfill (scripts/backfill/news_backfill.py)
+# ---------------------------------------------------------------------------
+
+async def existing_articles(ticker: str, hashes: list[str]) -> dict[str, dict]:
+    """
+    Stored rows for ``ticker`` among ``hashes`` (one query), keyed by
+    content_hash → {id, scored, clustered}. Lets the backfill repair rows that
+    were stored but never FinBERT-scored (their text may already be blanked).
+    """
+    if not hashes:
+        return {}
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT content_hash, id,
+                   finbert_score IS NOT NULL    AS scored,
+                   event_cluster_id IS NOT NULL AS clustered
+            FROM raw_articles
+            WHERE ticker = $1
+              AND content_hash = ANY($2::text[])
+            """,
+            ticker,
+            hashes,
+        )
+    return {r["content_hash"]: {"id": r["id"], "scored": r["scored"],
+                                "clustered": r["clustered"]} for r in rows}
+
+
+async def get_unclustered_articles_between(
+    ticker: str,
+    since: datetime,
+    until: datetime,
+) -> list[dict]:
+    """
+    Stored, still-unclustered articles for ``ticker`` published in
+    [since, until) whose title text is intact (retention blanks titles of
+    rows older than 30 days). Clustered together with backfilled articles.
+
+    Returns dicts with keys: id, title, published_at.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT id, title, published_at
+            FROM raw_articles
+            WHERE ticker           = $1
+              AND published_at    >= $2
+              AND published_at    <  $3
+              AND event_cluster_id IS NULL
+              AND title           <> ''
+            ORDER BY published_at ASC
+            """,
+            ticker,
+            since,
+            until,
+        )
+    return [dict(r) for r in rows]
+
+
+async def insert_scored_articles(rows: list[dict]) -> None:
+    """
+    Bulk-insert fully processed articles — FinBERT columns, language and
+    event_cluster_id already populated — so nothing depends on the live job's
+    48h FinBERT/clustering windows or on retention not having blanked the
+    text yet. Duplicates are ignored via the (ticker, content_hash) index.
+    """
+    if not rows:
+        return
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.executemany(
+            """
+            INSERT INTO raw_articles
+                (ticker, title, summary, source, source_url, published_at,
+                 provider_sentiment, relevance_score, content_hash, language,
+                 event_cluster_id,
+                 finbert_score, finbert_pos, finbert_neg, finbert_neu)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+                    $11, $12, $13, $14, $15)
+            ON CONFLICT (ticker, content_hash) DO NOTHING
+            """,
+            [
+                (
+                    r["ticker"], r["title"], r["summary"], r["source"],
+                    r["source_url"], r["published_at"], r["provider_sentiment"],
+                    r["relevance_score"], r["content_hash"], r.get("language"),
+                    r.get("event_cluster_id"),
+                    r.get("finbert_score"), r.get("finbert_pos"),
+                    r.get("finbert_neg"), r.get("finbert_neu"),
+                )
+                for r in rows
+            ],
+        )
+
+
+async def get_unscored_articles_between(
+    since: datetime,
+    until: datetime,
+    language: str = "en",
+    limit: int = 2000,
+) -> list[dict]:
+    """
+    Unscored ``language`` articles published in [since, until) with intact
+    text, oldest first. The live job only scores rows <48h old (500/run), so
+    a backlog older than that would otherwise never get a FinBERT score.
+
+    Returns dicts with keys: id, title, summary.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT id, title, summary
+            FROM raw_articles
+            WHERE published_at >= $1
+              AND published_at <  $2
+              AND language      = $3
+              AND finbert_score IS NULL
+              AND title        <> ''
+            ORDER BY published_at ASC
+            LIMIT $4
+            """,
+            since,
+            until,
+            language,
+            limit,
         )
     return [dict(r) for r in rows]

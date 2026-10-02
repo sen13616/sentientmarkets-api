@@ -19,11 +19,13 @@ The model is loaded lazily on first call to avoid torch import at startup
 from __future__ import annotations
 
 import logging
+import os
 
 _log = logging.getLogger(__name__)
 
 _model = None
 _tokenizer = None
+_device: str | None = None  # None = CPU (inputs stay where the tokenizer put them)
 
 _MODEL_NAME = "ProsusAI/finbert"
 
@@ -35,7 +37,7 @@ _NEU_IDX = 2
 
 def _get_model():
     """Load the FinBERT model and tokenizer on first use (~440 MB)."""
-    global _model, _tokenizer
+    global _model, _tokenizer, _device
     if _model is None:
         import torch  # noqa: PLC0415
         from transformers import AutoModelForSequenceClassification, AutoTokenizer  # noqa: PLC0415
@@ -44,8 +46,18 @@ def _get_model():
         _tokenizer = AutoTokenizer.from_pretrained(_MODEL_NAME)
         _model = AutoModelForSequenceClassification.from_pretrained(_MODEL_NAME)
         _model.eval()
-        if torch.cuda.is_available():
+        # FINBERT_DEVICE (e.g. "mps" on Apple silicon) is an explicit opt-in for
+        # offline runs like scripts/backfill/news_backfill.py — ~7x faster than
+        # one CPU thread, same probabilities to ~1e-7. Unset → unchanged
+        # behaviour (CUDA if present, else CPU).
+        device = os.environ.get("FINBERT_DEVICE")
+        if device:
+            _model = _model.to(device)
+            _device = device
+            _log.info("FinBERT loaded on %s (FINBERT_DEVICE)", device)
+        elif torch.cuda.is_available():
             _model = _model.cuda()
+            _device = "cuda"
             _log.info("FinBERT loaded on CUDA")
         else:
             _log.info("FinBERT loaded on CPU")
@@ -109,7 +121,6 @@ def score_batch(texts: list[str], batch_size: int = 32) -> list[dict]:
     import torch  # noqa: PLC0415
 
     model, tokenizer = _get_model()
-    on_cuda = next(model.parameters()).is_cuda
 
     results: list[dict] = []
     for start in range(0, len(texts), batch_size):
@@ -121,8 +132,8 @@ def score_batch(texts: list[str], batch_size: int = 32) -> list[dict]:
             max_length=512,
             padding=True,
         )
-        if on_cuda:
-            inputs = {k: v.cuda() for k, v in inputs.items()}
+        if _device is not None:
+            inputs = {k: v.to(_device) for k, v in inputs.items()}
 
         with torch.inference_mode():
             logits = model(**inputs).logits

@@ -16,6 +16,7 @@ from datetime import datetime
 import asyncpg
 
 from scripts.db.connection import get_pool
+from scripts.db.queries.as_of import cutoff
 
 
 async def insert_row(
@@ -41,8 +42,13 @@ async def insert_row(
     composite_score_exo: float | None = None,
     narrative_surprise: float | None = None,
     research_features: dict | None = None,
+    replay_run: str | None = None,
 ) -> None:
-    """Insert one scored row into sentiment_history."""
+    """Insert one scored row into sentiment_history.
+
+    ``replay_run`` tags rows written by an offline replay (migration 014);
+    live scoring ticks leave it NULL.
+    """
     await conn.execute(
         """
         INSERT INTO sentiment_history (
@@ -65,10 +71,11 @@ async def insert_row(
             ema_obs_count,
             composite_score_exo,
             narrative_surprise,
-            research_features
+            research_features,
+            replay_run
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-            $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
+            $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21
         )
         """,
         ticker,
@@ -91,6 +98,7 @@ async def insert_row(
         composite_score_exo,
         narrative_surprise,
         json.dumps(research_features) if research_features is not None else None,
+        replay_run,
     )
 
 
@@ -219,8 +227,10 @@ async def get_baseline_scores(
     comparing across the gap. Falls back to the raw composite for pre-EMA
     rows, mirroring the API's display-score convention.
 
-    One query for the whole universe; called once per scoring tick.
+    One query for the whole universe; called once per scoring tick. Measured
+    from the as-of cutoff instead of NOW() when an offline replay has set one.
     """
+    as_of = cutoff()
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
@@ -229,12 +239,13 @@ async def get_baseline_scores(
                    ticker,
                    COALESCE(composite_score_smoothed, composite_score) AS baseline
               FROM sentiment_history
-             WHERE timestamp <= NOW() - ($1 || ' hours')::interval
-               AND timestamp >= NOW() - ($2 || ' hours')::interval
+             WHERE timestamp <= COALESCE($3, NOW()) - ($1 || ' hours')::interval
+               AND timestamp >= COALESCE($3, NOW()) - ($2 || ' hours')::interval
              ORDER BY ticker, timestamp DESC
             """,
             str(min_age_hours),
             str(max_age_hours),
+            as_of,
         )
     return {r["ticker"]: float(r["baseline"]) for r in rows if r["baseline"] is not None}
 

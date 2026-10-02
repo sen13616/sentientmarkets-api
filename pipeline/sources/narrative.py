@@ -23,7 +23,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import httpx
 from dotenv import load_dotenv
@@ -77,23 +77,46 @@ def _parse_av_time(time_str: str) -> datetime | None:
         return None
 
 
-async def _fetch_av_news(ticker: str, client: httpx.AsyncClient) -> list[dict]:
+class AVLimitError(RuntimeError):
+    """AV answered with a ``Note``/``Information`` body instead of a feed
+    (rate limit, or an invalid/unentitled key). Carries the provider message."""
+
+
+async def fetch_av_news_window(
+    ticker: str,
+    client: httpx.AsyncClient,
+    *,
+    time_from: datetime | None = None,
+    time_to: datetime | None = None,
+    limit: int = 50,
+    delay: float = AV_DELAY,
+) -> list[dict] | None:
     """
-    AV NEWS_SENTIMENT for ticker.
-    Returns list of normalized article dicts.
+    AV NEWS_SENTIMENT for ticker, optionally bounded to [time_from, time_to].
+    Returns normalized article dicts; None when the request itself failed
+    (network / exhausted 429 retries).
+
+    Raises AVLimitError when AV returns a Note/Information body — the live
+    wrapper logs and swallows it; the backfill retries or aborts on it.
     """
+    params = {
+        "function": "NEWS_SENTIMENT",
+        "tickers":  ticker,
+        "limit":    limit,
+        "apikey":   _AV_KEY,
+    }
+    if time_from is not None:
+        params["time_from"] = time_from.strftime("%Y%m%dT%H%M")
+    if time_to is not None:
+        params["time_to"] = time_to.strftime("%Y%m%dT%H%M")
+
     resp = await guarded_get(
         client, _AV_BASE,
-        params={
-            "function": "NEWS_SENTIMENT",
-            "tickers":  ticker,
-            "limit":    50,
-            "apikey":   _AV_KEY,
-        },
-        sem=AV_SEM, delay=AV_DELAY, label=f"AV NEWS_SENTIMENT {ticker}",
+        params=params,
+        sem=AV_SEM, delay=delay, label=f"AV NEWS_SENTIMENT {ticker}",
     )
     if resp is None:
-        return []
+        return None
 
     try:
         body = resp.json()
@@ -102,7 +125,7 @@ async def _fetch_av_news(ticker: str, client: httpx.AsyncClient) -> list[dict]:
         return []
 
     if "Note" in body or "Information" in body:
-        return []
+        raise AVLimitError(str(body.get("Note") or body.get("Information")))
 
     articles = []
     for item in body.get("feed", []):
@@ -141,6 +164,17 @@ async def _fetch_av_news(ticker: str, client: httpx.AsyncClient) -> list[dict]:
     return articles
 
 
+async def _fetch_av_news(ticker: str, client: httpx.AsyncClient) -> list[dict]:
+    """Live fetch: latest 50 AV articles for ticker. Never raises."""
+    try:
+        return await fetch_av_news_window(ticker, client) or []
+    except AVLimitError as exc:
+        # Previously a silent [] — an invalid key or exhausted quota looked
+        # exactly like "no news" (2026-08 outage). Make it visible.
+        _log.warning("AV NEWS_SENTIMENT %s: no feed (%s)", ticker, exc)
+        return []
+
+
 # ---------------------------------------------------------------------------
 # Finnhub company-news (fallback)
 # ---------------------------------------------------------------------------
@@ -152,19 +186,34 @@ async def _fetch_finnhub_news(ticker: str, client: httpx.AsyncClient) -> list[di
     """
     today      = datetime.now(timezone.utc).date()
     from_date  = (datetime.now(timezone.utc) - timedelta(days=_ARTICLE_LOOKBACK_DAYS)).date()
+    return await fetch_finnhub_news_window(ticker, client, from_date, today) or []
 
+
+async def fetch_finnhub_news_window(
+    ticker: str,
+    client: httpx.AsyncClient,
+    from_date: date,
+    to_date: date,
+    *,
+    delay: float = FINNHUB_DELAY,
+) -> list[dict] | None:
+    """
+    Finnhub /company-news for ticker over [from_date, to_date] (inclusive
+    calendar dates). Returns normalized article dicts; None when the request
+    failed (no response or non-200) so callers can tell failure from "no news".
+    """
     resp = await guarded_get(
         client, f"{_FINNHUB_BASE}/company-news",
         params={
             "symbol": ticker,
             "from":   str(from_date),
-            "to":     str(today),
+            "to":     str(to_date),
             "token":  _FINNHUB_KEY,
         },
-        sem=FINNHUB_SEM, delay=FINNHUB_DELAY, label=f"Finnhub company-news {ticker}",
+        sem=FINNHUB_SEM, delay=delay, label=f"Finnhub company-news {ticker}",
     )
     if resp is None or resp.status_code != 200:
-        return []
+        return None
 
     try:
         items = resp.json()

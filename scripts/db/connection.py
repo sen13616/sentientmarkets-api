@@ -24,16 +24,20 @@ def _dsn() -> str:
     )
 
 
-async def init_pool(command_timeout: float | None = None) -> None:
+async def init_pool(command_timeout: float | None = None, max_size: int = 10) -> None:
     """
     Create the shared pool. ``command_timeout`` bounds every query on it;
     the app passes APP_COMMAND_TIMEOUT_S. Scripts that auto-init via
     get_pool() keep no timeout, since eval/backfill queries can run long.
+    ``max_size`` lets offline replays run more concurrent queries than the
+    app's default of 10.
     """
     global _pool
     if _pool is not None:
         return
-    _pool = await asyncpg.create_pool(dsn=_dsn(), command_timeout=command_timeout)
+    _pool = await asyncpg.create_pool(
+        dsn=_dsn(), command_timeout=command_timeout, max_size=max_size,
+    )
 
 
 async def get_pool() -> asyncpg.Pool:

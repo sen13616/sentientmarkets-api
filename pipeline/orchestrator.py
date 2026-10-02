@@ -396,6 +396,33 @@ async def _score_and_write(
     ticker     = ticker.upper()
     last_state = await read_scored_state(ticker)
 
+    state, result = await compute_scored_state(
+        ticker, sector, baseline_score, now=now, last_state=last_state,
+    )
+
+    await write_scored_state(ticker, state)
+    await persist_scored_state(state)
+    return result
+
+
+async def compute_scored_state(
+    ticker: str,
+    sector: str | None,
+    baseline_score: float | None,
+    *,
+    now: datetime,
+    last_state: dict | None,
+) -> tuple[dict, ScoreResult]:
+    """
+    Compute one ticker's full scored state at ``now`` without persisting it.
+
+    ``_score_and_write`` calls this with the wall clock and the Redis state,
+    then writes the result. Offline replays (scripts/backfill/replay_scores.py)
+    call it with a past ``now`` under ``scripts.db.queries.as_of.scoring_as_of``
+    and their own in-memory ``last_state`` chain, so nothing touches Redis.
+    """
+    ticker = ticker.upper()
+
     # Current close price (for analyst_target_price normalization)
     current_price: float | None = await get_latest_close(ticker)
 
@@ -547,10 +574,6 @@ async def _score_and_write(
     if research_features:
         state["research_features"] = research_features
 
-    # ── Persist ────────────────────────────────────────────────────────────────
-    await write_scored_state(ticker, state)
-    await persist_scored_state(state)
-
     n_populated = sum(1 for v in sub_indices.values() if v is not None)
 
     _log.debug(
@@ -564,7 +587,7 @@ async def _score_and_write(
         composite_result.missing_layers or "none",
         n_populated,
     )
-    return ScoreResult(
+    return state, ScoreResult(
         n_populated=n_populated,
         smoothed_score=round(smoothed_score, 2),
         score_change_1d=score_change_1d,

@@ -57,11 +57,26 @@ US_MARKET_HOLIDAYS_2025 = frozenset({
 })
 
 
+# NYSE holidays 2026 (for the June-gap backfill, 2026-06-22 → 07-02).
+US_MARKET_HOLIDAYS_2026 = frozenset({
+    date(2026, 1, 1),   # New Year's Day
+    date(2026, 1, 19),  # MLK Day
+    date(2026, 2, 16),  # Presidents' Day
+    date(2026, 4, 3),   # Good Friday
+    date(2026, 5, 25),  # Memorial Day
+    date(2026, 6, 19),  # Juneteenth
+    date(2026, 7, 3),   # Independence Day (observed)
+    date(2026, 9, 7),   # Labor Day
+    date(2026, 11, 26), # Thanksgiving
+    date(2026, 12, 25), # Christmas Day
+})
+
+
 def is_trading_day(d: date) -> bool:
     """Return True if d is a weekday and not a known US market holiday."""
     if d.isoweekday() > 5:
         return False
-    if d in US_MARKET_HOLIDAYS_2025:
+    if d in US_MARKET_HOLIDAYS_2025 or d in US_MARKET_HOLIDAYS_2026:
         return False
     return True
 

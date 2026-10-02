@@ -151,7 +151,7 @@ async def test_insert_row_serializes_research_features():
     )
     sql, args = conn.calls[0]
     assert "research_features" in sql
-    assert json.loads(args[-1]) == {"short_vol_z": 1.23}
+    assert json.loads(args[19]) == {"short_vol_z": 1.23}  # $20 research_features ($21 is replay_run)
 
 
 async def test_insert_row_null_research_features_by_default():
@@ -168,7 +168,7 @@ async def test_insert_row_null_research_features_by_default():
         timestamp=datetime(2026, 7, 22, tzinfo=timezone.utc),
     )
     _, args = conn.calls[0]
-    assert args[-1] is None
+    assert args[19] is None
 
 
 # ------------------------------------------------------ API leak guard (B6) --

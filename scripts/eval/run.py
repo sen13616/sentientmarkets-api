@@ -100,6 +100,9 @@ def _parse_args(argv=None):
     p.add_argument("--cost-bps", type=float, default=15.0,
                    help="round-trip transaction cost (bps) charged on quintile "
                         "L/S leg turnover; 0 disables the overlay (default: 15)")
+    p.add_argument("--include-replay", action="store_true",
+                   help="include rows recomputed offline (replay_run IS NOT NULL); "
+                        "default excludes them — the gate scores served values")
     p.add_argument("--gap", action="append", default=None, metavar="START:END",
                    help="data-gap window to excise (repeatable); "
                         "default: 2026-06-23:2026-07-03")
@@ -138,7 +141,8 @@ async def _run(args) -> int:
 
     print(f"loading sentiment (daily) + closes for {args.start}..{args.end} "
           f"(window={args.window}) ...")
-    sent = await data.load_sentiment_panel(start, end, granularity="daily")
+    sent = await data.load_sentiment_panel(
+        start, end, granularity="daily", include_replay=args.include_replay)
     closes = await data.load_close_panel(start, end)
     latency = await data.load_article_latency(start, end)
     if sent.empty or closes.empty:
@@ -199,7 +203,8 @@ async def _run(args) -> int:
 
     if args.intraday:
         print("loading raw sentiment ticks + intraday prices ...")
-        raw = await data.load_sentiment_panel(start, end, granularity="raw")
+        raw = await data.load_sentiment_panel(
+            start, end, granularity="raw", include_replay=args.include_replay)
         st = intraday.prepare_raw_sentiment(raw)
         if args.prices == "yfinance":
             prices = intraday.fetch_yf_intraday(sorted(st["ticker"].unique()))
