@@ -9,6 +9,12 @@ load_dotenv(override=False)
 
 _pool: asyncpg.Pool | None = None
 
+# Per-query timeout (seconds) for the app's pool. Without one, a connection
+# that dies silently mid-query (half-open TCP to the Railway Postgres) awaits
+# forever — on 2026-09-17 that froze 3 tickers inside the scoring tick, which
+# then never completed and blocked every later tick via max_instances=1.
+APP_COMMAND_TIMEOUT_S = float(os.environ.get("DB_COMMAND_TIMEOUT_S", "60"))
+
 
 def _dsn() -> str:
     url = os.environ["DATABASE_URL"]
@@ -18,11 +24,16 @@ def _dsn() -> str:
     )
 
 
-async def init_pool() -> None:
+async def init_pool(command_timeout: float | None = None) -> None:
+    """
+    Create the shared pool. ``command_timeout`` bounds every query on it;
+    the app passes APP_COMMAND_TIMEOUT_S. Scripts that auto-init via
+    get_pool() keep no timeout, since eval/backfill queries can run long.
+    """
     global _pool
     if _pool is not None:
         return
-    _pool = await asyncpg.create_pool(dsn=_dsn())
+    _pool = await asyncpg.create_pool(dsn=_dsn(), command_timeout=command_timeout)
 
 
 async def get_pool() -> asyncpg.Pool:

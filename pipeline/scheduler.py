@@ -34,6 +34,7 @@ Usage
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import logging
 import sys
@@ -179,6 +180,11 @@ async def _fetch_all_tickers(
 
 _SCORE_SEM = asyncio.Semaphore(10)  # bound concurrent DB connections (asyncpg default pool=10)
 
+# Upper bound on scoring one ticker (normal: ~10-15s under 10-way concurrency).
+# A ticker that exceeds it is logged and skipped so the tick still completes —
+# on 2026-09-17 three hung tickers kept the tick open forever.
+SCORE_TICKER_TIMEOUT_S = 120
+
 
 async def _score_all(
     tickers: list[str],
@@ -231,10 +237,18 @@ async def _score_all(
         sector = (sector_map or {}).get(ticker)
         async with _SCORE_SEM:
             try:
-                result = await _score_and_write(ticker, sector, baselines.get(ticker.upper()))
+                result = await asyncio.wait_for(
+                    _score_and_write(ticker, sector, baselines.get(ticker.upper())),
+                    timeout=SCORE_TICKER_TIMEOUT_S,
+                )
                 fetched += 1
                 total_layers += result.n_populated
                 results[ticker.upper()] = result
+            except TimeoutError:
+                _log.error(
+                    "%s: scoring timed out for %s after %ds — skipped this tick",
+                    job_name, ticker, SCORE_TICKER_TIMEOUT_S,
+                )
             except Exception as exc:
                 _log.warning(
                     "%s: scoring failed for %s: %s", job_name, ticker, exc, exc_info=True
@@ -875,13 +889,54 @@ async def demo_key_cleanup_job() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Job-level timeouts
+# ---------------------------------------------------------------------------
+
+# Hard ceiling per job run (seconds). With max_instances=1, a run that never
+# returns blocks every later run of that job — narrative hung from 2026-08-10
+# and market/scoring_tick from 2026-09-17 with no error logged. Each ceiling
+# sits well above the job's normal runtime (noted alongside) and below the
+# point where a stuck run would cost more than a cycle or two.
+JOB_TIMEOUTS_S: dict[str, int] = {
+    "market":           600,    # ~1.5-2 min, every 15 min
+    "market_eod":       900,    # ~40 s
+    "narrative":        3000,   # Finnhub Sem(1) alone ~18 min + dedup + FinBERT
+    "influencer":       7200,   # ~37 min, every 6 h
+    "macro_daily":      900,
+    "macro_intraday":   900,    # ~2 min
+    "short_volume":     1200,
+    "options":          1800,
+    "scoring_tick":     1500,   # ~10-12 min; per-ticker timeout bounds it too
+    "retention":        3600,   # <1 min
+    "demo_key_cleanup": 300,
+}
+
+
+def _with_timeout(job_id: str, fn):
+    """Wrap a job coroutine so a run is cancelled after JOB_TIMEOUTS_S[job_id]."""
+    timeout = JOB_TIMEOUTS_S[job_id]
+
+    @functools.wraps(fn)
+    async def _run() -> None:
+        try:
+            await asyncio.wait_for(fn(), timeout=timeout)
+        except TimeoutError:
+            _log.error(
+                "%s job exceeded %ds timeout — cancelled so the next run can start",
+                job_id, timeout,
+            )
+
+    return _run
+
+
+# ---------------------------------------------------------------------------
 # Scheduler instance
 # ---------------------------------------------------------------------------
 
 scheduler = AsyncIOScheduler(timezone="UTC")
 
 scheduler.add_job(
-    market_job,
+    _with_timeout("market", market_job),
     trigger=CronTrigger(day_of_week="mon-fri", hour="14-20", minute="*/15"),
     id="market",
     name="Market data (15 min, 14:30-21:00 UTC)",
@@ -891,7 +946,7 @@ scheduler.add_job(
 )
 
 scheduler.add_job(
-    market_eod_job,
+    _with_timeout("market_eod", market_eod_job),
     trigger=CronTrigger(day_of_week="mon-fri", hour=21, minute=15),
     id="market_eod",
     name="Market EOD snapshot (21:15 UTC weekdays)",
@@ -901,7 +956,7 @@ scheduler.add_job(
 )
 
 scheduler.add_job(
-    narrative_job,
+    _with_timeout("narrative", narrative_job),
     trigger=IntervalTrigger(minutes=30),
     id="narrative",
     name="Narrative sentiment (30 min)",
@@ -911,7 +966,7 @@ scheduler.add_job(
 )
 
 scheduler.add_job(
-    influencer_job,
+    _with_timeout("influencer", influencer_job),
     trigger=CronTrigger(hour="0,6,12,18", minute=20),
     id="influencer",
     name="Influencer activity (every 6 h at :20)",
@@ -921,7 +976,7 @@ scheduler.add_job(
 )
 
 scheduler.add_job(
-    macro_daily_job,
+    _with_timeout("macro_daily", macro_daily_job),
     trigger=CronTrigger(hour=2, minute=0),
     id="macro_daily",
     name="Macro daily (FRED Treasury, 02:00 UTC)",
@@ -931,7 +986,7 @@ scheduler.add_job(
 )
 
 scheduler.add_job(
-    macro_intraday_job,
+    _with_timeout("macro_intraday", macro_intraday_job),
     trigger=CronTrigger(day_of_week="mon-fri", hour="14-20", minute=0),
     id="macro_intraday",
     name="Macro intraday (VIX + ETFs, hourly weekdays 14:00–20:00 UTC)",
@@ -941,7 +996,7 @@ scheduler.add_job(
 )
 
 scheduler.add_job(
-    short_volume_job,
+    _with_timeout("short_volume", short_volume_job),
     trigger=CronTrigger(day_of_week="mon-fri", hour=21, minute=30),
     id="short_volume",
     name="FINRA short volume (21:30 UTC weekdays)",
@@ -951,7 +1006,7 @@ scheduler.add_job(
 )
 
 scheduler.add_job(
-    options_job,
+    _with_timeout("options", options_job),
     trigger=CronTrigger(day_of_week="mon-fri", hour=21, minute=20),
     id="options",
     name="Options snapshots (21:20 UTC weekdays, research-only)",
@@ -961,7 +1016,7 @@ scheduler.add_job(
 )
 
 scheduler.add_job(
-    scoring_tick_job,
+    _with_timeout("scoring_tick", scoring_tick_job),
     trigger=OrTrigger([
         # Base cadence: every 30 minutes around the clock (:00 and :30).
         CronTrigger(minute="0,30"),
@@ -978,7 +1033,7 @@ scheduler.add_job(
 )
 
 scheduler.add_job(
-    retention_job,
+    _with_timeout("retention", retention_job),
     trigger=CronTrigger(hour=3, minute=30),
     id="retention",
     name="Data retention (daily 03:30 UTC)",
@@ -988,7 +1043,7 @@ scheduler.add_job(
 )
 
 scheduler.add_job(
-    demo_key_cleanup_job,
+    _with_timeout("demo_key_cleanup", demo_key_cleanup_job),
     # CronTrigger, not IntervalTrigger: low-frequency jobs must be
     # wall-clock anchored (see tests/test_scheduler_triggers.py). :50
     # avoids every existing job slot.
