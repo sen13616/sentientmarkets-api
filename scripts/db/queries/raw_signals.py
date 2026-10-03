@@ -5,7 +5,7 @@ All raw_signals table operations. No raw SQL anywhere else in the codebase.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, timezone
 
 from scripts.db.connection import get_pool
 from scripts.db.queries.as_of import cutoff
@@ -95,15 +95,27 @@ async def insert_signals(rows: list[tuple]) -> None:
         )
 
 
+def _before_ts(before: date | None) -> datetime | None:
+    return datetime(before.year, before.month, before.day, tzinfo=timezone.utc) if before else None
+
+
 async def get_close_history(
     ticker: str,
     limit: int = 25,
+    before: date | None = None,
 ) -> list[tuple[datetime, float]]:
     """
-    Return the most recent `limit` close-price rows sorted ascending.
-    Accepts both legacy ohlcv_close (backfill/Polygon) and yf_close (yfinance).
-    Includes both manual_backfill and live rows so returns can be computed
-    against the most recent available close.
+    Return one close per prior session — the most recent `limit` sessions,
+    sorted ascending. Accepts both legacy ohlcv_close (backfill/Polygon) and
+    yf_close (yfinance).
+
+    Intraday market_job runs re-write today's partial bar every 15 min under
+    the same timestamp (the bar date), so each date can hold many rows that
+    tie on timestamp. The latest-WRITTEN row per date wins (created_at): for
+    past sessions that is the market_eod_job final close. ``before`` (the
+    current bar's date) excludes that session and later, so callers get
+    prior sessions only. Before 2026-10, ties were broken arbitrarily and
+    today's partial row was included (memory: market-history bug).
     """
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -114,37 +126,47 @@ async def get_close_history(
             FROM raw_signals
             WHERE ticker      = $1
               AND signal_type IN ('ohlcv_close', 'yf_close')
-            ORDER BY DATE(timestamp) DESC, timestamp DESC
+              AND ($3::timestamptz IS NULL OR timestamp < $3::timestamptz)
+            ORDER BY DATE(timestamp) DESC, timestamp DESC, created_at DESC
             LIMIT $2
             """,
             ticker,
             limit,
+            _before_ts(before),
         )
     return [(r["timestamp"], float(r["value"])) for r in reversed(rows)]
 
 
 async def get_volume_history(
     ticker: str,
-    limit: int = 25,
+    limit: int = 20,
+    before: date | None = None,
 ) -> list[float]:
     """
-    Return the most recent `limit` volume values sorted ascending.
-    Accepts both legacy ohlcv_volume (backfill/Polygon) and yf_volume (yfinance).
-    Used for computing volume_ratio = current_vol / avg_vol.
+    Return one volume per prior session — the most recent `limit` sessions,
+    sorted ascending. Accepts both legacy ohlcv_volume (backfill/Polygon) and
+    yf_volume (yfinance). Used for volume_ratio = current_vol / avg_vol.
+
+    Same per-date, latest-written selection as get_close_history: before
+    2026-10 this read the last `limit` ROWS, i.e. mostly today's partial
+    cumulative volumes, inflating volume_ratio ~2×.
     """
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT value
+            SELECT DISTINCT ON (DATE(timestamp))
+                   timestamp, value
             FROM raw_signals
             WHERE ticker      = $1
               AND signal_type IN ('ohlcv_volume', 'yf_volume')
-            ORDER BY timestamp DESC
+              AND ($3::timestamptz IS NULL OR timestamp < $3::timestamptz)
+            ORDER BY DATE(timestamp) DESC, timestamp DESC, created_at DESC
             LIMIT $2
             """,
             ticker,
             limit,
+            _before_ts(before),
         )
     return [float(r["value"]) for r in reversed(rows)]
 
@@ -185,7 +207,9 @@ async def get_signal_history(
 async def get_latest_close(ticker: str) -> float | None:
     """Return the most recent close price (yf_close or ohlcv_close), or None.
 
-    Bounded by the as-of cutoff when an offline replay has set one.
+    Today's intraday rows tie on timestamp (the bar date); created_at picks
+    the latest written. Bounded by the as-of cutoff when an offline replay
+    has set one.
     """
     as_of = cutoff()
     pool = await get_pool()
@@ -197,7 +221,7 @@ async def get_latest_close(ticker: str) -> float | None:
             WHERE ticker      = $1
               AND signal_type IN ('yf_close', 'ohlcv_close')
               {"AND timestamp <= $2" if as_of else ""}
-            ORDER BY timestamp DESC
+            ORDER BY timestamp DESC, created_at DESC
             LIMIT 1
             """,
             ticker,
@@ -288,4 +312,43 @@ async def purge_signals_before(
                 cutoff,
                 signal_types,
             )
+    return int(tag.split()[-1]) if tag else 0
+
+
+async def replace_signals(
+    ticker: str,
+    signal_types: list[str],
+    start: datetime,
+    end: datetime,
+    rows: list[tuple],
+) -> int:
+    """
+    Atomically replace ``ticker``'s rows of ``signal_types`` in [start, end)
+    with ``rows`` (same tuple shape as insert_signals). Used by
+    scripts/backfill/reconstruct_signals.py --replace to swap derived history
+    computed from contaminated close/volume history for corrected values.
+    Returns the number of rows deleted.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            tag = await conn.execute(
+                """
+                DELETE FROM raw_signals
+                WHERE ticker      = $1
+                  AND signal_type = ANY($2::text[])
+                  AND timestamp  >= $3
+                  AND timestamp  <  $4
+                """,
+                ticker, signal_types, start, end,
+            )
+            if rows:
+                await conn.executemany(
+                    """
+                    INSERT INTO raw_signals
+                        (ticker, signal_type, value, source, upload_type, timestamp)
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                    """,
+                    rows,
+                )
     return int(tag.split()[-1]) if tag else 0

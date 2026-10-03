@@ -32,15 +32,24 @@ Usage
     python3 scripts/backfill/reconstruct_signals.py --start 2026-03-09 \\
         --end 2026-07-03T05:30 --macro                                   # June gap + z-score history
 
-Only for ranges whose z-score history is rebuilt too (e.g. June). Do NOT mix
-rebuilt rows into live-covered history: live get_close_history /
-get_volume_history read same-day intraday partial rows, so live and rebuilt
-values differ systematically (see the docstring note above).
+    python3 scripts/backfill/reconstruct_signals.py --interval 15m --replace \\
+        --start <25 trading days back> --end <fix deploy time>           # market-history fix rollout
+
+Plain inserts are only for ranges whose z-score history is rebuilt too (e.g.
+June). Before the 2026-10 market-history fix, live get_close_history /
+get_volume_history read same-day intraday partial rows, so pre-fix live values
+differ systematically from rebuilt ones. --replace (with --interval 15m, the
+market_job cadence) archives and swaps the history-dependent derived rows
+(rsi_14, return_1d/5d/20d, volume_ratio, sector_etf_return_20d) in a window
+for corrected values, so z-scores are consistent once the fix is live.
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
+import csv
+import gzip
+import json
 import logging
 import statistics
 import sys
@@ -65,14 +74,18 @@ from pipeline.sources.market import (  # noqa: E402
     to_yahoo_symbol,
 )
 from scripts.db.connection import close_pool, get_pool, init_pool  # noqa: E402
-from scripts.db.queries.raw_signals import insert_signals  # noqa: E402
+from scripts.db.queries.raw_signals import insert_signals, replace_signals  # noqa: E402
 from scripts.db.queries.universe import get_active_tickers  # noqa: E402
 
 _log = logging.getLogger("reconstruct_signals")
 
 ET = ZoneInfo("America/New_York")
 SESSION_CLOSE_ET = dtime(16, 0)
-INTRADAY_HOURS_UTC = range(14, 21)          # market_job / macro_intraday_job: 14:00…20:00
+INTRADAY_HOURS_UTC = range(14, 21)          # market_job / macro_intraday_job: 14:00…20:xx
+# Derived types whose live values depended on the contaminated history readers
+# (get_close_history / get_volume_history) — what --replace rewrites.
+REPLACE_MARKET_TYPES = ["rsi_14", "return_1d", "return_5d", "return_20d", "volume_ratio"]
+REPLACE_MACRO_TYPES = ["sector_etf_return_20d"]
 EOD_MARK_UTC = dtime(21, 15)                # market_eod_job
 RSI_HISTORY = 50                            # live: get_close_history(limit=50)
 VOLUME_HISTORY = 20                         # live: get_volume_history(limit=20)
@@ -85,19 +98,20 @@ INSERT_CHUNK = 20_000
 # Pure helpers (unit-tested in tests/test_reconstruct_signals.py)
 # ---------------------------------------------------------------------------
 
-def hourly_bar_end(bar_start: datetime) -> datetime:
-    """End of a yfinance 1h bar (labelled by start); the last bar ends at the close."""
+def hourly_bar_end(bar_start: datetime, minutes: int = 60) -> datetime:
+    """End of a yfinance intraday bar (labelled by start); the last bar ends at the close."""
     start_et = bar_start.astimezone(ET)
     close = datetime.combine(start_et.date(), SESSION_CLOSE_ET, ET)
-    return min(bar_start + timedelta(hours=1), close.astimezone(timezone.utc))
+    return min(bar_start + timedelta(minutes=minutes), close.astimezone(timezone.utc))
 
 
-def partial_bar(hourly: list[dict], mark: datetime) -> dict | None:
+def partial_bar(bars: list[dict], mark: datetime, minutes: int = 60) -> dict | None:
     """
-    Aggregate one day's 1h bars (dicts with start/open/high/low/close/volume,
-    sorted by start) that had finished by ``mark`` into a partial daily bar.
+    Aggregate one day's intraday bars (dicts with start/open/high/low/close/
+    volume, sorted by start; ``minutes`` long) that had finished by ``mark``
+    into a partial daily bar.
     """
-    done = [b for b in hourly if hourly_bar_end(b["start"]) <= mark]
+    done = [b for b in bars if hourly_bar_end(b["start"], minutes) <= mark]
     if not done:
         return None
     return {
@@ -109,10 +123,13 @@ def partial_bar(hourly: list[dict], mark: datetime) -> dict | None:
     }
 
 
-def intraday_marks(day: date) -> list[datetime]:
+def intraday_marks(day: date, step_minutes: int = 60) -> list[datetime]:
+    """Live job marks: hourly 14:00…20:00 (macro_intraday_job), or every
+    ``step_minutes`` from 14:00 through 20:xx (market_job: */15 → 20:45)."""
     if day.weekday() >= 5:
         return []
-    return [datetime(day.year, day.month, day.day, h, tzinfo=timezone.utc) for h in INTRADAY_HOURS_UTC]
+    return [datetime(day.year, day.month, day.day, h, m, tzinfo=timezone.utc)
+            for h in INTRADAY_HOURS_UTC for m in range(0, 60, step_minutes)]
 
 
 def eod_mark(day: date) -> datetime:
@@ -186,7 +203,10 @@ def _daily_index(daily: list[dict]) -> list[tuple[date, dict]]:
 # ---------------------------------------------------------------------------
 
 def build_ticker_rows(ticker: str, hourly: list[dict], daily: list[dict],
-                      start: datetime, end: datetime, eod: bool) -> list[tuple]:
+                      start: datetime, end: datetime, eod: bool,
+                      minutes: int = 60, types: set[str] | None = None) -> list[tuple]:
+    """Rebuilt rows for one ticker; ``hourly`` holds ``minutes``-long bars and
+    marks follow that cadence. ``types`` keeps only those signal types."""
     days = _daily_index(daily)
     by_day: dict[date, list[dict]] = {}
     for b in hourly:
@@ -197,19 +217,21 @@ def build_ticker_rows(ticker: str, hourly: list[dict], daily: list[dict],
         prior = days[:i]
         prior_closes = [(datetime.combine(pd, dtime(), timezone.utc), pb["close"]) for pd, pb in prior]
         prior_volumes = [pb["volume"] for _, pb in prior]
-        for mark in intraday_marks(d):
+        for mark in intraday_marks(d, minutes):
             if not (start <= mark < end):
                 continue
-            bar = partial_bar(by_day.get(d, []), mark)
+            bar = partial_bar(by_day.get(d, []), mark, minutes)
             if bar is not None:
                 rows += market_rows(ticker, mark, bar, prior_closes, prior_volumes)
         if eod and start <= eod_mark(d) < end:
             rows += market_rows(ticker, eod_mark(d), dbar, prior_closes, prior_volumes)
-    return rows
+    return [r for r in rows if r[1] in types] if types is not None else rows
 
 
 def build_macro_rows(vix_hourly: list[dict], etf_hourly: dict[str, list[dict]],
                      etf_daily: dict[str, list[dict]], start: datetime, end: datetime) -> list[tuple]:
+    """VIX + sector-ETF returns at the hourly macro_intraday_job marks
+    (pass ``vix_hourly=[]`` to rebuild only the ETF returns)."""
     rows: list[tuple] = []
     vix_by_day: dict[date, list[dict]] = {}
     for b in vix_hourly:
@@ -277,6 +299,44 @@ async def _parity() -> None:
             print(f"    {sig:22} n={len(d):2d}  median={statistics.median(d):.6g}")
 
 
+def _archive_path(start: datetime, end: datetime) -> Path:
+    return (Path(_project_root) / "exports"
+            / f"derived_signals_pre_fix_{start:%Y%m%d}_{end:%Y%m%d}.csv.gz")
+
+
+async def archive_replaced(start: datetime, end: datetime, tickers: list[str]) -> int:
+    """
+    COPY every row --replace will delete (REPLACE_MARKET_TYPES for ``tickers``
+    + REPLACE_MACRO_TYPES for the sector ETFs, in [start, end)) to a gzip CSV,
+    verify the count, and write a sidecar. Skipped if a verified archive for
+    the same window exists (re-runs only delete already-rebuilt rows).
+    """
+    path = _archive_path(start, end)
+    meta = path.with_suffix("").with_suffix(".meta.json")
+    if path.exists() and meta.exists():
+        return json.loads(meta.read_text())["rows"]
+    etfs = sorted(set(SECTOR_ETFS.values()))
+    where = ("((ticker = ANY($1::text[]) AND signal_type = ANY($2::text[])) "
+             " OR (ticker = ANY($3::text[]) AND signal_type = ANY($4::text[]))) "
+             "AND timestamp >= $5 AND timestamp < $6")
+    params = (tickers, REPLACE_MARKET_TYPES, etfs, REPLACE_MACRO_TYPES, start, end)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        expected = await conn.fetchval(f"SELECT COUNT(*) FROM raw_signals WHERE {where}", *params)
+        tmp = path.with_suffix(".tmp")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with gzip.open(tmp, "wb") as fh:
+            await conn.copy_from_query(f"SELECT * FROM raw_signals WHERE {where}", *params,
+                                       output=fh, format="csv", header=True)
+    with gzip.open(tmp, "rt", newline="") as fh:
+        written = sum(1 for _ in csv.reader(fh)) - 1
+    if written != expected:
+        raise RuntimeError(f"archive row count {written} != expected {expected}; aborting")
+    tmp.rename(path)
+    meta.write_text(json.dumps({"rows": expected, "start": start.isoformat(), "end": end.isoformat()}))
+    return expected
+
+
 def _parse_ts(value: str) -> datetime:
     dt = datetime.fromisoformat(value)
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
@@ -291,7 +351,13 @@ async def main(argv: list[str] | None = None) -> int:
     p.add_argument("--tickers", help="comma-separated subset (default: active universe)")
     p.add_argument("--dry-run", action="store_true", help="build + count, no writes")
     p.add_argument("--parity", action="store_true", help="compare rebuilt vs live AAPL rows and exit")
+    p.add_argument("--interval", choices=["1h", "15m"], default="1h",
+                   help="bar size = mark cadence (15m mirrors market_job; yfinance keeps ~60 days)")
+    p.add_argument("--replace", action="store_true",
+                   help="archive, then atomically replace the history-dependent derived rows "
+                        "(REPLACE_MARKET_TYPES + sector-ETF returns) in the window")
     args = p.parse_args(argv)
+    minutes = 15 if args.interval == "15m" else 60
 
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s")
@@ -308,34 +374,56 @@ async def main(argv: list[str] | None = None) -> int:
         sym_of = {t: to_yahoo_symbol(t) for t in tickers}
         symbols = list(sym_of.values())
 
-        _log.info("downloading 1h + 1d bars for %d tickers …", len(symbols))
-        hourly = await asyncio.to_thread(_by_symbol, symbols, args.start, args.end, "1h")
+        if args.replace and not args.dry_run:
+            n = await archive_replaced(args.start, args.end, tickers)
+            _log.info("archived %d rows → %s", n, _archive_path(args.start, args.end))
+
+        _log.info("downloading %s + 1d bars for %d tickers …", args.interval, len(symbols))
+        hourly = await asyncio.to_thread(_by_symbol, symbols, args.start, args.end, args.interval)
         daily = await asyncio.to_thread(_by_symbol, symbols, args.start - DAILY_PAD, args.end, "1d")
 
-        total = 0
+        total = deleted = 0
         missing = []
         for t in tickers:
             s = sym_of[t]
             if s not in hourly or s not in daily:
                 missing.append(t)
                 continue
-            rows = build_ticker_rows(t, hourly[s], daily[s], args.start, args.end, eod=not args.no_eod)
+            rows = build_ticker_rows(
+                t, hourly[s], daily[s], args.start, args.end, eod=not args.no_eod, minutes=minutes,
+                types=set(REPLACE_MARKET_TYPES) if args.replace else None,
+            )
             total += len(rows)
-            if not args.dry_run:
+            if args.dry_run:
+                continue
+            if args.replace:
+                deleted += await replace_signals(t, REPLACE_MARKET_TYPES, args.start, args.end, rows)
+            else:
                 await _insert(rows)
-        _log.info("market: %d rows %s for %d tickers (%d without yfinance data: %s)",
+        _log.info("market: %d rows %s for %d tickers (%d without yfinance data: %s)%s",
                   total, "built" if args.dry_run else "inserted", len(tickers) - len(missing),
-                  len(missing), ",".join(missing[:30]))
+                  len(missing), ",".join(missing[:30]),
+                  f"; {deleted} old rows replaced" if args.replace else "")
 
-        if args.macro:
+        if args.macro or args.replace:
+            # Macro marks are hourly (macro_intraday_job) regardless of --interval.
+            # --replace rebuilds only the ETF returns (VIX never read history).
             etfs = sorted(set(SECTOR_ETFS.values()))
-            vix = (await asyncio.to_thread(_by_symbol, ["^VIX"], args.start, args.end, "1h")).get("^VIX", [])
+            vix = ([] if args.replace else
+                   (await asyncio.to_thread(_by_symbol, ["^VIX"], args.start, args.end, "1h")).get("^VIX", []))
             etf_h = await asyncio.to_thread(_by_symbol, etfs, args.start, args.end, "1h")
             etf_d = await asyncio.to_thread(_by_symbol, etfs, args.start - DAILY_PAD, args.end, "1d")
             mrows = build_macro_rows(vix, etf_h, etf_d, args.start, args.end)
-            if not args.dry_run:
+            if args.dry_run:
+                pass
+            elif args.replace:
+                for etf in etfs:
+                    await replace_signals(etf, REPLACE_MACRO_TYPES, args.start, args.end,
+                                          [r for r in mrows if r[0] == etf])
+            else:
                 await _insert(mrows)
-            _log.info("macro: %d rows %s", len(mrows), "built" if args.dry_run else "inserted")
+            _log.info("macro: %d rows %s", len(mrows), "built" if args.dry_run else
+                      ("replaced" if args.replace else "inserted"))
         return 0
     finally:
         await close_pool()

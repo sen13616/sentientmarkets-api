@@ -341,7 +341,9 @@ async def _run_market(
     # --- Computed: RSI, returns, volume ratio ---
     # Fetch close history once — shared by RSI (needs 15+) and returns (needs 20).
     # Request 50 rows so Wilder's smoothing has room to stabilise.
-    close_history = await get_close_history(ticker, limit=50)
+    # Prior sessions only: exclude the current bar's date (its partial rows).
+    bar_date = ohlcv["timestamp"].date() if ohlcv else None
+    close_history = await get_close_history(ticker, limit=50, before=bar_date)
 
     # RSI(14) from historical closes + current close (if available)
     closes_for_rsi = [c for _, c in close_history]
@@ -353,7 +355,7 @@ async def _run_market(
 
     # Returns and volume ratio (require a current live close)
     if ohlcv:
-        volume_history = await get_volume_history(ticker, limit=20)
+        volume_history = await get_volume_history(ticker, limit=20, before=bar_date)
 
         for sig_type, val in _compute_returns(ohlcv["close"], close_history):
             rows.append((ticker, sig_type, val, "computed", "live", now))
