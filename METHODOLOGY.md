@@ -102,14 +102,17 @@ one retry after 2 s; 403/404 (auth failures, don't consume quota) → 50 ms cour
 |---|---|---|
 | `yf_open/high/low/close/volume` | yfinance batch `yf.download(period="5d", interval="1d", auto_adjust=True)` | Latest non-NaN daily bar. Polygon `/prev` exists only for backfills — it is **not** a live fallback (it returns yesterday's bar, which would poison returns/order-flow). Class shares map dots→dashes at the yfinance boundary only (BRK.B → BRK-B) |
 | `bid_ask_spread_bps` | yfinance `Ticker.info` (market hours only) | `(ask − bid) / midpoint × 10,000`, midpoint = (bid+ask)/2. Rejected if bid/ask ≤ 0 or ask < bid. Only bps is persisted (raw bid/ask dropped 2026-07-20) |
-| `rsi_14` | Computed from DB close history (50 rows) + current close | **Wilder's RSI(14)**: SMA seed over the first 14 changes, then exponential smoothing `avg = (avg×13 + change)/14`; `RSI = 100 − 100/(1+RS)`, `RS = avg_gain/avg_loss` (100 if avg_loss = 0). Stored `source='computed'` |
+| `rsi_14` | Computed from the prior 50 sessions' final closes + current close (see §16.5, 2026-10-03) | **Wilder's RSI(14)**: SMA seed over the first 14 changes, then exponential smoothing `avg = (avg×13 + change)/14`; `RSI = 100 − 100/(1+RS)`, `RS = avg_gain/avg_loss` (100 if avg_loss = 0). Stored `source='computed'` |
 | `order_flow_imbalance` | Computed from current OHLCV bar | Close Location Value (Lee-Ready OHLCV proxy): `CLV = (2·close − high − low)/(high − low)` ∈ [−1, +1]. Skipped if volume ≤ 0 or high == low |
 | `buy_pressure` / `sell_pressure` | Same bar | `buy = (1 + CLV)/2`; `sell = 1 − buy` |
-| `return_1d/5d/20d` | Current close vs DB close history | **Log returns**: `ln(close_now / close_{−n})` for n = 1, 5, 20 sessions |
-| `volume_ratio` | Current volume vs DB volume history | `volume_now / mean(last 20 sessions' volume)` |
+| `return_1d/5d/20d` | Current close vs prior sessions' final closes | **Log returns**: `ln(close_now / close_{−n})` for n = 1, 5, 20 sessions |
+| `volume_ratio` | Current (cumulative) volume vs prior sessions' volume | `volume_now / mean(last 20 sessions' volume)` |
 | `short_volume_otc`, `short_volume_total_otc`, `short_volume_ratio_otc` | FINRA REGSHO daily files (`pipeline/sources/short_volume.py`) | CNMS consolidated file first; fallback sums the three TRFs (FNYX + FNSQ + FNQC). Walks back up to 4 calendar days for the latest file. `ratio = short_volume / total_volume`. Off-exchange volume only (hence `_otc`). Timestamped at the trading day's 21:00 close. Source `finra_regsho` |
 
-DB queries accept both `yf_*` and legacy `ohlcv_*` naming via `IN (...)`.
+DB queries accept both `yf_*` and legacy `ohlcv_*` naming via `IN (...)`. `market_job` re-writes the
+current session's partial bar every 15 min under the same timestamp (the bar date), so the history
+readers take the **latest-written row per date** and exclude the current session (`before=` the bar
+date). Before 2026-10-03 they did not — see §16.5.
 
 **Research-only ingestion (feeds no score):** `options_job` (weekdays 21:20 UTC,
 `pipeline/sources/options.py`) snapshots the yfinance option chain at the expiry nearest
@@ -692,3 +695,20 @@ edge is significant. E000 is the incumbent baseline; a candidate progresses
   differently-timed information can.
 - ~3 months of a single regime is thin; that is why the holdout freeze and experiment
   log exist.
+
+### 16.5 Data-quality events & methodology changes (dated)
+
+Rows recomputed offline carry `sentiment_history.replay_run` (migration 014); the eval harness
+excludes them unless `--include-replay`.
+
+| Date (UTC) | Event | Effect on stored / served data |
+|---|---|---|
+| 2026-06-23 14:46 → 07-03 05:30 | Ingestion + scoring outage | No rows. Excised from eval by default. Fill planned as run `june-gap-2026-06` (hourly, market/macro rebuilt from yfinance with corrected history, June-era settings: EMA 4h, research flags off). |
+| 2026-08-10 04:22 → 09-17 13:42 | News job hung (scoring kept running) | Served rows had **no narrative layer**. Rebuilt in place by run `news-backfill-2026-10` after a news backfill: narrative recomputed as of each row; stored market/influencer/macro reused; composite, divergence, confidence, drivers, surprise and EMA recomputed. Originals: `exports/sentiment_history_pre_replay_20261002.csv.gz` (1,107,910 rows). |
+| 2026-09-17 13:42 → 10-02 09:00 | Scoring (and intraday market) jobs hung | No rows served. Replayed hourly by run `news-backfill-2026-10` ("as of" each tick, live scoring code). Market layer from end-of-day rows only (absent during most trading-hour ticks). 178,210 rows. |
+| **2026-10-03 02:47** | **Market-history fix** (`17dae1b`) | Before this, `get_close_history` broke same-timestamp ties arbitrarily and included the current session, and `get_volume_history` averaged the last 20 *rows* (mostly same-day partial volumes). So served intraday `return_1d` compared against an earlier same-day price, `return_5d/20d`, RSI and `sector_etf_return_20d` used arbitrary intraday prices as past closes, and `volume_ratio` was ~2× inflated. **Market-layer values served before this timestamp used the contaminated history.** Derived rows 2026-08-28 → 10-03 were rebuilt at the live 15-min cadence with the corrected readers (originals: `exports/derived_signals_pre_fix_20260828_20261003.csv.gz`); eval re-baseline due after ≥10 trading days. |
+
+Backfilled articles (ingested weeks after publication) inflate the eval harness's
+publication→ingestion latency table; restrict that metric to live-ingested articles when
+comparing against §16.4.
+
