@@ -28,7 +28,7 @@ import asyncio
 import logging
 import math
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 _log = logging.getLogger(__name__)
 
@@ -156,6 +156,11 @@ def _fetch_bid_ask_spread(ticker: str) -> dict | None:
 # ---------------------------------------------------------------------------
 # RSI computation
 # ---------------------------------------------------------------------------
+
+# Newest stored close may be at most this old for RSI to be re-derived without
+# a current bar (≈5 trading days incl. a weekend/holiday).
+RSI_HISTORY_MAX_AGE = timedelta(days=7)
+
 
 def _compute_rsi(closes: list[float], period: int = 14) -> float | None:
     """
@@ -345,11 +350,15 @@ async def _run_market(
     bar_date = ohlcv["timestamp"].date() if ohlcv else None
     close_history = await get_close_history(ticker, limit=50, before=bar_date)
 
-    # RSI(14) from historical closes + current close (if available)
+    # RSI(14) from historical closes + current close (if available).
+    # Without a current bar, only re-derive it while the stored history is
+    # recent: a symbol that stopped trading would otherwise keep emitting an
+    # RSI computed from frozen prices every run.
     closes_for_rsi = [c for _, c in close_history]
     if ohlcv:
         closes_for_rsi.append(ohlcv["close"])
-    rsi = _compute_rsi(closes_for_rsi)
+    history_fresh = bool(close_history) and (now - close_history[-1][0]) <= RSI_HISTORY_MAX_AGE
+    rsi = _compute_rsi(closes_for_rsi) if (ohlcv or history_fresh) else None
     if rsi is not None:
         rows.append((ticker, "rsi_14", rsi, "computed", "live", now))
 

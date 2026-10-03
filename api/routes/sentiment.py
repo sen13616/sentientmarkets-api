@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, Query
 from api.rate_limit import rate_limited
 from api.response.assembler import assemble
 from api.response.schemas import ErrorResponse, FreeTierResponse, NoDataResponse, ProTierResponse
-from scripts.db.queries.universe import is_supported_ticker
+from scripts.db.queries.universe import get_ticker_status
 
 router = APIRouter()
 _log   = logging.getLogger(__name__)
@@ -41,11 +41,23 @@ async def get_sentiment(
 ) -> FreeTierResponse | ProTierResponse | NoDataResponse:
     # ── Ticker validation ─────────────────────────────────────────────────────
     ticker = ticker.upper()
-    if not await is_supported_ticker(ticker):
+    status = await get_ticker_status(ticker)
+    if status is None:
         return NoDataResponse(
             ticker  = ticker,
             status  = "ticker_not_found",
             message = f"{ticker} is not in the supported universe",
+        )
+    if status["delisted_at"] is not None:
+        successor = status["successor_ticker"]
+        return NoDataResponse(
+            ticker  = ticker,
+            status  = "delisted",
+            message = (
+                f"{ticker} stopped trading on {status['delisted_at']:%Y-%m-%d}"
+                + (f"; successor: {successor}" if successor else "")
+                + ". Its history remains available via /history."
+            ),
         )
 
     # ── Assemble and return ───────────────────────────────────────────────────

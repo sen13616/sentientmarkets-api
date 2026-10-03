@@ -79,7 +79,7 @@ from pipeline.scheduler import SCORE_TICKER_TIMEOUT_S  # noqa: E402
 from scripts.db.connection import APP_COMMAND_TIMEOUT_S, close_pool, get_pool, init_pool  # noqa: E402
 from scripts.db.queries.as_of import scoring_as_of  # noqa: E402
 from scripts.db.queries.sentiment_history import get_baseline_scores  # noqa: E402
-from scripts.db.queries.universe import get_active_tickers, get_ticker_sector_map  # noqa: E402
+from scripts.db.queries.universe import get_ticker_sector_map, get_universe_as_of  # noqa: E402
 
 _log = logging.getLogger("replay_scores")
 
@@ -200,7 +200,10 @@ async def main(argv: list[str] | None = None) -> int:
     p.add_argument("--step-minutes", type=int, default=60,
                    help="tick spacing; keep it fixed across resumes (default 60)")
     p.add_argument("--concurrency", type=int, default=100)
-    p.add_argument("--tickers", help="comma-separated subset (default: active universe)")
+    p.add_argument("--universe-as-of", type=_parse_ts, default=None,
+                   help="tickers that existed at this time (default: --start); "
+                        "retired symbols trading then are included, later additions excluded")
+    p.add_argument("--tickers", help="comma-separated subset (default: universe as of --universe-as-of)")
     p.add_argument("--dry-run", action="store_true", help="score the first tick only; no writes")
     args = p.parse_args(argv)
 
@@ -211,7 +214,7 @@ async def main(argv: list[str] | None = None) -> int:
     await init_pool(command_timeout=APP_COMMAND_TIMEOUT_S, max_size=args.concurrency + 5)
     try:
         tickers = (args.tickers.upper().split(",") if args.tickers
-                   else await get_active_tickers())
+                   else await get_universe_as_of(args.universe_as_of or args.start))
         sectors = await get_ticker_sector_map()
         all_ticks = ticks(args.start, args.end, timedelta(minutes=args.step_minutes))
 

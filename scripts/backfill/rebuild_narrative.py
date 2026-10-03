@@ -67,7 +67,7 @@ from pipeline.scoring.drivers import extract_drivers  # noqa: E402
 from pipeline.scoring.ema import compute_ema  # noqa: E402
 from pipeline.scoring.subindices import SubIndexResult, compute_sub_index  # noqa: E402
 from scripts.db.connection import close_pool, get_pool, init_pool  # noqa: E402
-from scripts.db.queries.universe import get_active_tickers  # noqa: E402
+from scripts.db.queries.universe import get_universe_as_of  # noqa: E402
 
 _log = logging.getLogger("rebuild_narrative")
 
@@ -353,7 +353,7 @@ async def main(argv: list[str] | None = None) -> int:
             return 2
 
         tickers = (args.tickers.upper().split(",") if args.tickers
-                   else await get_active_tickers())
+                   else await get_universe_as_of(RANGE_START))
         pool = await get_pool()
         sem = asyncio.Semaphore(args.concurrency)
         totals = {"tickers": 0, "rows": 0, "narr_before": 0, "narr_after": 0,

@@ -113,7 +113,7 @@ class ProTierResponse(BaseModel):
 
 class NoDataResponse(BaseModel):
     ticker:  str
-    status:  str    # insufficient_data | unsupported_ticker | temporarily_unavailable
+    status:  str    # insufficient_data | unsupported_ticker | temporarily_unavailable | delisted
     message: str
 
 
@@ -172,6 +172,7 @@ class TickerItem(BaseModel):
     ticker: str
     name:   Optional[str] = None
     sector: Optional[str] = None   # GICS sector (P4.1); None if not yet seeded
+    in_sp500: Optional[bool] = None  # current S&P 500 member (migration 015 snapshot)
 
 
 class TickersResponse(BaseModel):

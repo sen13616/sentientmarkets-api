@@ -284,7 +284,7 @@ class TestSentimentChangeFields:
     def _patches(self, state=_MOCK_STATE):
         return (
             patch("api.rate_limit.check_rate_limit", AsyncMock()),
-            patch("api.routes.sentiment.is_supported_ticker", AsyncMock(return_value=True)),
+            patch("api.routes.sentiment.get_ticker_status", AsyncMock(return_value={"ticker": "AAPL", "delisted_at": None, "successor_ticker": None, "delisted_reason": None})),
             patch("api.response.assembler._load_from_redis", AsyncMock(return_value=state)),
         )
 
@@ -442,7 +442,7 @@ class TestSentimentXsFields:
     def _patches(self):
         return (
             patch("api.rate_limit.check_rate_limit", AsyncMock()),
-            patch("api.routes.sentiment.is_supported_ticker", AsyncMock(return_value=True)),
+            patch("api.routes.sentiment.get_ticker_status", AsyncMock(return_value={"ticker": "AAPL", "delisted_at": None, "successor_ticker": None, "delisted_reason": None})),
             patch("api.response.assembler._load_from_redis", AsyncMock(return_value=_MOCK_STATE)),
             patch("api.response.assembler._load_percentile", AsyncMock(return_value=87.3)),
         )
@@ -499,7 +499,7 @@ class TestScoreExoFields:
     def _patches(self, state):
         return (
             patch("api.rate_limit.check_rate_limit", AsyncMock()),
-            patch("api.routes.sentiment.is_supported_ticker", AsyncMock(return_value=True)),
+            patch("api.routes.sentiment.get_ticker_status", AsyncMock(return_value={"ticker": "AAPL", "delisted_at": None, "successor_ticker": None, "delisted_reason": None})),
             patch("api.response.assembler._load_from_redis", AsyncMock(return_value=state)),
             patch("api.response.assembler._load_percentile", AsyncMock(return_value=87.3)),
         )

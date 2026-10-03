@@ -1,0 +1,29 @@
+ticker,last_trading_day,successor_ticker,event,reason,source
+LSI,2023-07-19,EXR,acquired,Merger with Extra Space Storage closed 2023-07-20,https://www.nasdaq.com/press-release/extra-space-storage-life-storage-announce-closing-of-merger-2023-07-20
+ABC,2023-08-29,COR,ticker_change,AmerisourceBergen renamed Cencora; trades as COR from 2023-08-30,https://www.cencora.com/newsroom/amerisourcebergen-becomes-cencora
+PEAK,2024-03-01,DOC,ticker_change,Healthpeak trades as DOC from 2024-03-04 (Physicians Realty merger),https://www.miaxglobal.com/sites/default/files/alert-files/PEAK_Symbol_Change___54231.pdf
+PXD,2024-05-02,XOM,acquired,Acquired by ExxonMobil 2024-05-03,https://www.sec.gov/Archives/edgar/data/34088/000095010324006322/dp210867_ex9901.htm
+SRCL,2024-11-01,WM,acquired,Acquired by WM; no longer traded from 2024-11-04,https://investors.wm.com/news-releases/news-release-details/wm-completes-acquisition-stericycle
+MRO,2024-11-21,COP,acquired,Acquired by ConocoPhillips 2024-11-22,https://www.gurufocus.com/news/2614184/conocophillips-completes-acquisition-of-marathon-oil-corporation-mro
+PDCO,2025-04-16,,taken_private,Acquired by Patient Square Capital; delisted 2025-04-17,https://www.panabee.com/news/patterson-companies-completes-patient-square-capital-acquisition-delists-from-nasdaq-and
+DFS,2025-05-16,COF,acquired,Acquired by Capital One; delisted before open 2025-05-19,https://www.investing.com/news/sec-filings/discover-financial-services-completes-merger-with-capital-one-93CH-4052527
+JNPR,2025-07-01,HPE,acquired,Acquired by Hewlett Packard Enterprise 2025-07-02,https://www.hpe.com/us/en/newsroom/press-release/2025/07/hewlett-packard-enterprise-closes-acquisition-of-juniper-networks-to-offer-industry-leading-comprehensive-cloud-native-ai-driven-portfolio.html
+ANSS,2025-07-16,SNPS,acquired,Acquired by Synopsys 2025-07-17,https://www.tipranks.com/news/company-announcements/ansys-completes-merger-with-synopsys-delists-from-nasdaq
+HES,2025-07-17,CVX,acquired,Acquired by Chevron 2025-07-18,https://www.chevron.com/newsroom/2025/q3/chevron-completes-acquisition-of-hess-corporation
+PARA,2025-08-06,PSKY,ticker_change,Paramount-Skydance merger closed 2025-08-07 (trades as PSKY); the PARA symbol was later reused by an unrelated company (Banzai International),https://www.paramount.com/press/paramount-and-skydance-announce-anticipated-closing-date-deadlines-to-elect-merger-consideration-and-change-of-ticker-symbol-effective-at-the-closing
+AMED,2025-08-13,UNH,acquired,Acquired by UnitedHealth (Optum) 2025-08-14,https://www.investing.com/news/sec-filings/amedisys-completes-merger-with-unitedhealth-group-delists-from-nasdaq-93CH-4192213
+WBA,2025-08-27,,taken_private,Acquired by Sycamore Partners 2025-08-28,https://www.healthcarefinancenews.com/news/sycamore-partners-completes-acquisition-walgreens
+FI,2025-11-10,FISV,ticker_change,Fiserv moved listing to Nasdaq as FISV on 2025-11-11,https://mondovisione.com/media-and-resources/news/fiserv-announces-transfer-of-stock-exchange-listing-to-nasdaq-ticker-changing-20251029/
+IPG,2025-11-26,OMC,acquired,Acquired by Omnicom 2025-11-26,https://www.omc.com/newsroom/omnicom-completes-acquisition-of-interpublic-forming-the-worlds-leading-marketing-and-sales-company-built-for-intelligent-growth-in-the-next-era/
+K,2025-12-11,,taken_private,Acquired by Mars 2025-12-11,https://www.mars.com/news-and-stories/press-releases-statements/mars-completes-acquisition-of-kellanova
+MMC,2026-01-13,MRSH,ticker_change,Marsh McLennan trades as MRSH from 2026-01-14,https://www.nasdaq.com/press-release/marsh-mclennan-change-its-nyse-symbol-mrsh-january-14-hosts-fourth-quarter-earnings
+EXAS,2026-03-20,ABT,acquired,Acquired by Abbott 2026-03-23,https://hlth.com/insights/news/abbott-closes-21b-deal-for-exact-sciences-2026-03-24
+HOLX,2026-04-07,,taken_private,Acquired by Blackstone and TPG 2026-04-07,https://www.hologic.com/about/press-release/blackstone-and-tpg-complete-acquisition-hologic
+AL,2026-04-08,,taken_private,Acquired by Sumitomo-led consortium 2026-04-08,https://www.sumitomocorp.com/en/jp/news/release/2026/group/20970
+SEE,2026-04-09,,taken_private,Acquired by CD&R 2026-04-09,https://www.packagingdive.com/news/cdr-completes-acquisition-of-sealed-air-private/814343/
+CTRA,2026-05-06,DVN,acquired,Acquired by Devon Energy; delisted before open 2026-05-07,https://www.theglobeandmail.com/investing/markets/stocks/CTRA/pressreleases/1819517/coterra-energy-completes-merger-and-delists-from-nyse/
+BK,2026-05-20,BNY,ticker_change,Bank of New York Mellon trades as BNY from 2026-05-21,https://www.investing.com/news/company-news/bny-to-change-stock-ticker-symbol-from-bk-to-bny-on-may-21-93CH-4676263
+EA,2026-08-04,,taken_private,Acquired by PIF / Silver Lake / Affinity consortium 2026-08-04,https://gameinformer.com/2026/08/04/electronic-arts-has-been-fully-acquired-by-trio-of-investor-groups-and-is-now-private
+EQR,2026-08-17,VMRK,merged,Merged with AvalonBay into Vivmark Residential (VMRK trades from 2026-08-18),https://seekingalpha.com/news/4634101-equity-residential-and-avalonbay-close-merger-transforming-to-vivmark
+AVB,2026-08-17,VMRK,merged,Merged with Equity Residential into Vivmark Residential (VMRK trades from 2026-08-18),https://seekingalpha.com/news/4634101-equity-residential-and-avalonbay-close-merger-transforming-to-vivmark
+LEG,2026-08-26,,acquired,Acquired by Somnigroup International; delisting requested 2026-08-26,https://www.fourstateshomepage.com/news/local/somnigroup-acquires-leggett-platt/

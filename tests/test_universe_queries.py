@@ -155,8 +155,8 @@ async def test_get_ticker_sector_map_filters_nulls_at_sql_level():
 @pytest.mark.asyncio
 async def test_get_all_tickers_includes_sector_field():
     rows = [
-        {"ticker": "AAPL", "company_name": "Apple Inc.",   "sector": "Information Technology"},
-        {"ticker": "XOM",  "company_name": "Exxon Mobil",  "sector": "Energy"},
+        {"ticker": "AAPL", "company_name": "Apple Inc.",   "sector": "Information Technology", "in_sp500": True},
+        {"ticker": "XOM",  "company_name": "Exxon Mobil",  "sector": "Energy", "in_sp500": True},
     ]
     conn = MagicMock()
     conn.fetch = AsyncMock(return_value=rows)
@@ -171,6 +171,7 @@ async def test_get_all_tickers_includes_sector_field():
         "ticker": "AAPL",
         "company_name": "Apple Inc.",
         "sector": "Information Technology",
+        "in_sp500": True,
     }
     assert items[1]["sector"] == "Energy"
 
@@ -179,7 +180,7 @@ async def test_get_all_tickers_includes_sector_field():
 async def test_get_all_tickers_sector_can_be_null():
     """Backwards-compat: pre-seed rows have NULL sector; must not raise."""
     rows = [
-        {"ticker": "AAPL", "company_name": "Apple Inc.", "sector": None},
+        {"ticker": "AAPL", "company_name": "Apple Inc.", "sector": None, "in_sp500": False},
     ]
     conn = MagicMock()
     conn.fetch = AsyncMock(return_value=rows)

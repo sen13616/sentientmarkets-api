@@ -38,6 +38,7 @@ if _project_root not in sys.path:
 
 from scripts.db.connection import close_pool, get_pool, init_pool
 from pipeline.sources.short_volume import fetch_short_volume_for_date
+from scripts.db.queries.raw_signals import insert_signals
 
 _log = logging.getLogger(__name__)
 
@@ -119,7 +120,12 @@ async def _existing_dates(pool, signal_type: str) -> set[date]:
     return {r["d"] for r in rows}
 
 
-async def backfill(days_back: int = 90, start: date | None = None, end: date | None = None) -> None:
+async def backfill(
+    days_back: int = 90,
+    start: date | None = None,
+    end: date | None = None,
+    tickers: set[str] | None = None,
+) -> None:
     """
     Backfill FINRA short volume data.
 
@@ -127,6 +133,11 @@ async def backfill(days_back: int = 90, start: date | None = None, end: date | N
     ----------
     days_back : Number of trading days to backfill (default 90).
     start, end : Explicit date range (overrides days_back if both set).
+    tickers    : Backfill only these tickers (e.g. newly added to the universe).
+                 Every date in the window is fetched — the date-level
+                 "already have it" check would skip dates that hold other
+                 tickers' rows — and rows go through insert_signals' dedup
+                 guard, so re-runs are safe.
     """
     await init_pool()
     pool = await get_pool()
@@ -142,8 +153,8 @@ async def backfill(days_back: int = 90, start: date | None = None, end: date | N
 
     _log.info("Backfill window: %s → %s (%d trading days)", dates[0], dates[-1], len(dates))
 
-    # Check which dates already have data (idempotency)
-    existing = await _existing_dates(pool, "short_volume_ratio_otc")
+    # Check which dates already have data (idempotency) — whole-universe mode only
+    existing = set() if tickers else await _existing_dates(pool, "short_volume_ratio_otc")
     to_fetch = [d for d in dates if d not in existing]
     _log.info(
         "Already have %d dates in DB, %d to fetch",
@@ -156,11 +167,15 @@ async def backfill(days_back: int = 90, start: date | None = None, end: date | N
         return
 
     # Fetch active tickers for filtering
-    async with pool.acquire() as conn:
-        ticker_rows = await conn.fetch(
-            "SELECT ticker FROM ticker_universe WHERE tier = 'tier1_supported'"
-        )
-    universe = {r["ticker"] for r in ticker_rows}
+    if tickers:
+        universe = set(tickers)
+    else:
+        async with pool.acquire() as conn:
+            ticker_rows = await conn.fetch(
+                "SELECT ticker FROM ticker_universe "
+                "WHERE tier = 'tier1_supported' AND delisted_at IS NULL"
+            )
+        universe = {r["ticker"] for r in ticker_rows}
     _log.info("Active universe: %d tickers", len(universe))
 
     fetched = 0
@@ -194,7 +209,9 @@ async def backfill(days_back: int = 90, start: date | None = None, end: date | N
                 rows.append((ticker, "short_volume_total_otc", float(total_vol), "finra_regsho", "manual_backfill", ts))
                 rows.append((ticker, "short_volume_ratio_otc", ratio,            "finra_regsho", "manual_backfill", ts))
 
-            if rows:
+            if rows and tickers:
+                await insert_signals(rows)
+            elif rows:
                 async with pool.acquire() as conn:
                     # CAUTION: blind INSERT — bypasses insert_signals()'s dedup guard
                     # (NOT EXISTS on ticker/signal_type/timestamp/value/source). Re-running
@@ -236,12 +253,15 @@ def main() -> None:
     parser.add_argument("--days", type=int, default=90, help="Number of trading days to backfill (default 90)")
     parser.add_argument("--start", type=str, default=None, help="Start date (YYYY-MM-DD)")
     parser.add_argument("--end", type=str, default=None, help="End date (YYYY-MM-DD)")
+    parser.add_argument("--tickers", type=str, default=None,
+                        help="comma-separated tickers to backfill (all dates in the window, dedup-guarded)")
     args = parser.parse_args()
 
     start = date.fromisoformat(args.start) if args.start else None
     end = date.fromisoformat(args.end) if args.end else None
 
-    asyncio.run(backfill(days_back=args.days, start=start, end=end))
+    tickers = set(args.tickers.upper().split(",")) if args.tickers else None
+    asyncio.run(backfill(days_back=args.days, start=start, end=end, tickers=tickers))
 
 
 if __name__ == "__main__":

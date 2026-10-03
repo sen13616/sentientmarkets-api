@@ -59,7 +59,7 @@ from pipeline.sources.narrative import (  # noqa: E402
 )
 from scripts.db.connection import close_pool, init_pool  # noqa: E402
 from scripts.db.queries import raw_articles as ra  # noqa: E402
-from scripts.db.queries.universe import get_active_tickers  # noqa: E402
+from scripts.db.queries.universe import get_universe_as_of  # noqa: E402
 
 _log = logging.getLogger("news_backfill")
 
@@ -321,7 +321,10 @@ async def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--start", type=_parse_ts, default=DEFAULT_START, help="UTC, ISO-8601")
     p.add_argument("--end", type=_parse_ts, default=DEFAULT_END, help="UTC, ISO-8601 (exclusive)")
-    p.add_argument("--tickers", help="comma-separated subset (default: active universe)")
+    p.add_argument("--universe-as-of", type=_parse_ts, default=None,
+                   help="tickers that existed at this time (default: --start); "
+                        "retired symbols trading then are included, later additions excluded")
+    p.add_argument("--tickers", help="comma-separated subset (default: universe as of --universe-as-of)")
     p.add_argument("--concurrency", type=int, default=4,
                    help="tickers in flight (provider spacing still serializes each API)")
     p.add_argument("--dry-run", action="store_true", help="fetch + report only; no DB writes")
@@ -337,7 +340,7 @@ async def main(argv: list[str] | None = None) -> int:
     await init_pool(command_timeout=120)
     try:
         tickers = (args.tickers.upper().split(",") if args.tickers
-                   else await get_active_tickers())
+                   else await get_universe_as_of(args.universe_as_of or args.start))
         done = set() if args.dry_run else _load_progress()
         todo = [t for t in tickers if t not in done]
         _log.info("window %s → %s | %d tickers (%d already done)%s",

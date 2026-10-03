@@ -5,60 +5,100 @@ All ticker_universe table operations.
 """
 from __future__ import annotations
 
+from datetime import datetime
+
 from scripts.db.connection import get_pool
 
 
-async def get_active_tickers() -> list[str]:
+async def get_active_tickers(as_of: datetime | None = None) -> list[str]:
     """
-    Return all tier1_supported tickers from the active universe.
+    Return the tier1_supported tickers to fetch/score, sorted alphabetically.
 
-    Returns
-    -------
-    list[str] sorted alphabetically.
+    Live (``as_of`` None): every ticker not retired (``delisted_at IS NULL``,
+    migration 015). With ``as_of`` — for offline backfills/replays of a past
+    window — the tickers that existed at that time: already added, and not yet
+    retired (``delisted_at > as_of``). E.g. a June replay keeps symbols that
+    stopped trading later in the year and skips tickers added afterwards.
     """
     pool = await get_pool()
     async with pool.acquire() as conn:
-        rows = await conn.fetch(
-            """
-            SELECT ticker
-            FROM ticker_universe
-            WHERE tier = 'tier1_supported'
-            ORDER BY ticker
-            """
-        )
+        if as_of is None:
+            rows = await conn.fetch(
+                """
+                SELECT ticker
+                FROM ticker_universe
+                WHERE tier = 'tier1_supported'
+                  AND delisted_at IS NULL
+                ORDER BY ticker
+                """
+            )
+        else:
+            rows = await conn.fetch(
+                """
+                SELECT ticker
+                FROM ticker_universe
+                WHERE tier = 'tier1_supported'
+                  AND added_at <= $1
+                  AND (delisted_at IS NULL OR delisted_at > $1)
+                ORDER BY ticker
+                """,
+                as_of,
+            )
     return [r["ticker"] for r in rows]
 
 
-async def is_supported_ticker(ticker: str) -> bool:
-    """Return True if ticker is in the tier1_supported universe."""
+async def get_ticker_status(ticker: str) -> dict | None:
+    """
+    Lifecycle info for ``ticker``: ``{"ticker", "delisted_at",
+    "successor_ticker", "delisted_reason"}``, or None if it was never in the
+    tier1_supported universe.
+    """
     pool = await get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT 1 FROM ticker_universe WHERE ticker = $1 AND tier = 'tier1_supported'",
+            """
+            SELECT ticker, delisted_at, successor_ticker, delisted_reason
+            FROM ticker_universe
+            WHERE ticker = $1 AND tier = 'tier1_supported'
+            """,
             ticker.upper(),
         )
-    return row is not None
+    return dict(row) if row else None
 
 
-async def get_all_tickers() -> list[dict]:
+async def is_supported_ticker(ticker: str) -> bool:
+    """Return True if ticker is in the tier1_supported universe and not retired."""
+    status = await get_ticker_status(ticker)
+    return status is not None and status["delisted_at"] is None
+
+
+async def get_all_tickers(include_delisted: bool = False) -> list[dict]:
     """
-    Return all tickers in the universe sorted alphabetically.
+    Return the universe sorted alphabetically (active tickers only unless
+    ``include_delisted``).
 
     Each dict has:
         ticker       : str  — the ticker symbol
         company_name : str | None — full company name (None if not yet seeded)
         sector       : str | None — GICS sector (None if not yet seeded; P4.1)
+        in_sp500     : bool — current S&P 500 member (migration 015 snapshot)
     """
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT ticker, company_name, sector FROM ticker_universe ORDER BY ticker"
+            f"""
+            SELECT ticker, company_name, sector, in_sp500
+            FROM ticker_universe
+            {"" if include_delisted else "WHERE delisted_at IS NULL"}
+            ORDER BY ticker
+            """
         )
     return [
         {
             "ticker":       r["ticker"],
             "company_name": r["company_name"],
             "sector":       r["sector"],
+            "in_sp500":     r["in_sp500"],
         }
         for r in rows
     ]
@@ -94,3 +134,17 @@ async def get_ticker_sector_map() -> dict[str, str]:
             "SELECT ticker, sector FROM ticker_universe WHERE sector IS NOT NULL"
         )
     return {r["ticker"]: r["sector"] for r in rows}
+
+
+async def get_universe_as_of(as_of: datetime) -> list[str]:
+    """
+    ``get_active_tickers(as_of)`` for offline scripts, refusing an empty
+    result (e.g. an ``as_of`` before the universe was first seeded on
+    2026-04-24 — pass the date of the window being scored, not the start of
+    a history-warmup range).
+    """
+    tickers = await get_active_tickers(as_of)
+    if not tickers:
+        raise ValueError(f"no tickers in the universe as of {as_of.isoformat()} "
+                         "(before the 2026-04-24 seed?) — pass --universe-as-of")
+    return tickers

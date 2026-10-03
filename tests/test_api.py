@@ -86,7 +86,9 @@ def _sentiment_patches(*, supported: bool = True, state: dict | None = _MOCK_STA
     """Return a combined context manager for the three most common patches."""
     return (
         patch("api.rate_limit.check_rate_limit", AsyncMock()),
-        patch("api.routes.sentiment.is_supported_ticker", AsyncMock(return_value=supported)),
+        patch("api.routes.sentiment.get_ticker_status", AsyncMock(return_value=(
+            {"ticker": "AAPL", "delisted_at": None, "successor_ticker": None, "delisted_reason": None}
+            if supported else None))),
         patch("api.response.assembler._load_from_redis", AsyncMock(return_value=state)),
     )
 

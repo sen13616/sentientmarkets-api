@@ -75,7 +75,7 @@ from pipeline.sources.market import (  # noqa: E402
 )
 from scripts.db.connection import close_pool, get_pool, init_pool  # noqa: E402
 from scripts.db.queries.raw_signals import insert_signals, replace_signals  # noqa: E402
-from scripts.db.queries.universe import get_active_tickers  # noqa: E402
+from scripts.db.queries.universe import get_universe_as_of  # noqa: E402
 
 _log = logging.getLogger("reconstruct_signals")
 
@@ -337,6 +337,21 @@ async def archive_replaced(start: datetime, end: datetime, tickers: list[str]) -
     return expected
 
 
+def daily_bar_rows(ticker: str, daily: list[dict], start: datetime, end: datetime) -> list[tuple]:
+    """yf_open/high/low/close/volume rows for daily bars in [start, end),
+    timestamped at the bar date (midnight UTC) exactly like the live market
+    job's batch download — so get_close_history / get_volume_history see
+    them as prior sessions."""
+    rows: list[tuple] = []
+    for b in daily:
+        ts = datetime.combine(b["start"].date(), dtime(), timezone.utc)
+        if not (start <= ts < end):
+            continue
+        for field in ("open", "high", "low", "close", "volume"):
+            rows.append((ticker, f"yf_{field}", float(b[field]), "yfinance", "manual_backfill", ts))
+    return rows
+
+
 def _parse_ts(value: str) -> datetime:
     dt = datetime.fromisoformat(value)
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
@@ -348,7 +363,10 @@ async def main(argv: list[str] | None = None) -> int:
     p.add_argument("--end", type=_parse_ts, help="exclusive")
     p.add_argument("--no-eod", action="store_true", help="skip 21:15 EOD marks (live EOD rows exist)")
     p.add_argument("--macro", action="store_true", help="also rebuild VIX + sector-ETF returns")
-    p.add_argument("--tickers", help="comma-separated subset (default: active universe)")
+    p.add_argument("--universe-as-of", type=_parse_ts, default=None,
+                   help="tickers that existed at this time (default: --start); "
+                        "retired symbols trading then are included, later additions excluded")
+    p.add_argument("--tickers", help="comma-separated subset (default: universe as of --universe-as-of)")
     p.add_argument("--dry-run", action="store_true", help="build + count, no writes")
     p.add_argument("--parity", action="store_true", help="compare rebuilt vs live AAPL rows and exit")
     p.add_argument("--interval", choices=["1h", "15m"], default="1h",
@@ -356,6 +374,8 @@ async def main(argv: list[str] | None = None) -> int:
     p.add_argument("--replace", action="store_true",
                    help="archive, then atomically replace the history-dependent derived rows "
                         "(REPLACE_MARKET_TYPES + sector-ETF returns) in the window")
+    p.add_argument("--daily-bars", action="store_true",
+                   help="only backfill daily yf_* OHLCV bars in [start, end) (warm-start for newly added tickers)")
     args = p.parse_args(argv)
     minutes = 15 if args.interval == "15m" else 60
 
@@ -370,9 +390,20 @@ async def main(argv: list[str] | None = None) -> int:
             p.error("--start and --end are required")
 
         tickers = (args.tickers.upper().split(",") if args.tickers
-                   else await get_active_tickers())
+                   else await get_universe_as_of(args.universe_as_of or args.start))
         sym_of = {t: to_yahoo_symbol(t) for t in tickers}
         symbols = list(sym_of.values())
+
+        if args.daily_bars:
+            daily = await asyncio.to_thread(_by_symbol, symbols, args.start, args.end, "1d")
+            rows = [r for t in tickers if sym_of[t] in daily
+                    for r in daily_bar_rows(t, daily[sym_of[t]], args.start, args.end)]
+            if not args.dry_run:
+                await _insert(rows)
+            missing = [t for t in tickers if sym_of[t] not in daily]
+            _log.info("daily bars: %d rows %s for %d tickers (no yfinance data: %s)", len(rows),
+                      "built" if args.dry_run else "inserted", len(tickers) - len(missing), ",".join(missing))
+            return 0
 
         if args.replace and not args.dry_run:
             n = await archive_replaced(args.start, args.end, tickers)

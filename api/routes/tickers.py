@@ -3,7 +3,8 @@ api/routes/tickers.py
 
 GET /v1/tickers
 
-Returns all tickers in the supported universe.
+Returns all active tickers in the supported universe (retired symbols —
+delisted, renamed or merged — are omitted; see ticker_universe.delisted_at).
 """
 from __future__ import annotations
 
@@ -22,7 +23,8 @@ async def list_tickers(
 ) -> TickersResponse:
     rows = await get_all_tickers()
     items = [
-        TickerItem(ticker=r["ticker"], name=r["company_name"], sector=r["sector"])
+        TickerItem(ticker=r["ticker"], name=r["company_name"], sector=r["sector"],
+                   in_sp500=r.get("in_sp500"))
         for r in rows
     ]
     return TickersResponse(universe_size=len(items), tickers=items)

@@ -21,7 +21,7 @@ from api.rate_limit import rate_limited
 from api.response.labels import score_to_label
 from api.response.schemas import ErrorResponse, HistoryEntry, HistoryResponse, HistorySubIndices
 from scripts.db.queries.sentiment_history import get_history
-from scripts.db.queries.universe import is_supported_ticker
+from scripts.db.queries.universe import get_ticker_status
 
 router = APIRouter()
 
@@ -55,7 +55,8 @@ async def get_sentiment_history(
         )
 
     ticker = ticker.upper()
-    if not await is_supported_ticker(ticker):
+    # Retired (delisted/renamed) tickers keep serving their history.
+    if await get_ticker_status(ticker) is None:
         raise HTTPException(
             status_code=404,
             detail={"error": "ticker_not_found", "message": f"Ticker {ticker!r} is not in the supported universe"},
