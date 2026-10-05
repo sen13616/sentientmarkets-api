@@ -120,12 +120,15 @@ async def load_article_latency(start: datetime, end: datetime) -> pd.DataFrame:
     """Per-article ingestion latency: created_at - published_at, by source.
 
     Quantifies the "predictive budget" — how stale news already is when we
-    ingest it (Phase 5a of the nowcasting plan).
+    ingest it (Phase 5a of the nowcasting plan). Live ingestion only:
+    backfilled rows (``ingest_run IS NOT NULL``, migration 016) arrive weeks
+    after publication by construction.
     """
     query = """
         SELECT source, published_at, created_at
           FROM raw_articles
          WHERE created_at >= $1 AND created_at < $2
+           AND ingest_run IS NULL
     """
     pool = await get_pool()
     rows = await pool.fetch(query, start, end)

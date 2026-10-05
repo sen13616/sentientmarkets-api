@@ -263,6 +263,8 @@ async def _backfill_ticker(ticker: str, client: httpx.AsyncClient,
             stats["finbert_s_per_article"] = (time.monotonic() - t) / len(sample)
         return
 
+    for a in new:
+        a["ingest_run"] = stats["run_id"]
     existing_assignments = await _score_and_cluster(ticker, new, repair, start, end)
     await ra.insert_scored_articles(new)
     repaired = [(a["id"], a["finbert_score"], a["finbert_pos"], a["finbert_neg"], a["finbert_neu"])
@@ -328,6 +330,8 @@ async def main(argv: list[str] | None = None) -> int:
     p.add_argument("--concurrency", type=int, default=4,
                    help="tickers in flight (provider spacing still serializes each API)")
     p.add_argument("--dry-run", action="store_true", help="fetch + report only; no DB writes")
+    p.add_argument("--run-id", default="news-backfill",
+                   help="raw_articles.ingest_run tag for inserted rows (migration 016)")
     p.add_argument("--skip-backlog", action="store_true",
                    help="skip FinBERT-scoring of already-stored unscored articles")
     args = p.parse_args(argv)
@@ -352,6 +356,7 @@ async def main(argv: list[str] | None = None) -> int:
              "fetched_av", "fetched_fh", "new", "already_stored", "inserted",
              "finbert_scored", "clustered", "repairable", "repaired"], 0)
         stats["incomplete"] = set()
+        stats["run_id"] = args.run_id
         sem = asyncio.Semaphore(args.concurrency)
         t0 = time.monotonic()
 

@@ -39,3 +39,10 @@ def test_demo_key_cleanup_uses_cron_trigger():
     assert isinstance(job.trigger, CronTrigger)
     fields = {f.name: str(f) for f in job.trigger.fields}
     assert fields["minute"] == "50"
+
+
+def test_narrative_is_wall_clock_anchored_at_05_and_35():
+    job = scheduler.get_job("narrative")
+    assert isinstance(job.trigger, CronTrigger)
+    fields = {f.name: str(f) for f in job.trigger.fields}
+    assert fields["minute"] == "5,35"

@@ -46,7 +46,6 @@ import yfinance as yf
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.combining import OrTrigger
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.interval import IntervalTrigger
 from tqdm import tqdm as _tqdm
 from tqdm.asyncio import tqdm as _atqdm
 
@@ -957,9 +956,14 @@ scheduler.add_job(
 
 scheduler.add_job(
     _with_timeout("narrative", narrative_job),
-    trigger=IntervalTrigger(minutes=30),
+    # Wall-clock anchored (like influencer/demo_key_cleanup): an
+    # IntervalTrigger restarts its 30-min countdown on every deploy, and a
+    # ~20-min run kept getting killed by back-to-back deploys (2026-10-03,
+    # /health/pipeline went stale). :05/:35 lets a run finish just before the
+    # :30/:00 scoring ticks.
+    trigger=CronTrigger(minute="5,35"),
     id="narrative",
-    name="Narrative sentiment (30 min)",
+    name="Narrative sentiment (30 min at :05/:35)",
     max_instances=1,
     coalesce=True,
     misfire_grace_time=120,

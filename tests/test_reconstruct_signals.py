@@ -146,6 +146,7 @@ async def test_backfill_repairs_stored_unscored_articles_only():
               "scored": {"id": 12, "scored": True, "clustered": True}}
     stats = dict.fromkeys(["new", "already_stored", "repairable", "repaired", "inserted",
                            "finbert_scored", "clustered", "failed_windows"], 0)
+    stats["run_id"] = "june-gap-2026-06"
 
     def fake_scores(texts, batch_size=32):
         return [{"finbert_score": 0.5, "finbert_pos": 0.6, "finbert_neg": 0.1, "finbert_neu": 0.3}
@@ -166,5 +167,15 @@ async def test_backfill_repairs_stored_unscored_articles_only():
                                   dry_run=False, stats=stats)
 
     assert [a["content_hash"] for a in ins.call_args.args[0]] == ["new1"]
+    assert ins.call_args.args[0][0]["ingest_run"] == "june-gap-2026-06"
     assert upd.call_args.args[0] == [(11, 0.5, 0.6, 0.1, 0.3)]
     assert stats["repairable"] == 1 and stats["repaired"] == 1 and stats["already_stored"] == 2
+
+
+async def test_eval_latency_counts_live_ingestion_only():
+    import scripts.eval.data as d
+    pool = MagicMock()
+    pool.fetch = AsyncMock(return_value=[])
+    with patch.object(d, "get_pool", new=AsyncMock(return_value=pool)):
+        await d.load_article_latency(datetime(2026, 9, 1, tzinfo=UTC), datetime(2026, 10, 1, tzinfo=UTC))
+    assert "ingest_run IS NULL" in " ".join(pool.fetch.call_args.args[0].split())

@@ -426,7 +426,8 @@ async def get_unclustered_articles_between(
 async def insert_scored_articles(rows: list[dict]) -> None:
     """
     Bulk-insert fully processed articles — FinBERT columns, language and
-    event_cluster_id already populated — so nothing depends on the live job's
+    event_cluster_id (and ingest_run, migration 016, tagging the backfill
+    run) already populated — so nothing depends on the live job's
     48h FinBERT/clustering windows or on retention not having blanked the
     text yet. Duplicates are ignored via the (ticker, content_hash) index.
     """
@@ -440,9 +441,10 @@ async def insert_scored_articles(rows: list[dict]) -> None:
                 (ticker, title, summary, source, source_url, published_at,
                  provider_sentiment, relevance_score, content_hash, language,
                  event_cluster_id,
-                 finbert_score, finbert_pos, finbert_neg, finbert_neu)
+                 finbert_score, finbert_pos, finbert_neg, finbert_neu,
+                 ingest_run)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                    $11, $12, $13, $14, $15)
+                    $11, $12, $13, $14, $15, $16)
             ON CONFLICT (ticker, content_hash) DO NOTHING
             """,
             [
@@ -453,6 +455,7 @@ async def insert_scored_articles(rows: list[dict]) -> None:
                     r.get("event_cluster_id"),
                     r.get("finbert_score"), r.get("finbert_pos"),
                     r.get("finbert_neg"), r.get("finbert_neu"),
+                    r.get("ingest_run"),
                 )
                 for r in rows
             ],
