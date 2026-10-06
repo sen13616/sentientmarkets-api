@@ -75,7 +75,13 @@ MIN_SPLIT       = timedelta(hours=1)
 CLUSTER_WINDOW_H = 4.0
 FINBERT_BATCH   = 32
 
-PROGRESS_FILE = Path(_project_root) / "exports" / "news_backfill_progress.json"
+_PROGRESS_DIR = Path(_project_root) / "exports"
+
+
+def _progress_file(run_id: str) -> Path:
+    """Per-run progress (a later run must not inherit an earlier run's done list)."""
+    legacy = _PROGRESS_DIR / "news_backfill_progress.json"   # run news-backfill-2026-10
+    return legacy if run_id == "news-backfill-2026-10" else _PROGRESS_DIR / f"news_backfill_progress_{run_id}.json"
 
 
 class AbortBackfill(RuntimeError):
@@ -302,16 +308,17 @@ async def _score_stored_backlog(start: datetime, end: datetime) -> int:
 # Driver
 # ---------------------------------------------------------------------------
 
-def _load_progress() -> set[str]:
+def _load_progress(run_id: str) -> set[str]:
     try:
-        return set(json.loads(PROGRESS_FILE.read_text())["done"])
+        return set(json.loads(_progress_file(run_id).read_text())["done"])
     except (FileNotFoundError, KeyError, ValueError):
         return set()
 
 
-def _save_progress(done: set[str]) -> None:
-    PROGRESS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    PROGRESS_FILE.write_text(json.dumps({"done": sorted(done)}))
+def _save_progress(done: set[str], run_id: str) -> None:
+    path = _progress_file(run_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"done": sorted(done)}))
 
 
 def _parse_ts(value: str) -> datetime:
@@ -345,7 +352,7 @@ async def main(argv: list[str] | None = None) -> int:
     try:
         tickers = (args.tickers.upper().split(",") if args.tickers
                    else await get_universe_as_of(args.universe_as_of or args.start))
-        done = set() if args.dry_run else _load_progress()
+        done = set() if args.dry_run else _load_progress(args.run_id)
         todo = [t for t in tickers if t not in done]
         _log.info("window %s → %s | %d tickers (%d already done)%s",
                   args.start.isoformat(), args.end.isoformat(), len(todo),
@@ -367,7 +374,7 @@ async def main(argv: list[str] | None = None) -> int:
                                            args.dry_run, stats)
                     if not args.dry_run and ticker not in stats["incomplete"]:
                         done.add(ticker)
-                        _save_progress(done)
+                        _save_progress(done, args.run_id)
                     _log.info("%-6s done (%d/%d, %.0fs) new=%d inserted=%d",
                               ticker, len(done) if not args.dry_run else 0, len(tickers),
                               time.monotonic() - t0, stats["new"], stats["inserted"])
