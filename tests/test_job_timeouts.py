@@ -24,7 +24,8 @@ from fastapi.testclient import TestClient
 # ---------------------------------------------------------------------------
 
 
-async def test_init_pool_passes_command_timeout():
+async def test_init_pool_passes_command_timeout(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@localhost/db")
     import scripts.db.connection as conn
 
     with (
@@ -35,8 +36,9 @@ async def test_init_pool_passes_command_timeout():
     assert mock_create.call_args.kwargs["command_timeout"] == 42
 
 
-async def test_get_pool_auto_init_has_no_command_timeout():
+async def test_get_pool_auto_init_has_no_command_timeout(monkeypatch):
     """Scripts auto-init via get_pool(); long eval/backfill queries must not time out."""
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@localhost/db")
     import scripts.db.connection as conn
 
     with (
