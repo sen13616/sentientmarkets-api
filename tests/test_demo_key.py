@@ -271,11 +271,12 @@ class TestMintCap:
 
 class TestExpiryContract:
     async def test_expired_key_gets_401(self):
-        """get_key_tier returning None (expired = no row) → 401."""
+        """The key lookup returning None (expired = no row) → 401."""
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="sk-sm-free-x")
+        # Redis down → auth uses the read-only DB lookup (S3).
         with (
             patch("api.auth.get_redis", side_effect=Exception("no redis")),
-            patch("api.auth.get_key_tier", AsyncMock(return_value=None)),
+            patch("api.auth.get_key_tier_readonly", AsyncMock(return_value=None)),
         ):
             with pytest.raises(HTTPException) as exc:
                 await authenticate(creds)
@@ -286,6 +287,12 @@ class TestExpiryContract:
         assert "expires_at IS NULL OR expires_at > now()" in src
         assert "CASE WHEN key_type = 'demo'" in src
         assert "is_active" in src
+
+    def test_readonly_lookup_sql_enforces_expiry_without_writing(self):
+        src = inspect.getsource(api_keys_queries.get_key_tier_readonly)
+        assert "expires_at IS NULL OR expires_at > now()" in src
+        assert "is_active" in src
+        assert "UPDATE" not in src.split('"""')[-1]
 
     def test_extend_sql_requires_demo_type_and_unexpired(self):
         src = inspect.getsource(api_keys_queries.extend_demo_key)
