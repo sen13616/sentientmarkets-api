@@ -185,7 +185,7 @@ Composite scores are stored twice: `composite_score` is the raw weighted average
 | `added_at` | `TIMESTAMPTZ` | NO (default NOW) | When the ticker entered the universe. |
 | `last_requested_at` | `TIMESTAMPTZ` | YES | Reserved for Tier-2 staleness tracking. Not written by current code paths. |
 | `company_name` | `VARCHAR(200)` | YES | Human-readable name. Backs the API's `/v1/tickers` response and the explanation templates. (Added in migration 005; seeded by `tools/seed_company_names.py`.) |
-| `sector` | `VARCHAR(50)` | YES | GICS sector name — one of the 11 standard classifications. Joins to `pipeline.sources.macro.SECTOR_ETFS` to route each ticker to its sector ETF for the per-ticker macro sub-index (P4.2). 19 known-stale tickers (renamed / delisted / acquired since the 2024 snapshot) have their sector seeded from a hand-curated fallback in `tools/generate_sector_map.py`. (Added in migration 008; seeded by `tools/seed_sectors.py`.) |
+| `sector` | `VARCHAR(50)` | YES | GICS sector name — one of the 11 standard classifications. Joins to `pipeline.sources.macro.SECTOR_ETFS` to route each ticker to its sector ETF for the per-ticker macro sub-index (P4.2). 19 known-stale tickers (renamed / delisted / acquired since the 2024 snapshot) have their sector seeded from a hand-curated fallback in `tools/oneoff/generate_sector_map.py`. (Added in migration 008; seeded by `tools/seed_sectors.py`.) |
 
 ---
 

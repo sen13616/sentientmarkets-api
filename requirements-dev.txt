@@ -1,0 +1,18 @@
+# Development, testing and research tooling (not installed in production).
+#   pip install -r requirements-dev.txt
+-r requirements.txt
+
+# Tests
+pytest==8.2.0
+pytest-asyncio==0.23.0
+
+# Lint / format (config in pyproject.toml)
+ruff==0.16.10
+
+# Local ops tools (scripts/tools/db_viewer.py, export.py)
+rich==15.0.0
+plotext==5.3.2
+matplotlib==3.10.9
+
+# Research snapshots (research/ — Parquet I/O)
+pyarrow==25.0.1

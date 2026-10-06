@@ -1,4 +1,0 @@
-# Dev-only dependencies for tools/ (not needed in production).
-# Install with: pip install -r tools/requirements-dev.txt
-plotext>=5.2.8
-matplotlib>=3.8.0

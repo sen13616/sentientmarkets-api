@@ -401,11 +401,7 @@ data = response.json()
 print(f"AAPL sentiment: {data['score']} ({data['label']})")
 
 # Pro tier full detail
-response = requests.get(
-    f"{BASE_URL}/v1/sentiment/AAPL",
-    headers=headers,
-    params={"detail": "full"}
-)
+response = requests.get(f"{BASE_URL}/v1/sentiment/AAPL", headers=headers, params={"detail": "full"})
 data = response.json()
 print(f"Market sub-index: {data['sub_indices']['market']}")
 print(f"Explanation: {data['explanation']}")

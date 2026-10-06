@@ -6,7 +6,7 @@ ticker_universe. Used by tools/seed_sectors.py to populate the
 sector column added in migrations/008_add_ticker_sector.sql.
 
 Generated 2026-05-15 via yfinance Ticker(t).info["sector"].
-Re-run tools/generate_sector_map.py to regenerate.
+Re-run tools/oneoff/generate_sector_map.py to regenerate.
 
 Values must match keys of pipeline.sources.macro.SECTOR_ETFS exactly
 (11-class GICS taxonomy). Validation is enforced at import time below.

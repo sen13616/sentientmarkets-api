@@ -18,7 +18,7 @@ Compact (rows past the retention window) — array of fixed-order arrays:
 
 `description` is dropped by compaction (it embeds the raw signal value, which
 is not otherwise stored — originals are archived to gzip CSV before the
-one-off backfill; see scripts/tools/compact_drivers_backfill.py).
+one-off backfill; see scripts/tools/oneoff/compact_drivers_backfill.py).
 
 The DB-side transform in `compact_drivers_before()`
 (scripts/db/queries/sentiment_history.py) must emit the same field order as
