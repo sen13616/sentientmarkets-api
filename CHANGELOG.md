@@ -2,6 +2,16 @@
 
 ## Phase 8 — Reliability, data repair and research tooling (October 2026)
 
+### 2026-10-06 — Diagnostics fixes (from the 2026-07-24 review)
+- **Security:** the demo-key per-IP cap keys off the proxy-appended `X-Forwarded-For` hop (the leftmost hop
+  was client-controlled); `*.up.railway.app` removed from the default CORS/mint allowlist (shared domain);
+  the Redis-down auth fallback uses a read-only key lookup (no per-request DB write).
+- **Scoring:** DST-aware 9:30–16:00 ET session for market hours, staleness and the `market_hours` field
+  (the fixed UTC window was an hour off during EDT); intraday ingestion and 15-minute scoring fills start at
+  13:00 UTC; a missing layer is no longer also penalized as stale; parametric fallback for short-volume ratio.
+  Served scores change slightly (METHODOLOGY.md §16.5); measured in the ~2026-10-19 re-baseline.
+- Dead Polygon fallback removed from `pipeline/sources/market.py`; `tzdata` added for slim containers.
+
 ### 2026-10-06 — Repository cleanup and strategy-testing toolkit
 `pyproject.toml` with ruff + pytest config; codebase linted and formatted (formatting-only commit listed in
 `.git-blame-ignore-revs`); runtime vs dev requirements split; finished one-off migration scripts moved to
