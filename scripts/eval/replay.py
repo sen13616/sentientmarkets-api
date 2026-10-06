@@ -69,12 +69,12 @@ from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
-from scripts.db.connection import close_pool  # noqa: E402
-from scripts.eval import data  # noqa: E402
-from scripts.eval.run import HOLDOUT_START, RESEARCH_END, RESEARCH_START, _utc  # noqa: E402
-from pipeline.scoring.composite import LAYER_WEIGHTS, compute_composite  # noqa: E402
+from pipeline.scoring.composite import LAYER_WEIGHTS  # noqa: E402
 from pipeline.scoring.divergence import compute_divergence  # noqa: E402
 from pipeline.scoring.ema import compute_ema  # noqa: E402
+from scripts.db.connection import close_pool  # noqa: E402
+from scripts.eval import data  # noqa: E402
+from scripts.eval.run import RESEARCH_END, RESEARCH_START, _utc  # noqa: E402
 
 _LAYER_COLS = {
     "market": "market_index",

@@ -17,9 +17,9 @@ from datetime import datetime, timezone
 import pytest
 
 from pipeline.scoring.subindices import (
+    _MACRO_SIGNAL_WEIGHTS,
     SubIndexResult,
     compute_macro_sub_index,
-    _MACRO_SIGNAL_WEIGHTS,
 )
 
 
@@ -268,6 +268,7 @@ class TestOrchestratorDispatch:
     async def test_score_macro_calls_compute_macro_sub_index(self):
         """`_score_macro` must call compute_macro_sub_index — NOT compute_sub_index."""
         from unittest.mock import AsyncMock, patch
+
         from pipeline.scoring.subindices import SubIndexResult as _SR
 
         mock_result = _SR(value=72.5, n_signals=4, sources=["fred"])

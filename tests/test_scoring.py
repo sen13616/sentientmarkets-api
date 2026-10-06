@@ -6,13 +6,10 @@ All functions are pure (no DB / async) so these are plain pytest tests.
 """
 from datetime import datetime, timedelta, timezone
 
-import pytest
-
-from pipeline.scoring.composite import LAYER_WEIGHTS, CompositeResult, compute_composite
-from pipeline.scoring.divergence import DivergenceResult, compute_divergence
-from pipeline.confidence.staleness import STALENESS_THRESHOLDS, check_staleness, stale_sources
-from pipeline.confidence.scorer import ConfidenceResult, compute_confidence
-
+from pipeline.confidence.scorer import compute_confidence
+from pipeline.confidence.staleness import check_staleness, stale_sources
+from pipeline.scoring.composite import LAYER_WEIGHTS, compute_composite
+from pipeline.scoring.divergence import compute_divergence
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -5,8 +5,6 @@ Sprint A: langdetect filters non-English articles before FinBERT scoring.
 """
 from __future__ import annotations
 
-import pytest
-
 from pipeline.sources.narrative import _detect_language
 
 

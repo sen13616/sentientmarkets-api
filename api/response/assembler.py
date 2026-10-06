@@ -20,10 +20,10 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 
-from scripts.db.queries.sentiment_history import get_latest
-from scripts.db.redis import get_redis
 from pipeline.confidence.staleness import is_market_hours
 from pipeline.scoring.market_overview import PERCENTILE_KEY, XS_KEY
+from scripts.db.queries.sentiment_history import get_latest
+from scripts.db.redis import get_redis
 
 from .labels import score_to_label
 from .schemas import (

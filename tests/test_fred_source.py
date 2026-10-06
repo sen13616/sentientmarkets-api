@@ -19,7 +19,6 @@ import pytest
 
 from pipeline.sources.fred import SERIES_MAP, _fetch_observation, fetch_fred_signals
 
-
 # ---------------------------------------------------------------------------
 # Shape / mapping invariants
 # ---------------------------------------------------------------------------
@@ -154,7 +153,7 @@ class TestFetchFredSignals:
         assert n == 3
         assert len(captured) == 3
         # All rows tagged _MACRO_ / source='fred'
-        for ticker, sig_type, value, source, upload_type, _ts in captured:
+        for ticker, sig_type, _value, source, upload_type, _ts in captured:
             assert ticker == "_MACRO_"
             assert source == "fred"
             assert upload_type == "live"

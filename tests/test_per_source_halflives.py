@@ -5,10 +5,7 @@ Sprint 4 (G-S1): Replaces uniform 48h half-life with per-layer/source values.
 """
 from __future__ import annotations
 
-import math
 from datetime import datetime, timedelta, timezone
-
-import pytest
 
 from pipeline.features.normalize import (
     _HALF_LIFE_OVERRIDE,
@@ -17,7 +14,6 @@ from pipeline.features.normalize import (
     _get_half_life,
     _time_weight,
 )
-
 
 # ===========================================================================
 # _get_half_life lookup

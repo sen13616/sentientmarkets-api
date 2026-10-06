@@ -26,7 +26,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from scripts.db.connection import close_pool, get_pool, init_pool
 
-
 # --------------------------------------------------------------------------- #
 # RSI computation                                                               #
 # --------------------------------------------------------------------------- #
@@ -68,10 +67,10 @@ def compute_rsi_14(closes: list[float]) -> list[float | None]:
     # Wilder smoothing for the rest
     for i in range(period + 1, n):
         d = deltas[i - 1]
-        g = d if d > 0 else 0.0
-        l = -d if d < 0 else 0.0
-        avg_gain = (avg_gain * (period - 1) + g) / period
-        avg_loss = (avg_loss * (period - 1) + l) / period
+        gain = d if d > 0 else 0.0
+        loss = -d if d < 0 else 0.0
+        avg_gain = (avg_gain * (period - 1) + gain) / period
+        avg_loss = (avg_loss * (period - 1) + loss) / period
         result[i] = _rsi(avg_gain, avg_loss)
 
     return result

@@ -120,6 +120,7 @@ class TestAsOfCutoff:
 
     async def test_cutoff_propagates_into_tasks_and_resets(self):
         import asyncio
+
         from scripts.db.queries.as_of import cutoff, scoring_as_of
 
         async def read():

@@ -22,7 +22,6 @@ load_dotenv(override=True)
 from scripts.db.connection import close_pool, get_pool
 from scripts.db.redis import close_redis, get_redis, init_redis
 
-
 MACRO_SIGNALS_GLOBAL = ["vix", "treasury_yield_10y", "treasury_yield_2y", "ted_spread"]
 SECTOR_ETFS = ["XLK", "XLV", "XLF", "XLY", "XLP", "XLE", "XLI", "XLB", "XLU", "XLRE", "XLC"]
 

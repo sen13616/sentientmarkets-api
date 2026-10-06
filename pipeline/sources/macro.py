@@ -33,14 +33,16 @@ import httpx
 import yfinance as yf
 from dotenv import load_dotenv
 
+from pipeline.rate_limits import (
+    AV_DELAY,
+    AV_SEM,
+    FINNHUB_DELAY,
+    FINNHUB_SEM,
+    guarded_get,
+)
 from scripts.db.queries.raw_signals import (
     get_close_history,
     insert_signals,
-)
-from pipeline.rate_limits import (
-    AV_SEM, AV_DELAY,
-    FINNHUB_SEM, FINNHUB_DELAY,
-    guarded_get,
 )
 
 _log = logging.getLogger(__name__)

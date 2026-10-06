@@ -6,10 +6,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from pipeline.persistence.pg_writer import _first_not_none
-
 
 # ---------------------------------------------------------------------------
 # Unit tests for _first_not_none helper

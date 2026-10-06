@@ -24,17 +24,17 @@ from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
+from api.response.labels import score_to_label  # noqa: E402
+from pipeline.scoring.ema import compute_ema  # noqa: E402
 from scripts.db.connection import close_pool  # noqa: E402
 from scripts.eval import analyze, data  # noqa: E402
-from scripts.eval.run import RESEARCH_END, RESEARCH_START, _utc  # noqa: E402
 from scripts.eval.replay import (  # noqa: E402
     PRODUCTION_CONFIG,
     apply_ema_series,
     replay_ticks,
     to_panel_input,
 )
-from api.response.labels import score_to_label  # noqa: E402
-from pipeline.scoring.ema import compute_ema  # noqa: E402
+from scripts.eval.run import RESEARCH_END, RESEARCH_START, _utc  # noqa: E402
 
 OUT = Path("exports/eval/E004")
 

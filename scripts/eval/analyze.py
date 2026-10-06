@@ -79,7 +79,7 @@ def prepare_daily(sent: pd.DataFrame) -> pd.DataFrame:
         for k in keys:
             col = f"rf_{k}"
             if col not in s.columns:
-                s[col] = pd.to_numeric(parsed.map(lambda d: d.get(k)), errors="coerce")
+                s[col] = pd.to_numeric(parsed.map(lambda d, k=k: d.get(k)), errors="coerce")
         s = s.drop(columns=["research_features"])
 
     s["ts"] = pd.to_datetime(s["timestamp"], utc=True)
@@ -243,7 +243,7 @@ def ic_table(
                 if len(sub) < min_rows:
                     continue
                 ics = sub.groupby("date")[[f, tgt]].apply(
-                    lambda g: g[f].rank().corr(g[tgt].rank())
+                    lambda g, f=f, tgt=tgt: g[f].rank().corr(g[tgt].rank())
                     if g[f].nunique() > 3
                     else np.nan
                 )

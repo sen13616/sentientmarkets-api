@@ -6,15 +6,12 @@ Pure functions — no DB, no async.
 """
 from __future__ import annotations
 
-import math
-
 from pipeline.features.normalize import (
     _score_bid_ask_spread_bps,
     _score_buy_pressure,
     _score_order_flow_imbalance,
     _score_sell_pressure,
 )
-
 
 # ---------------------------------------------------------------------------
 # order_flow_imbalance  (CLV in [-1, 1] → score [0, 100])

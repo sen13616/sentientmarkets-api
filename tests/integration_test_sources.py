@@ -13,11 +13,11 @@ Run with:
 """
 import pytest  # noqa: F401  (marker used via decorator)
 
-from scripts.db.connection import close_pool, init_pool
 from pipeline.sources.influencer import fetch_influencer_signals
 from pipeline.sources.macro import fetch_macro_signals
 from pipeline.sources.market import fetch_market_signals
 from pipeline.sources.narrative import fetch_narrative_signals
+from scripts.db.connection import close_pool, init_pool
 
 TICKER = "AAPL"
 

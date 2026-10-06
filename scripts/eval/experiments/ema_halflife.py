@@ -36,7 +36,7 @@ def resmooth(raw_ticks: pd.DataFrame, half_life_hours: float) -> pd.DataFrame:
     Returns the frame with a `smoothed` column added.
     """
     out = []
-    for ticker, g in raw_ticks.groupby("ticker", sort=False):
+    for _ticker, g in raw_ticks.groupby("ticker", sort=False):
         g = g.sort_values("timestamp").copy()
         dt_h = g["timestamp"].diff().dt.total_seconds().fillna(0.0) / 3600.0
         alpha = 1.0 - 0.5 ** (dt_h / half_life_hours)

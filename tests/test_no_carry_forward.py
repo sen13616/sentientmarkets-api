@@ -7,7 +7,6 @@ ensures the function is never silently re-introduced.
 """
 from __future__ import annotations
 
-import importlib
 import inspect
 
 

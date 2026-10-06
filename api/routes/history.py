@@ -85,7 +85,7 @@ async def get_sentiment_history(
                 label          = score_to_label(int(round(display_score))),
                 confidence     = int(row["confidence_score"]),
                 sub_indices    = HistorySubIndices(**layer_values),
-                missing_layers = [l for l, v in layer_values.items() if v is None],
+                missing_layers = [layer for layer, v in layer_values.items() if v is None],
             )
         )
 

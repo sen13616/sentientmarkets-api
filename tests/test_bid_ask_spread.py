@@ -7,7 +7,7 @@ All tests mock yfinance.Ticker so no network calls are made.
 """
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from pipeline.sources.market import _fetch_bid_ask_spread
 

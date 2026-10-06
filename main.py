@@ -16,9 +16,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes import demo_key, health, history, market, sentiment, status, tickers
 from api.routes.demo_key import CORS_ORIGIN_REGEX, EXACT_ORIGINS
+from pipeline.scheduler import scheduler
 from scripts.db.connection import APP_COMMAND_TIMEOUT_S, close_pool, init_pool
 from scripts.db.redis import close_redis, init_redis
-from pipeline.scheduler import scheduler
 
 _log_level_name = os.environ.get("LOG_LEVEL", "INFO").upper()
 _log_level = getattr(logging, _log_level_name, logging.INFO)

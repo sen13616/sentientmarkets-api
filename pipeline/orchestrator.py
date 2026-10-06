@@ -37,8 +37,6 @@ from typing import NamedTuple
 
 import httpx
 
-from scripts.db.queries.raw_articles import get_articles_since
-from scripts.db.queries.raw_signals import get_latest_close, get_signals_since
 from pipeline.confidence.scorer import compute_confidence
 from pipeline.confidence.staleness import (
     _market_stale,
@@ -47,6 +45,7 @@ from pipeline.confidence.staleness import (
     stale_sources,
 )
 from pipeline.explanation.templates import generate_explanation
+from pipeline.features import positioning, surprise
 from pipeline.features.normalize import (
     score_influencer_signals,
     score_macro_signals,
@@ -55,11 +54,10 @@ from pipeline.features.normalize import (
 )
 from pipeline.persistence.pg_writer import persist_scored_state
 from pipeline.persistence.redis_writer import read_scored_state, write_scored_state
-from pipeline.features import positioning, surprise
 from pipeline.scoring.composite import compute_composite, compute_exo_composite
-from pipeline.scoring.ema import compute_ema
 from pipeline.scoring.divergence import compute_divergence
 from pipeline.scoring.drivers import extract_drivers
+from pipeline.scoring.ema import compute_ema
 from pipeline.scoring.subindices import (
     SubIndexResult,
     compute_macro_sub_index,
@@ -70,6 +68,8 @@ from pipeline.sources.influencer import fetch_influencer_signals
 from pipeline.sources.macro import fetch_macro_signals
 from pipeline.sources.market import fetch_market_signals
 from pipeline.sources.narrative import fetch_narrative_signals
+from scripts.db.queries.raw_articles import get_articles_since
+from scripts.db.queries.raw_signals import get_latest_close, get_signals_since
 
 _log = logging.getLogger(__name__)
 

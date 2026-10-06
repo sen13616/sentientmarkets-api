@@ -42,12 +42,12 @@ from dotenv import load_dotenv
 # stale DATABASE_URL may be exported in the shell — .env must win in scripts
 load_dotenv(override=True)
 
-from scripts.db.connection import close_pool, get_pool  # noqa: E402
 from pipeline.features.positioning import (  # noqa: E402
     WINDOW,
     insider_net_z_from_daily,
     short_vol_z_from_series,
 )
+from scripts.db.connection import close_pool, get_pool  # noqa: E402
 
 
 async def _target_rows(conn, ticker: str) -> list[dict]:

@@ -13,7 +13,6 @@ import pytest
 
 from pipeline.features import positioning
 
-
 # ------------------------------------------------------------- pure math --
 
 

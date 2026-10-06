@@ -66,7 +66,7 @@ def _format_history_entry(row: dict) -> dict:
         "label":          score_to_label(score),
         "confidence":     int(row["confidence_score"]),
         "sub_indices":    layer_values,
-        "missing_layers": [l for l, v in layer_values.items() if v is None],
+        "missing_layers": [layer for layer, v in layer_values.items() if v is None],
     }
 
 

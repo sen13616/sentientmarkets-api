@@ -15,7 +15,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Mock-pool helpers (mirrors test_pg_writer_zero.py)
 # ---------------------------------------------------------------------------
@@ -199,8 +198,8 @@ async def test_get_all_tickers_sector_can_be_null():
 
 def test_sector_map_only_uses_canonical_gics_strings():
     """Every value in TICKER_SECTORS must be a key in SECTOR_ETFS."""
-    from scripts.tools.sector_map import TICKER_SECTORS
     from pipeline.sources.macro import SECTOR_ETFS
+    from scripts.tools.sector_map import TICKER_SECTORS
     valid = set(SECTOR_ETFS.keys())
     invalid = {t: s for t, s in TICKER_SECTORS.items() if s not in valid}
     assert not invalid, f"sector_map contains non-GICS sectors: {invalid}"
@@ -208,8 +207,8 @@ def test_sector_map_only_uses_canonical_gics_strings():
 
 def test_sector_map_covers_full_universe():
     """All 502 active tickers from tools/company_names.py must have a sector."""
-    from scripts.tools.sector_map import TICKER_SECTORS
     from scripts.tools.company_names import COMPANY_NAMES
+    from scripts.tools.sector_map import TICKER_SECTORS
     missing = set(COMPANY_NAMES) - set(TICKER_SECTORS)
     # P4.1 sprint gate: ≥497 of 502 (plan tolerance for renamed/stale tickers).
     assert len(missing) <= 5, f"sector_map missing {len(missing)} tickers: {sorted(missing)[:10]}"

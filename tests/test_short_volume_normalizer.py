@@ -15,8 +15,7 @@ from __future__ import annotations
 
 import pytest
 
-from pipeline.features.normalize import RollingZScorer, _ZSCORE_CONFIG
-
+from pipeline.features.normalize import _ZSCORE_CONFIG, RollingZScorer
 
 # ---------------------------------------------------------------------------
 # Helpers — build synthetic history with known mean and std

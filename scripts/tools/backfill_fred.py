@@ -34,11 +34,10 @@ from dotenv import load_dotenv
 _ENV_FILE = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
 load_dotenv(_ENV_FILE, override=True)
 
-import httpx
 import asyncpg
+import httpx
 
 from pipeline.sources.fred import SERIES_MAP, _fetch_observation
-
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 _log = logging.getLogger("backfill_fred")

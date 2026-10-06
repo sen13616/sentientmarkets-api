@@ -58,8 +58,8 @@ from datetime import datetime, timezone
 
 import pandas as pd
 
-from scripts.db.queries.raw_signals import get_latest_close, insert_signals
 from pipeline.rate_limits import YF_OPTIONS_DELAY, YF_OPTIONS_SEM
+from scripts.db.queries.raw_signals import get_latest_close, insert_signals
 
 _log = logging.getLogger(__name__)
 

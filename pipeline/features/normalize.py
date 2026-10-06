@@ -856,8 +856,8 @@ async def score_macro_signals(
              corresponding to the ticker's sector
     now    : scoring tick wall-clock time
     """
-    from scripts.db.queries.raw_signals import get_signal_history
     from pipeline.sources.macro import SECTOR_ETFS
+    from scripts.db.queries.raw_signals import get_signal_history
 
     result: list[dict] = []
 

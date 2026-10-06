@@ -10,10 +10,7 @@ Paper examples:
 """
 from __future__ import annotations
 
-import math
 from datetime import datetime, timezone
-
-import pytest
 
 from pipeline.features.normalize import _compute_w_conf, score_narrative_signals
 

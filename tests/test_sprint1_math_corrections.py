@@ -13,17 +13,14 @@ import math
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
-from pipeline.sources.market import _compute_returns
 from pipeline.features.normalize import (
     _SOURCE_WEIGHTS,
-    score_market_signals,
-    score_narrative_signals,
     score_influencer_signals,
     score_macro_signals,
+    score_market_signals,
+    score_narrative_signals,
 )
-
+from pipeline.sources.market import _compute_returns
 
 # ---------------------------------------------------------------------------
 # G-S4: Log returns

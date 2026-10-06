@@ -32,7 +32,6 @@ from db_exports import (
     export_sentiment_history,
     export_top_bottom_scores,
 )
-
 from rich.console import Console
 
 console = Console()

@@ -13,12 +13,9 @@ Validates:
 """
 from __future__ import annotations
 
-import math
-
 import pytest
 
 from pipeline.scoring.ema import compute_ema
-
 
 # ---------------------------------------------------------------------------
 # Cold-start
@@ -208,6 +205,7 @@ class TestHalfLifeEnvOverride:
 
     def test_env_override_binds_at_import(self, monkeypatch):
         import importlib
+
         import pipeline.scoring.ema as ema
         monkeypatch.setenv("EMA_HALF_LIFE_HOURS", "2.0")
         try:

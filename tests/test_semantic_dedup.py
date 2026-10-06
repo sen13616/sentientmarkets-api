@@ -12,11 +12,14 @@ Covers:
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock, patch  # noqa: F401 — MagicMock used in TestClusterArticles
+from unittest.mock import (  # noqa: F401 — MagicMock used in TestClusterArticles
+    AsyncMock,
+    MagicMock,
+    patch,
+)
 
 import numpy as np
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -284,8 +287,9 @@ class TestGetArticlesSinceDedup:
         unclustered articles (NULL cluster ID) are each treated as unique
         rows. Verify the SQL contains this expression.
         """
-        from scripts.db.queries.raw_articles import get_articles_since
         import inspect
+
+        from scripts.db.queries.raw_articles import get_articles_since
         source = inspect.getsource(get_articles_since)
 
         # COALESCE with id::text ensures NULL cluster IDs become unique per-row
@@ -301,8 +305,9 @@ class TestGetArticlesSinceDedup:
         This test verifies the SQL logic at the query layer level by checking
         that the SQL string contains the DISTINCT ON clause.
         """
-        from scripts.db.queries.raw_articles import get_articles_since
         import inspect
+
+        from scripts.db.queries.raw_articles import get_articles_since
         source = inspect.getsource(get_articles_since)
         assert "DISTINCT ON" in source, "get_articles_since must use DISTINCT ON for cluster dedup"
         assert "COALESCE(event_cluster_id" in source, "must use COALESCE for NULL cluster IDs"
@@ -320,8 +325,9 @@ class TestGetArticlesSinceDedup:
         This test verifies the SQL ordering: WHERE filters first, then DISTINCT ON
         picks from the remaining (FinBERT-scored) rows.
         """
-        from scripts.db.queries.raw_articles import get_articles_since
         import inspect
+
+        from scripts.db.queries.raw_articles import get_articles_since
         source = inspect.getsource(get_articles_since)
 
         # The WHERE clause must contain finbert_score IS NOT NULL
@@ -338,8 +344,9 @@ class TestGetArticlesSinceDedup:
 
     async def test_query_returns_expected_columns(self):
         """get_articles_since returns dicts with the expected keys."""
-        from scripts.db.queries.raw_articles import get_articles_since
         import inspect
+
+        from scripts.db.queries.raw_articles import get_articles_since
         source = inspect.getsource(get_articles_since)
         # Must select these columns for score_narrative_signals compatibility
         for col in ("published_at", "finbert_score", "relevance_score", "source",

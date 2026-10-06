@@ -49,6 +49,26 @@ from apscheduler.triggers.cron import CronTrigger
 from tqdm import tqdm as _tqdm
 from tqdm.asyncio import tqdm as _atqdm
 
+from pipeline.features.normalize import log_scoring_telemetry, reset_scoring_telemetry
+from pipeline.nlp.dedup import cluster_articles
+from pipeline.orchestrator import ScoreResult, _score_and_write
+from pipeline.rate_limits import job_counters
+from pipeline.scoring.market_overview import (
+    OVERVIEW_KEY,
+    PERCENTILE_KEY,
+    XS_KEY,
+    build_overview,
+    compute_cross_sectional,
+    compute_percentiles,
+)
+from pipeline.sources.fred import fetch_fred_signals
+from pipeline.sources.influencer import fetch_influencer_signals
+from pipeline.sources.macro import fetch_macro_signals
+from pipeline.sources.market import fetch_market_signals, to_yahoo_symbol
+from pipeline.sources.narrative import fetch_narrative_signals
+from pipeline.sources.options import ingest_options
+from pipeline.sources.short_volume import ingest_short_volume
+from scripts.db.queries.api_keys import delete_expired_demo_keys
 from scripts.db.queries.raw_articles import (
     purge_articles_before,
     strip_article_text_before,
@@ -60,29 +80,9 @@ from scripts.db.queries.raw_signals import (
     RESEARCH_RETAIN_SIGNAL_TYPES,
     purge_signals_before,
 )
-from scripts.db.queries.api_keys import delete_expired_demo_keys
 from scripts.db.queries.sentiment_history import compact_drivers_before, get_baseline_scores
 from scripts.db.queries.universe import get_active_tickers, get_ticker_sector_map
 from scripts.db.redis import get_redis
-from pipeline.features.normalize import log_scoring_telemetry, reset_scoring_telemetry
-from pipeline.orchestrator import ScoreResult, _score_and_write
-from pipeline.scoring.market_overview import (
-    OVERVIEW_KEY,
-    PERCENTILE_KEY,
-    XS_KEY,
-    build_overview,
-    compute_cross_sectional,
-    compute_percentiles,
-)
-from pipeline.rate_limits import job_counters
-from pipeline.sources.fred import fetch_fred_signals
-from pipeline.sources.influencer import fetch_influencer_signals
-from pipeline.sources.macro import fetch_macro_signals
-from pipeline.sources.market import fetch_market_signals, to_yahoo_symbol
-from pipeline.nlp.dedup import cluster_articles
-from pipeline.sources.narrative import fetch_narrative_signals
-from pipeline.sources.options import ingest_options
-from pipeline.sources.short_volume import ingest_short_volume
 
 _log = logging.getLogger(__name__)
 
@@ -527,8 +527,8 @@ async def narrative_job() -> None:
     )
 
     # ── Phase 3: FinBERT scoring (Sprint A) ───────────────────────────────
-    from scripts.db.queries.raw_articles import get_unscored_articles, update_finbert_scores
     from pipeline.nlp.finbert import score_batch as finbert_score_batch
+    from scripts.db.queries.raw_articles import get_unscored_articles, update_finbert_scores
 
     t_finbert_start = time.monotonic()
     n_scored = 0
@@ -563,9 +563,9 @@ async def narrative_job() -> None:
 
     elapsed = time.monotonic() - t_start
     _log.info(
-        "narrative_job complete: %d tickers fetched in %.1fs, %d rate-limit skips, %d net-error skips, "
-        "%d clusters in %.1fs, %d finbert-scored in %.1fs",
-        n, fetch_elapsed, job_counters.rate_limit_skips, job_counters.net_error_skips,
+        "narrative_job complete in %.1fs: %d tickers fetched in %.1fs, %d rate-limit skips, "
+        "%d net-error skips, %d clusters in %.1fs, %d finbert-scored in %.1fs",
+        elapsed, n, fetch_elapsed, job_counters.rate_limit_skips, job_counters.net_error_skips,
         total_clusters, cluster_elapsed, n_scored, finbert_elapsed,
     )
 

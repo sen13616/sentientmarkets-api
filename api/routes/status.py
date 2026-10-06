@@ -21,8 +21,8 @@ from fastapi import APIRouter, Depends
 
 from api.rate_limit import rate_limited
 from api.response.schemas import ErrorResponse, StatusResponse
-from scripts.db.redis import get_redis
 from pipeline.confidence.staleness import is_market_hours
+from scripts.db.redis import get_redis
 
 router = APIRouter()
 _log   = logging.getLogger(__name__)

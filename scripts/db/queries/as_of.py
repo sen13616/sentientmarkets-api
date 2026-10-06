@@ -12,10 +12,10 @@ row timestamped after t can leak into a score for t.
 """
 from __future__ import annotations
 
+from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime
-from typing import Iterator
 
 _AS_OF: ContextVar[datetime | None] = ContextVar("scoring_as_of", default=None)
 

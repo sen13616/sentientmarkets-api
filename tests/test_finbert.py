@@ -8,9 +8,7 @@ The actual ProsusAI/finbert model is NOT loaded in unit tests.
 """
 from __future__ import annotations
 
-from unittest.mock import patch, MagicMock
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 
 def _make_mock_model_and_tokenizer(probs_list):
@@ -74,8 +72,9 @@ class TestFinBERTScoreComputation:
 
     def test_score_positive(self):
         """Positive article: P(pos) > P(neg) → positive score."""
-        from pipeline.nlp.finbert import score_text
         import torch
+
+        from pipeline.nlp.finbert import score_text
 
         # Mock the model to return known softmax outputs
         with patch("pipeline.nlp.finbert._model", None), \
@@ -114,8 +113,9 @@ class TestFinBERTScoreComputation:
 
     def test_score_range(self):
         """finbert_score should be in [-1, +1]."""
-        from pipeline.nlp.finbert import score_text
         import torch
+
+        from pipeline.nlp.finbert import score_text
 
         with patch("pipeline.nlp.finbert._model", None), \
              patch("pipeline.nlp.finbert._tokenizer", None):
@@ -146,8 +146,9 @@ class TestFinBERTScoreComputation:
 
     def test_probabilities_sum_approximately_one(self):
         """pos + neg + neu should sum to ~1.0 (softmax output)."""
-        from pipeline.nlp.finbert import score_text
         import torch
+
+        from pipeline.nlp.finbert import score_text
 
         with patch("pipeline.nlp.finbert._model", None), \
              patch("pipeline.nlp.finbert._tokenizer", None):
@@ -188,8 +189,9 @@ class TestFinBERTBatch:
 
     def test_batch_returns_correct_count(self):
         """Batch of N texts → N results."""
-        from pipeline.nlp.finbert import score_batch
         import torch
+
+        from pipeline.nlp.finbert import score_batch
 
         with patch("pipeline.nlp.finbert._model", None), \
              patch("pipeline.nlp.finbert._tokenizer", None):

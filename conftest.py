@@ -1,14 +1,13 @@
 """
 Root conftest.py
 
-pytest-asyncio configuration is in pytest.ini (asyncio_mode = auto).
+pytest configuration lives in pyproject.toml ([tool.pytest.ini_options], asyncio_mode = auto).
 
 Integration tests (marked with @pytest.mark.integration) are automatically
 deselected from the default run.  To run them explicitly:
 
     pytest -m integration
 """
-import pytest
 
 
 def pytest_collection_modifyitems(config, items):

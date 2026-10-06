@@ -13,8 +13,6 @@ import logging
 from unittest.mock import AsyncMock, patch
 
 import httpx
-import pytest
-
 
 # ---------------------------------------------------------------------------
 # 1. Finnhub succeeds → source = "finnhub"

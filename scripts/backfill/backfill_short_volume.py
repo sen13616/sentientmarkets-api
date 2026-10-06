@@ -36,8 +36,8 @@ _project_root = str(Path(__file__).resolve().parent.parent.parent)
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
-from scripts.db.connection import close_pool, get_pool, init_pool
 from pipeline.sources.short_volume import fetch_short_volume_for_date
+from scripts.db.connection import close_pool, get_pool, init_pool
 from scripts.db.queries.raw_signals import insert_signals
 
 _log = logging.getLogger(__name__)

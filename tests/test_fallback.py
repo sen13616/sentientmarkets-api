@@ -10,12 +10,9 @@ scorer applies the right penalties.
 """
 from __future__ import annotations
 
-import pytest
-
 from pipeline.confidence.scorer import PENALTIES, compute_confidence
 from pipeline.scoring.composite import LAYER_WEIGHTS, compute_composite
 from pipeline.scoring.divergence import compute_divergence
-
 
 # ---------------------------------------------------------------------------
 # Helper — lightweight SubIndexResult stand-in (has a .value attribute)

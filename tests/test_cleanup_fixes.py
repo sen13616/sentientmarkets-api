@@ -14,10 +14,8 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import numpy as np
-import pytest
 
 from pipeline.sources.market import to_yahoo_symbol
-
 
 # ===========================================================================
 # to_yahoo_symbol

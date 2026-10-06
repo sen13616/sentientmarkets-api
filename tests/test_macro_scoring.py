@@ -13,17 +13,15 @@ Per-ticker macro sub-index tests:
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
-import math
 import pytest
 
-from pipeline.features.normalize import score_macro_signals, _ZSCORE_CONFIG
+from pipeline.features.normalize import _ZSCORE_CONFIG, score_macro_signals
 from pipeline.scoring.subindices import (
     compute_macro_sub_index,
     compute_sub_index,
-    SubIndexResult,
 )
 
 
@@ -220,8 +218,11 @@ class TestPerTickerDistinctness:
 # ===========================================================================
 
 from pipeline.features.normalize import (  # noqa: E402
-    _score_treasury_10y, _score_treasury_2y, _score_ted_spread,
-    _MACRO_GLOBAL_TYPES, _MACRO_RECOGNISED_TYPES,
+    _MACRO_GLOBAL_TYPES,
+    _MACRO_RECOGNISED_TYPES,
+    _score_ted_spread,
+    _score_treasury_2y,
+    _score_treasury_10y,
 )
 
 

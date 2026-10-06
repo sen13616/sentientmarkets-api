@@ -12,9 +12,7 @@ Both share a consistent colour map for sentiment layers.
 """
 from __future__ import annotations
 
-import io
 from datetime import datetime
-from typing import Sequence
 
 # ---------------------------------------------------------------------------
 # Colour maps (shared between ASCII and PNG renderers)
@@ -141,8 +139,8 @@ def export_chart_png(
 
     import matplotlib
     matplotlib.use("Agg")  # non-interactive backend
-    import matplotlib.pyplot as plt
     import matplotlib.dates as mdates
+    import matplotlib.pyplot as plt
 
     # Filter out empty / all-None series
     valid_series: dict[str, list[tuple[datetime, float]]] = {}

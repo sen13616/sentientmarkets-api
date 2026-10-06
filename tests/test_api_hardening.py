@@ -12,16 +12,15 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # /health uses the cached lookup, not a direct DB write
 # ---------------------------------------------------------------------------
 
 async def test_health_uses_cached_lookup_not_direct_db():
     """health() must call the cached _lookup_tier, never get_key_tier directly."""
-    from api.routes import health
-
     from fastapi import Request
+
+    from api.routes import health
 
     scope = {
         "type": "http",

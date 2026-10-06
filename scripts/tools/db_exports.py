@@ -112,10 +112,14 @@ def _score_to_label(score: float | None) -> str:
     if score is None:
         return ""
     s = int(score)
-    if s <= 20: return "Strongly Bearish"
-    if s <= 40: return "Bearish"
-    if s <= 60: return "Neutral"
-    if s <= 80: return "Bullish"
+    if s <= 20:
+        return "Strongly Bearish"
+    if s <= 40:
+        return "Bearish"
+    if s <= 60:
+        return "Neutral"
+    if s <= 80:
+        return "Bullish"
     return "Strongly Bullish"
 
 

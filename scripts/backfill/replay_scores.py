@@ -76,7 +76,12 @@ _SETTINGS = (apply_settings(sys.argv[1:]) if __name__ == "__main__"
 from pipeline.orchestrator import compute_scored_state  # noqa: E402
 from pipeline.persistence.pg_writer import persist_replay_row  # noqa: E402
 from pipeline.scheduler import SCORE_TICKER_TIMEOUT_S  # noqa: E402
-from scripts.db.connection import APP_COMMAND_TIMEOUT_S, close_pool, get_pool, init_pool  # noqa: E402
+from scripts.db.connection import (  # noqa: E402
+    APP_COMMAND_TIMEOUT_S,
+    close_pool,
+    get_pool,
+    init_pool,
+)
 from scripts.db.queries.as_of import scoring_as_of  # noqa: E402
 from scripts.db.queries.sentiment_history import get_baseline_scores  # noqa: E402
 from scripts.db.queries.universe import get_ticker_sector_map, get_universe_as_of  # noqa: E402

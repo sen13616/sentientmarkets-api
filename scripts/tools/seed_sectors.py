@@ -29,7 +29,6 @@ _ENV_FILE = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
 load_dotenv(_ENV_FILE, override=True)
 
 import asyncpg
-
 from sector_map import TICKER_SECTORS
 
 

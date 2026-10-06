@@ -12,11 +12,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-import pytest
-
 from pipeline.confidence.staleness import (
-    SignalStalenessRule,
-    _DEFAULT_SIGNAL_RULE,
     filter_stale_signals,
     is_market_hours,
     market_lookback_since,

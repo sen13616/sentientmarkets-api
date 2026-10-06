@@ -17,14 +17,10 @@ from the nominal values.
 """
 from __future__ import annotations
 
-import pytest
-
 from pipeline.scoring.subindices import (
     MARKET_COMPONENT_WEIGHTS,
-    SubIndexResult,
     compute_market_sub_index,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers — build synthetic signal dicts

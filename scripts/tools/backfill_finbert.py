@@ -36,7 +36,7 @@ _log = logging.getLogger(__name__)
 
 async def backfill(batch_size: int = 64, dry_run: bool = False) -> None:
     import asyncpg
-    from langdetect import detect, LangDetectException
+    from langdetect import LangDetectException, detect
 
     dsn = os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://")
     conn = await asyncpg.connect(dsn)

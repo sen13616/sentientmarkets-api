@@ -12,8 +12,6 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
 
 def test_ohlcv_signal_types_cover_market_layer():
     """OHLCV_SIGNAL_TYPES must include every yf_* and ohlcv_* type written by the pipeline."""

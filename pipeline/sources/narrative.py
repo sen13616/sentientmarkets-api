@@ -27,15 +27,16 @@ from datetime import date, datetime, timedelta, timezone
 
 import httpx
 from dotenv import load_dotenv
+from langdetect import LangDetectException, detect
 
-from langdetect import detect, LangDetectException
-
-from scripts.db.queries.raw_articles import hash_exists, insert_article
 from pipeline.rate_limits import (
-    AV_SEM, AV_DELAY,
-    FINNHUB_SEM, FINNHUB_DELAY,
+    AV_DELAY,
+    AV_SEM,
+    FINNHUB_DELAY,
+    FINNHUB_SEM,
     guarded_get,
 )
+from scripts.db.queries.raw_articles import hash_exists, insert_article
 
 _log = logging.getLogger(__name__)
 

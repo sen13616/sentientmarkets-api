@@ -33,20 +33,21 @@ All written with upload_type='live'.
 from __future__ import annotations
 
 import asyncio
-import os
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 
 import httpx
 import yfinance as yf
 from dotenv import load_dotenv
 
-from scripts.db.queries.raw_signals import insert_signals
 from pipeline.rate_limits import (
-    FINNHUB_SEM, FINNHUB_DELAY,
+    FINNHUB_DELAY,
+    FINNHUB_SEM,
     guarded_get,
 )
 from pipeline.sources.market import to_yahoo_symbol
+from scripts.db.queries.raw_signals import insert_signals
 
 _log = logging.getLogger(__name__)
 

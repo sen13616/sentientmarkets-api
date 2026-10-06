@@ -35,6 +35,21 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import asyncpg
 import redis.asyncio as aioredis
+from db_charts import ascii_line_chart, export_chart_png  # noqa: E402
+
+# db_exports loads dotenv itself; importing it here also initialises EXPORTS_DIR
+from db_exports import EXPORTS_DIR, show_export_menu  # noqa: E402
+from db_health import (  # noqa: E402
+    query_article_volume_24h,
+    query_confidence_flag_breakdown_24h,
+    query_divergence_distribution_24h,
+    query_missing_layer_breakdown_24h,
+    query_null_rate_audit_24h,
+    query_scoring_activity_24h,
+    query_signal_freshness,
+    query_stale_tickers,
+    query_ticker_coverage,
+)
 from dotenv import load_dotenv
 from rich import box
 from rich.columns import Columns
@@ -43,21 +58,6 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.table import Table
 from rich.text import Text
-
-# db_exports loads dotenv itself; importing it here also initialises EXPORTS_DIR
-from db_exports import EXPORTS_DIR, show_export_menu  # noqa: E402
-from db_charts import ascii_line_chart, export_chart_png  # noqa: E402
-from db_health import (  # noqa: E402
-    query_scoring_activity_24h,
-    query_confidence_flag_breakdown_24h,
-    query_divergence_distribution_24h,
-    query_missing_layer_breakdown_24h,
-    query_ticker_coverage,
-    query_stale_tickers,
-    query_signal_freshness,
-    query_null_rate_audit_24h,
-    query_article_volume_24h,
-)
 
 _ENV_FILE = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
 load_dotenv(_ENV_FILE, override=True)  # belt-and-suspenders for the viewer
@@ -717,11 +717,11 @@ async def screen_ticker_deep_dive() -> None:
 
         console.print(f"\n  [bold green]PNGs exported \u2192[/bold green] [cyan]{folder}/[/cyan]")
         if p1:
-            console.print(f"    composite.png")
+            console.print("    composite.png")
         if p2:
-            console.print(f"    sub_indices.png")
+            console.print("    sub_indices.png")
         if p3:
-            console.print(f"    confidence.png")
+            console.print("    confidence.png")
 
     elif action == "e":
         # CSV export via the standard path

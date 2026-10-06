@@ -30,22 +30,23 @@ import math
 import os
 from datetime import datetime, timedelta, timezone
 
-_log = logging.getLogger(__name__)
-
 import httpx
 from dotenv import load_dotenv
 
+from pipeline.confidence.staleness import is_market_hours
+from pipeline.rate_limits import (
+    POLYGON_DELAY,
+    POLYGON_SEM,
+    YF_INFO_SEM,
+    guarded_get,
+)
 from scripts.db.queries.raw_signals import (
     get_close_history,
     get_volume_history,
     insert_signals,
 )
-from pipeline.confidence.staleness import is_market_hours
-from pipeline.rate_limits import (
-    POLYGON_SEM, POLYGON_DELAY,
-    YF_INFO_SEM,
-    guarded_get,
-)
+
+_log = logging.getLogger(__name__)
 
 load_dotenv(override=False)
 

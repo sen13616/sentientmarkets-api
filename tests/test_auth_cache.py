@@ -9,8 +9,6 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
 from api.auth import _TIER_CACHE_MISS, _TIER_CACHE_TTL, _lookup_tier
 
 KEY_HASH = "a" * 64

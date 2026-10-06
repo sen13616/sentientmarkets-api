@@ -212,7 +212,7 @@ def extract_drivers(
         deduped.append((importance, sig))
 
     drivers: list[DriverRecord] = []
-    for importance, sig in deduped[:top_n]:
+    for _importance, sig in deduped[:top_n]:
         score   = sig.get("score", 50.0)
         weight  = sig.get("weight", 0.0)
         sig_type = sig.get("signal_type", "unknown")

@@ -7,7 +7,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from apscheduler.triggers.cron import CronTrigger
 
 

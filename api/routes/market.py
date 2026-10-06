@@ -27,8 +27,8 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from api.rate_limit import rate_limited
 from api.response.schemas import ErrorResponse, MarketOverviewResponse
-from scripts.db.redis import get_redis
 from pipeline.scoring.market_overview import OVERVIEW_KEY
+from scripts.db.redis import get_redis
 
 router = APIRouter()
 _log   = logging.getLogger(__name__)

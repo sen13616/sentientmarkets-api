@@ -520,6 +520,7 @@ TICKER_SECTORS: dict[str, str] = {
 
 # Validate against the canonical taxonomy at import time.
 from pipeline.sources.macro import SECTOR_ETFS as _SECTOR_ETFS
+
 _VALID = set(_SECTOR_ETFS.keys())
 _invalid = {t: s for t, s in TICKER_SECTORS.items() if s not in _VALID}
 assert not _invalid, f"sector_map.py contains non-GICS sectors: {_invalid}"

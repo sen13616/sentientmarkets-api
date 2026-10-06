@@ -267,7 +267,6 @@ async def ingest_short_volume(client: httpx.AsyncClient) -> int:
     data, actual_date = result
     universe = set(await get_active_tickers())
 
-    now = datetime.now(timezone.utc)
     # Use end-of-day (21:00 UTC) of the actual data date as the signal timestamp
     ts = datetime(
         actual_date.year, actual_date.month, actual_date.day,

@@ -216,7 +216,7 @@ async def run(dry_run: bool) -> dict:
         # Archive everything the cleanup deletes, then apply in one transaction.
         ARCHIVE.parent.mkdir(parents=True, exist_ok=True)
         archived = {}
-        for table, where, params, n in counts:
+        for table, where, params, _n in counts:
             rows = await conn.fetch(f"SELECT * FROM {table} WHERE {where}", *params)
             archived.setdefault(table, []).extend(dict(r) for r in rows)
         with gzip.open(ARCHIVE, "wt") as fh:

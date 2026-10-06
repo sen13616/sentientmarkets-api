@@ -14,13 +14,12 @@ Covers:
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pipeline.sources import influencer as influencer_src
 from pipeline.features import normalize as nm
-
+from pipeline.sources import influencer as influencer_src
 
 # ===========================================================================
 # I8 — yfinance fetcher
