@@ -1,5 +1,5 @@
 """
-db/queries/universe.py
+scripts/db/queries/universe.py
 
 All ticker_universe table operations.
 """

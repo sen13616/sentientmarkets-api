@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-tools/db_viewer.py
+scripts/tools/db_viewer.py
 
 Terminal UI database viewer for the SentimentAPI pipeline (v2).
 
 Run with:
-    python3 tools/db_viewer.py
+    python3 scripts/tools/db_viewer.py
 
 Navigation:
     1      OVERVIEW — table counts, scheduler status

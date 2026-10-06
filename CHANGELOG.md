@@ -1,5 +1,39 @@
 # Changelog
 
+## Phase 8 — Reliability, data repair and research tooling (October 2026)
+
+### 2026-10-06 — Repository cleanup and strategy-testing toolkit
+`pyproject.toml` with ruff + pytest config; codebase linted and formatted (formatting-only commit listed in
+`.git-blame-ignore-revs`); runtime vs dev requirements split; finished one-off migration scripts moved to
+`scripts/tools/oneoff/`; README rewritten as a front page, docs consolidated under `docs/`; CI (lint, tests,
+secret scan), `CONTRIBUTING.md`, `SECURITY.md`. New `research/` package: point-in-time Parquet snapshots, a
+`Strategy` interface and a no-look-ahead daily backtester (cross-checked against the eval harness).
+
+### 2026-10-03 → 10-06 — Universe update, June gap fill, scheduling and tagging
+- **Universe** (migration 015): 28 symbols retired with their last trading day and successor (acquisitions,
+  take-privates, mergers, ticker changes; PARA's symbol was reused by an unrelated company and its rows from
+  2026-08-07 removed), all 503 current S&P 500 members present (112 added, warm-started), 83 still-trading
+  former names kept, `in_sp500` flag, 13 GICS sectors re-synced. Active universe: 586. API returns
+  `status: "delisted"` for retired symbols.
+- **June gap** (2026-06-23 → 07-03) filled offline as run `june-gap-2026-06` (hourly, 478 tickers).
+- `narrative_job` anchored to :05/:35 (deploys no longer reset its interval).
+- Migration 016: `raw_articles.ingest_run` tags backfilled articles; eval latency counts live ingestion only.
+
+### 2026-10-03 — Market history fix
+`get_close_history` / `get_volume_history` picked arbitrary same-day intraday rows (timestamp ties), so
+intraday `return_1d` was noise and `volume_ratio` ~2× inflated. Fixed to the latest-written row per prior
+session; the 25-day derived history was rebuilt so z-scores are consistent from the fix. Served market-layer
+values before this date used the contaminated history (METHODOLOGY.md §16.5).
+
+### 2026-10-02 — Hang protection and outage repair
+- Production outage diagnosed: the news job hung from 2026-08-10 and scoring from 2026-09-17 (a dead DB
+  connection inside a job with `max_instances=1` blocked every later run).
+- Fix: per-query DB `command_timeout`, per-ticker scoring timeout, job-level timeouts, and
+  `/health/pipeline` (503 when scoring or news is stale).
+- Repair (migration 014, `replay_run`): news backfilled for 08-07 → 10-02; the 1.1M news-less rows of
+  08-10 → 09-17 rebuilt with the narrative layer; the empty 09-17 → 10-02 gap scored "as of" each hour.
+  Alpha Vantage `Note`/`Information` responses now log a warning instead of failing silently.
+
 ## Phase 7 — Nowcasting-first + the research program
 
 ### 2026-07-22 — Research program day one (E000–E004) + options collection
@@ -8,7 +42,7 @@ Frozen holdout split (research window 2026-04-24→06-22; post-outage holdout co
 
 ### 2026-07-21 — Nowcasting refactor (commits 21e459c…0ec151b)
 
-Response to the external backtest study (`docs/SUMMARYOFTESTING.md` findings: scores coincident-to-lagging, no predictive lead). All additive — the headline score byte-identical: eval harness ported from the study as a release gate (`scripts/eval/`, committed baseline), per-consumer API keys (migration 009), cross-sectional calibration fields (`score_raw_z`/percentiles, migration 010's `score_exo`), information-time stamping, and flag-gated `narrative_surprise` (migration 011). Full mapping in [`docs/CHANGES.md`](docs/CHANGES.md).
+Response to the July 2026 external backtest study, which found the scores coincident-to-lagging with no predictive lead. All additive — the headline score byte-identical: eval harness ported from the study as a release gate (`scripts/eval/`, committed baseline), per-consumer API keys (migration 009), cross-sectional calibration fields (`score_raw_z`/percentiles, migration 010's `score_exo`), information-time stamping, and flag-gated `narrative_surprise` (migration 011). Full mapping in [`docs/history/nowcasting-refactor-2026-07.md`](docs/history/nowcasting-refactor-2026-07.md).
 
 ## Phase 6
 

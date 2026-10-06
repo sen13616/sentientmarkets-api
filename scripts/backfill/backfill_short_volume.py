@@ -1,5 +1,5 @@
 """
-pipeline/scripts/backfill_short_volume.py
+scripts/backfill/backfill_short_volume.py
 
 Backfill 90 trading days of FINRA REGSHO daily short volume data into
 raw_signals.

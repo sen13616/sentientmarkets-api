@@ -1,6 +1,6 @@
 # Data Dictionary
 
-**Updated:** 2026-07-22 (post research-program build-out; EMA half-life change E004)
+**Updated:** 2026-10-06 (migrations 013–016: demo keys, replay tags, universe lifecycle, article ingest tags)
 **Scope:** All PostgreSQL tables touched by the methodology described in the research paper "How to Quantify Stock Sentiment".
 
 This document maps every column in the production schema to the methodology it implements. Use it as a Rosetta stone when reading the paper alongside the code.
@@ -13,8 +13,12 @@ The schema is defined across the numbered migrations in [`scripts/migrations/`](
 - `010_add_score_exo.sql` — `sentiment_history.composite_score_exo`
 - `011_add_narrative_surprise.sql` — `sentiment_history.narrative_surprise` (research-only)
 - `012_research_features.sql` — `sentiment_history.research_features` JSONB (research-only feature store)
+- `013_demo_keys.sql` — `api_keys.key_type`, `api_keys.expires_at` (self-expiring demo keys)
+- `014_replay_run.sql` — `sentiment_history.replay_run` (rows recomputed offline)
+- `015_universe_lifecycle.sql` — `ticker_universe.delisted_at`, `successor_ticker`, `delisted_reason`, `in_sp500`, `sp500_added`
+- `016_article_ingest_run.sql` — `raw_articles.ingest_run` (articles inserted by a backfill)
 
-Apply order: `000` first, then `005`–`012` in numeric order. All migrations after 000 are additive (`ADD COLUMN IF NOT EXISTS`) and idempotent in practice.
+Apply order: `000` first, then `005`–`016` in numeric order. All migrations after 000 are additive (`ADD COLUMN IF NOT EXISTS`) and idempotent in practice.
 
 > **Schema changes of 2026-07-20 (storage reclaim), reflected below:** `raw_signals` and `price_snapshots` have **no primary key** (the `id` columns remain but `raw_signals_pkey` / `price_snapshots_pkey` were dropped, along with `idx_price_snapshots_ticker_ts`); `price_snapshots` is written only during US market hours.
 
@@ -124,6 +128,7 @@ The unique index `(ticker, content_hash)` provides hash-based dedup at insert ti
 | `finbert_neu` | `DOUBLE PRECISION` | YES | `P(neutral)`. The three columns are required for `w_conf` computation: `w_conf = 1 − (−Σ P_i ln P_i) / ln 3`. |
 | `language` | `VARCHAR(10)` | YES | Detected language (`langdetect`). FinBERT was trained on English; articles where this column is anything other than `'en'` are excluded from scoring. |
 | `created_at` | `TIMESTAMPTZ` | NO | Insertion time. |
+| `ingest_run` | `TEXT` | YES | NULL = ingested by the live `narrative_job`. Otherwise the offline backfill run that inserted the row (e.g. `news-backfill-2026-10`, `june-gap-2026-06`). Backfilled rows arrive weeks after publication, so `created_at − published_at` is only a latency measure for live rows. (Migration 016.) |
 
 ### Article scoring pipeline (per article)
 
@@ -169,23 +174,29 @@ Composite scores are stored twice: `composite_score` is the raw weighted average
 | `divergence` | `VARCHAR(20)` | YES | One of `aligned`, `moderate_divergence`, `high_divergence`, or `null`. Set when sub-index spread > 20 (moderate) or > 40 (high). |
 | `market_as_of`, `narrative_as_of`, `influencer_as_of`, `macro_as_of` | `TIMESTAMPTZ` | YES | Per-layer freshness timestamps — the maximum observation time across signals that contributed to each sub-index. Used by clients to surface data age. |
 | `timestamp` | `TIMESTAMPTZ` | NO | The scoring-tick time (when this row's score was computed). |
-| `created_at` | `TIMESTAMPTZ` | NO (default NOW) | DB insertion time. Usually within a few ms of `timestamp`. |
+| `created_at` | `TIMESTAMPTZ` | NO (default NOW) | DB insertion time. Usually within a few ms of `timestamp` (later for replayed rows). |
+| `replay_run` | `TEXT` | YES | NULL = the score as it was served live. Otherwise the offline run that wrote or rewrote the row after an outage: `news-backfill-2026-10` (2026-08-10 → 10-02) or `june-gap-2026-06` (2026-06-23 → 07-03). See METHODOLOGY.md §16.5. (Migration 014.) |
 
 ---
 
 ## `ticker_universe`
 
-**Purpose.** The list of tickers that the scoring engine actively recomputes every 30 minutes. Tier 1 is the manually curated S&P 500 snapshot (502 rows as of 2026-04-24). Tier 2 is reserved for ticker-on-demand expansion that has not yet been wired up — no Tier-2 rows are written in production today.
+**Purpose.** The ticker universe and its lifecycle. Every `tier1_supported` row with `delisted_at IS NULL` is scored on every tick (586 since 2026-10-03: all current S&P 500 members plus still-trading former names). Retired symbols stay in the table with `delisted_at` set, so their history remains queryable. Maintained by `scripts/tools/update_universe.py` from the committed, cited snapshots in `scripts/tools/data/`.
 
 | Column | Type | Nullable | Meaning |
 |---|---|---|---|
 | `id` | `SERIAL PRIMARY KEY` | NO | Surrogate key. |
 | `ticker` | `VARCHAR(10)` | NO, UNIQUE | Symbol. Uppercase. |
-| `tier` | `VARCHAR(20)` | NO, CHECK | `'tier1_supported'` (in the active S&P 500 snapshot) or `'tier2_requested'` (reserved; not currently populated). |
+| `tier` | `VARCHAR(20)` | NO, CHECK | `'tier1_supported'` (the scored universe) or `'tier2_requested'` (reserved; not currently populated). |
 | `added_at` | `TIMESTAMPTZ` | NO (default NOW) | When the ticker entered the universe. |
 | `last_requested_at` | `TIMESTAMPTZ` | YES | Reserved for Tier-2 staleness tracking. Not written by current code paths. |
 | `company_name` | `VARCHAR(200)` | YES | Human-readable name. Backs the API's `/v1/tickers` response and the explanation templates. (Added in migration 005; seeded by `tools/seed_company_names.py`.) |
 | `sector` | `VARCHAR(50)` | YES | GICS sector name — one of the 11 standard classifications. Joins to `pipeline.sources.macro.SECTOR_ETFS` to route each ticker to its sector ETF for the per-ticker macro sub-index (P4.2). 19 known-stale tickers (renamed / delisted / acquired since the 2024 snapshot) have their sector seeded from a hand-curated fallback in `tools/oneoff/generate_sector_map.py`. (Added in migration 008; seeded by `tools/seed_sectors.py`.) |
+| `delisted_at` | `TIMESTAMPTZ` | YES | Last trading day under this symbol (stored at 21:00 UTC, the close). NULL = active. Retired symbols are skipped by live jobs; offline jobs use `get_active_tickers(as_of)`. (Migration 015.) |
+| `successor_ticker` | `VARCHAR(10)` | YES | Where the symbol's coverage moved (ticker change or acquirer/merged entity), e.g. `MMC → MRSH`, `EQR → VMRK`. NULL for cash take-privates. |
+| `delisted_reason` | `TEXT` | YES | Short cause; sources are cited in `scripts/tools/data/universe_changes_2026-10.csv`. |
+| `in_sp500` | `BOOLEAN` | NO (default false) | Current S&P 500 membership as of the last universe update. A snapshot, **not** membership history. |
+| `sp500_added` | `DATE` | YES | S&P 500 "date added" for current members. |
 
 ---
 
@@ -202,6 +213,9 @@ Composite scores are stored twice: `composite_score` is the raw weighted average
 | `is_active` | `BOOLEAN` | NO (default TRUE) | Soft-delete flag. Inactive keys 401 regardless of hash match. |
 | `created_at` | `TIMESTAMPTZ` | NO (default NOW) | |
 | `last_used_at` | `TIMESTAMPTZ` | YES | Updated on every authenticated request. Diagnostic only. |
+| `label` | `VARCHAR(100)` | YES | Human-readable consumer label (e.g. `website`). (Migration 009.) |
+| `key_type` | `VARCHAR(20)` | NO (default `standard`) | `standard` or `demo`; demo keys are minted by `POST /v1/demo-key`. (Migration 013.) |
+| `expires_at` | `TIMESTAMPTZ` | YES | Demo keys only: sliding 7-day expiry, pruned hourly. NULL = never expires. |
 
 ---
 
@@ -253,6 +267,21 @@ Composite scores are stored twice: `composite_score` is the raw weighted average
 
 Dropped 2026-07-20 (storage reclaim; nothing read them): `raw_signals_pkey`, `price_snapshots_pkey`, `idx_price_snapshots_ticker_ts`.
 | `idx_ticker_universe_tier` | `ticker_universe` | `(tier)` | Filtered scans of the active universe in `scoring_tick_job`. |
+
+---
+
+## Filtering for research
+
+| Question | Filter |
+|---|---|
+| Scores as they were actually served | `sentiment_history.replay_run IS NULL` |
+| Include repaired outage periods | no `replay_run` filter (tagged rows are documented in METHODOLOGY.md §16.5) |
+| A point-in-time universe on day *d* | `added_at <= d AND (delisted_at IS NULL OR delisted_at >= d)` |
+| Current S&P 500 members only | `ticker_universe.in_sp500` (a snapshot, not historical membership) |
+| News latency measurements | `raw_articles.ingest_run IS NULL` |
+| One row per ticker per day | last tick per (ticker, US/Eastern date), as in `scripts/eval/data.py` and `research/snapshot.py` |
+
+Remaining gaps with no scoring ticks: 2026-07-17 15:30 → 07-18 04:00, 2026-07-23 20:30 → 07-24 07:00 and 2026-08-10 03:00 → 04:22 (UTC).
 
 ---
 

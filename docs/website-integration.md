@@ -1,8 +1,11 @@
-# SESSIONB.md — API side is built & deployed: wiring guide for the website
+# Website integration guide
 
-Companion to `docs/APIACCESSPAGE.md`. Session B (this repo, `sentientmarkets-api`)
+> Hand-off note written when the demo-key flow shipped (2026-07). It explains to the
+> website team what the API exposes, how to call it, and how to verify the flow end to end.
+
+Companion to the website's API-access page spec (kept in the website repository). This API (`sentientmarkets-api`)
 is done: commit `e04f745` on `main`, migration 013 applied to the Railway DB.
-This file tells **Session A (the website)** exactly what exists, how to call it,
+This file tells **the website** exactly what exists, how to call it,
 and how to verify the whole flow end to end.
 
 - **API base:** `https://sentimentapi-p.up.railway.app`
@@ -11,7 +14,7 @@ and how to verify the whole flow end to end.
 
 ---
 
-## 1. What Session B shipped
+## 1. What the API provides
 
 | Piece | Where | Behaviour |
 |---|---|---|
@@ -63,7 +66,7 @@ Content-Type: application/json
 ### Errors — note the FastAPI `detail` wrapper
 
 Error bodies are nested under `"detail"` (this differs from the flat shape
-sketched in APIACCESSPAGE.md §3.1 — code to this real shape):
+sketched in the API-access page spec §3.1 — code to this real shape):
 
 ```json
 // 403 — Origin header missing or not allowlisted
@@ -82,7 +85,7 @@ tells you when the window resets.
 
 ---
 
-## 3. Client flow (per APIACCESSPAGE.md §5.2 — confirmed against the live API)
+## 3. Client flow (per the API-access page spec §5.2 — confirmed against the live API)
 
 On `/api-access` mount:
 
@@ -128,7 +131,7 @@ market_hours`. Over 10 req/min → `429 {"detail": {"error":
 "rate_limit_exceeded", …}}`. Every successful call slides the key's expiry
 forward — active users never expire.
 
-The contact form (§3.3) is entirely Session A's build (Resend + honeypot);
+The contact form (§3.3) is entirely the website's build (Resend + honeypot);
 this API has no part in it.
 
 ---
@@ -209,17 +212,17 @@ curl -s -X POST $BASE/v1/demo-key -H "Content-Type: application/json" \
 Set `SITE_ORIGINS` explicitly in Railway before adding any new site origin —
 one var updates CORS and the mint gate together. Abuse levers, in order:
 lower `DEMO_KEY_IP_CAP`, shorten `DEMO_KEY_TTL_DAYS`, or fall back to the
-shared-key design (APIACCESSPAGE.md §1a).
+shared-key design (the API-access page spec §1a).
 
 ---
 
-## 6. Go-live gate status (APIACCESSPAGE.md §2)
+## 6. Go-live gate status (the API-access page spec §2)
 
 - [x] Rate limiting enforced for real (Redis Lua INCR+EXPIRE, verified in code and live)
 - [x] Storage remediation Phases 0–2 done (2026-07-20)
 - [x] Cleanup job deployed (verify the first `:50` log line post-deploy — §4C)
 
-Once §4A/§4C pass, the API side is clear for Session A to flip the page live.
+Once §4A/§4C pass, the API side is clear for the website to flip the page live.
 
 ---
 

@@ -10,7 +10,7 @@ deploys use the static map via `tools/seed_sectors.py`; this generator
 is not part of the recurring pipeline.
 
 Usage:
-    DATABASE_URL=... python3 tools/generate_sector_map.py
+    DATABASE_URL=... python3 scripts/tools/oneoff/generate_sector_map.py
 
 The dict values are validated against `pipeline.sources.macro.SECTOR_ETFS`
 keys (the canonical 11-class GICS taxonomy). Any ticker whose yfinance

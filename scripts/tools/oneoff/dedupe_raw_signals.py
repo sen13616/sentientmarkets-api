@@ -1,5 +1,5 @@
 """
-scripts/tools/dedupe_raw_signals.py
+scripts/tools/oneoff/dedupe_raw_signals.py
 
 One-off cleanup of historical duplicate rows in raw_signals.
 
@@ -31,7 +31,9 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 # Add project root to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+sys.path.insert(
+    0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+)
 
 load_dotenv(override=True)
 

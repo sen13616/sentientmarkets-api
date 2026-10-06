@@ -1,7 +1,7 @@
 """Daily forward-return analysis — port of the validated external backtest engine.
 
 Design choices that keep this honest (unchanged from the original study,
-docs/SUMMARYOFTESTING.md):
+docs/history/nowcasting-refactor-2026-07.md):
   * No look-ahead: signal as of ET-day d -> we ENTER at the close of the NEXT
     trading day (t1, strictly after every day-d tick) and measure forward
     returns close_t1 -> close_{t1+h}.

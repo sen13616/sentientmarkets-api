@@ -1,5 +1,5 @@
 """
-db/queries/raw_articles.py
+scripts/db/queries/raw_articles.py
 
 All raw_articles table operations. No raw SQL anywhere else in the codebase.
 """

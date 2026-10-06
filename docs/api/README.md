@@ -1,4 +1,4 @@
-# SentimentMarkets Sentiment API — Usage Guide
+# SentientMarkets Sentiment API — Usage Guide
 
 **Base URL:** `https://sentimentapi-p.up.railway.app`
 
@@ -173,7 +173,7 @@ curl -H "Authorization: Bearer sk-sm-your-key" \
 
 ### GET /v1/tickers
 
-Returns the list of tickers in the supported universe.
+Returns the active universe. Retired symbols (acquired, merged, renamed) are not listed; see the `delisted` status below.
 
 ```bash
 curl -H "Authorization: Bearer sk-sm-your-key" \
@@ -184,15 +184,15 @@ curl -H "Authorization: Bearer sk-sm-your-key" \
 
 ```json
 {
-  "universe_size": 502,
+  "universe_size": 586,
   "tickers": [
-    { "ticker": "AAPL", "name": "Apple Inc.", "sector": "Information Technology" },
-    { "ticker": "ABBV", "name": "AbbVie Inc.", "sector": "Health Care" }
+    { "ticker": "AAPL", "name": "Apple Inc.", "sector": "Information Technology", "in_sp500": true },
+    { "ticker": "DKNG", "name": "DraftKings Inc.", "sector": "Consumer Discretionary", "in_sp500": false }
   ]
 }
 ```
 
-Each entry is an object with `ticker`, `name` (company name, may be `null` if not yet seeded), and `sector` (GICS sector, may be `null`).
+Each entry is an object with `ticker`, `name` (company name, may be `null` if not yet seeded), `sector` (GICS sector, may be `null`) and `in_sp500` (current S&P 500 member).
 
 ---
 
@@ -277,6 +277,22 @@ curl https://sentimentapi-p.up.railway.app/health
 
 ```json
 { "status": "ok" }
+```
+
+### GET /health/pipeline
+
+Data-freshness check for uptime monitors. No authentication required. Returns **200** when the
+scoring tick ran within the last 60 minutes and the news job within the last 120 minutes,
+otherwise **503**.
+
+```json
+{
+  "status": "ok",
+  "checks": {
+    "scoring_tick": { "last_run": "2026-10-06T02:00:24Z", "age_minutes": 25.8, "max_age_minutes": 60, "ok": true },
+    "narrative":    { "last_run": "2026-10-06T01:58:35Z", "age_minutes": 27.6, "max_age_minutes": 120, "ok": true }
+  }
+}
 ```
 
 ---
@@ -368,6 +384,7 @@ Possible status values:
 |---|---|
 | `insufficient_data` | Ticker is supported but has no scored data yet |
 | `ticker_not_found` | Ticker is not in the supported universe |
+| `delisted` | The symbol stopped trading (acquisition, take-private, merger or ticker change). The message gives the last trading day and, where there is one, the successor symbol. History stays available via `/history`. |
 | `temporarily_unavailable` | Temporary service issue |
 
 ---
@@ -449,7 +466,7 @@ curl -s -H "Authorization: Bearer sk-sm-your-key" \
 
 ## Supported Universe
 
-502 US-listed equities covering the S&P 500. Full list available at:
+586 US-listed equities: every current S&P 500 member (`in_sp500: true`) plus still-trading former names. Full list available at:
 
 ```
 GET /v1/tickers
@@ -464,7 +481,7 @@ Any ticker not in the supported universe returns a `ticker_not_found` response.
 | Layer | Frequency | Coverage |
 |---|---|---|
 | Market data | Every 15 min (market hours) | Price, volume, RSI, order flow, bid-ask |
-| News sentiment | Every 30 min | Alpha Vantage NEWS_SENTIMENT, Finnhub news |
+| News sentiment | Every 30 min (:05 and :35) | Alpha Vantage NEWS_SENTIMENT, Finnhub news |
 | Analyst & insider | Every 6 hours | Finnhub insider transactions, recommendations, targets |
 | Macro context | VIX + sector ETFs hourly (market hours); FRED yields daily at 02:00 UTC | VIX, sector ETF trends, Treasury yield curve |
 | Short volume | Weekdays after close (21:30 UTC) | FINRA REGSHO daily short volume |
@@ -474,4 +491,4 @@ Scores are pre-computed and cached — API responses are served from the cache r
 
 ---
 
-*SentimentMarkets Sentiment API — built on FastAPI, PostgreSQL, and Redis. Deployed on Railway.*
+*SentientMarkets Sentiment API — built on FastAPI, PostgreSQL, and Redis. Deployed on Railway.*

@@ -1,5 +1,5 @@
 """
-backfill/indicators_backfill.py
+scripts/backfill/indicators_backfill.py
 
 Compute RSI(14) for all tier1 tickers from the ohlcv_close data
 already in raw_signals, and write rsi_14 rows back to raw_signals.
@@ -13,7 +13,7 @@ Why compute from DB data instead of calling Alpha Vantage:
   ensures the RSI is consistent with the same data used by the pipeline.
 
 Usage:
-  python backfill/indicators_backfill.py
+  python scripts/backfill/indicators_backfill.py
 """
 
 import asyncio

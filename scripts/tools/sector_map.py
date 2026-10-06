@@ -1,5 +1,5 @@
 """
-tools/sector_map.py
+scripts/tools/sector_map.py
 
 Static GICS sector mapping for all tier-1-supported tickers in
 ticker_universe. Used by tools/seed_sectors.py to populate the

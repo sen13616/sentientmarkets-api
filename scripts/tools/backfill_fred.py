@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tools/backfill_fred.py — Sprint P4.3
+scripts/tools/backfill_fred.py — Sprint P4.3
 
 Backfill 90 days of FRED Treasury / yield-curve history so the z-score
 path activates immediately rather than after ~9 weeks of live ingest.
@@ -14,10 +14,10 @@ Idempotent: skips a (signal_type, observation_date) pair if a row already
 exists in raw_signals under `_MACRO_`.
 
 Usage:
-    DATABASE_URL=<railway_url> python3 tools/backfill_fred.py
+    DATABASE_URL=<railway_url> python3 scripts/tools/backfill_fred.py
 
     # Optional override of the lookback window:
-    DATABASE_URL=... BACKFILL_DAYS=180 python3 tools/backfill_fred.py
+    DATABASE_URL=... BACKFILL_DAYS=180 python3 scripts/tools/backfill_fred.py
 """
 
 from __future__ import annotations

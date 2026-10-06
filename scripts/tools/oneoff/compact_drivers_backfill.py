@@ -1,5 +1,5 @@
 """
-scripts/tools/compact_drivers_backfill.py
+scripts/tools/oneoff/compact_drivers_backfill.py
 
 One-off backfill: archive then compact the verbose `top_drivers` JSONB on
 sentiment_history rows older than DRIVER_COMPACT_DAYS (30 days).
@@ -30,7 +30,9 @@ from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 
 # Add project root to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+sys.path.insert(
+    0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+)
 
 load_dotenv(override=True)
 

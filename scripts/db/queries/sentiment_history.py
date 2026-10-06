@@ -1,5 +1,5 @@
 """
-db/queries/sentiment_history.py
+scripts/db/queries/sentiment_history.py
 
 All sentiment_history table operations.
 

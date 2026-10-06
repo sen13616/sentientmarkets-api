@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tools/seed_company_names.py
+scripts/tools/seed_company_names.py
 
 Populate the company_name column in ticker_universe from the hardcoded
 COMPANY_NAMES dict in tools/company_names.py.
@@ -8,7 +8,7 @@ COMPANY_NAMES dict in tools/company_names.py.
 Run after applying migrations/005_add_company_name.sql:
 
     psql $DATABASE_URL < migrations/005_add_company_name.sql
-    python3 tools/seed_company_names.py
+    python3 scripts/tools/seed_company_names.py
 
 Requires DATABASE_URL in .env (or the environment).
 """

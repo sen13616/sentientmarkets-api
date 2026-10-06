@@ -1,5 +1,5 @@
 """
-db/queries/as_of.py
+scripts/db/queries/as_of.py
 
 Point-in-time cutoff for scoring-path reads, used by offline replays
 (scripts/backfill/replay_scores.py) to score "as of" a past tick.

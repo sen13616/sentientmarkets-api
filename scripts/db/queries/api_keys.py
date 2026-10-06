@@ -1,9 +1,9 @@
 """
-db/queries/api_keys.py
+scripts/db/queries/api_keys.py
 
 Lookup and update operations for the api_keys table.
 
-Key validity (docs/APIACCESSPAGE.md §3.2): a key is valid iff
+Key validity (the website's API-access page spec §3.2): a key is valid iff
 `is_active AND (expires_at IS NULL OR expires_at > now())`.  Standard
 keys keep expires_at NULL and never expire; demo keys (key_type='demo')
 carry a sliding expiry that every successful lookup pushes forward by

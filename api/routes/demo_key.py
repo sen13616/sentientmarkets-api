@@ -2,7 +2,7 @@
 api/routes/demo_key.py
 
 POST /v1/demo-key — provision (or refresh) an anonymous free-tier demo
-key for the /api-access page (docs/APIACCESSPAGE.md §3.1).
+key for the /api-access page (the website's API-access page spec §3.1).
 
 Deliberately unauthenticated: this is the endpoint that hands out
 credentials.  Its own protections are:

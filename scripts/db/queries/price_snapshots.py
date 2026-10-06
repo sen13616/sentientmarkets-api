@@ -1,5 +1,5 @@
 """
-db/queries/price_snapshots.py
+scripts/db/queries/price_snapshots.py
 
 All price_snapshots table operations.
 

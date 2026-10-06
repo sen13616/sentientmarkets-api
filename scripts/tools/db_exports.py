@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tools/db_exports.py
+scripts/tools/db_exports.py
 
 Shared export library for the SentimentAPI database viewer and standalone
 export script.  All export functions are importable by both db_viewer.py

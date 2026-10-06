@@ -905,7 +905,7 @@ async def retention_job() -> None:
 
 
 async def demo_key_cleanup_job() -> None:
-    """Hourly: prune expired demo keys (docs/APIACCESSPAGE.md §4.4).
+    """Hourly: prune expired demo keys (the website's API-access page spec §4.4).
 
     Never touches standard keys — the DELETE requires key_type='demo',
     and standard keys have expires_at NULL. This pruning is what keeps

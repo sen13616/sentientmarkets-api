@@ -1,5 +1,5 @@
 """
-tools/backfill_finbert.py — One-off FinBERT backfill + Finnhub relevance fix.
+scripts/tools/oneoff/backfill_finbert.py — One-off FinBERT backfill + Finnhub relevance fix.
 
 Run this ONCE after deploying Sprint A and applying migration 007.
 
@@ -10,7 +10,7 @@ What it does:
     3. Scores English articles where finbert_score IS NULL with ProsusAI/finbert.
 
 Usage:
-    python3 tools/backfill_finbert.py [--batch-size 64] [--dry-run]
+    python3 scripts/tools/oneoff/backfill_finbert.py [--batch-size 64] [--dry-run]
 
 This script is idempotent — safe to re-run if interrupted.
 """
@@ -27,7 +27,9 @@ import time
 from dotenv import load_dotenv
 
 # Add project root to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+sys.path.insert(
+    0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+)
 
 load_dotenv(override=True)
 

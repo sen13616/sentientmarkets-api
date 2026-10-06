@@ -1,5 +1,5 @@
 """
-db/queries/raw_signals.py
+scripts/db/queries/raw_signals.py
 
 All raw_signals table operations. No raw SQL anywhere else in the codebase.
 """

@@ -5,7 +5,7 @@ Narrative surprise (nowcasting plan, Phase 5b — eval-gated, flag-off by defaul
 
 Markets price *new* information: persistent positive coverage is already
 priced, so the narrative LEVEL carries no forward signal (see
-docs/SUMMARYOFTESTING.md). This feature scores the DEVIATION of the current
+docs/history/nowcasting-refactor-2026-07.md). This feature scores the DEVIATION of the current
 coverage window from the ticker's own trailing coverage baseline instead.
 
     current  = relevance-weighted mean finbert_score over the last 24h

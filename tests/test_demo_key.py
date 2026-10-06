@@ -1,5 +1,5 @@
 """
-Tests for the demo-key feature (docs/APIACCESSPAGE.md §4.7):
+Tests for the demo-key feature (the website's API-access page spec §4.7):
 
   1. Mint returns a working free key (and it authenticates).
   2. Reuse with a valid existing_key creates no row and pushes expiry.

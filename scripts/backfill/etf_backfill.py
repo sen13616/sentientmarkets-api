@@ -1,5 +1,5 @@
 """
-backfill/etf_backfill.py
+scripts/backfill/etf_backfill.py
 
 Pull 30 days of daily close data for the 11 GICS sector ETFs from Alpha
 Vantage (TIME_SERIES_DAILY, outputsize=compact) and write to raw_signals.
@@ -19,7 +19,7 @@ Rate limiting:
   INTER_REQUEST_DELAY = 0.8s → ~62 req/min.
 
 Usage:
-  python backfill/etf_backfill.py
+  python scripts/backfill/etf_backfill.py
 """
 
 import asyncio

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tools/seed_sectors.py
+scripts/tools/seed_sectors.py
 
 Populate the `sector` column in `ticker_universe` from the static
 `TICKER_SECTORS` dict in `tools/sector_map.py` (Sprint P4.1).
@@ -8,7 +8,7 @@ Populate the `sector` column in `ticker_universe` from the static
 Run AFTER applying migrations/008_add_ticker_sector.sql:
 
     psql $DATABASE_URL < migrations/008_add_ticker_sector.sql
-    python3 tools/seed_sectors.py
+    python3 scripts/tools/seed_sectors.py
 
 Idempotent — re-runs only touch rows whose `sector` value actually changes
 (DISTINCT FROM guard). Prints counts of updated / unchanged / missing.

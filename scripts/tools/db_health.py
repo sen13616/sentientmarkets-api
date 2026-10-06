@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tools/db_health.py
+scripts/tools/db_health.py
 
 Database query functions for the Pipeline Health and Data Quality screens.
 

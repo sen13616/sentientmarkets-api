@@ -1,5 +1,5 @@
 """
-scripts/tools/tiered_retention_backfill.py
+scripts/tools/oneoff/tiered_retention_backfill.py
 
 One-off backfill for the tiered raw_signals retention introduced 2026-07-20:
 archive then delete the backlog that the new shorter tiers cover —
@@ -32,7 +32,9 @@ from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 
 # Add project root to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+sys.path.insert(
+    0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+)
 
 load_dotenv(override=True)
 

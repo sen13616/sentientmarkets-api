@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tools/db_charts.py
+scripts/tools/db_charts.py
 
 Chart rendering utilities for the SentimentAPI database viewer.
 

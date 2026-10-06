@@ -1,7 +1,7 @@
 """
-backfill/universe_seed.py
+scripts/backfill/universe_seed.py
 Populate ticker_universe with the S&P 500 as tier1_supported.
-Run once from the project root: python backfill/universe_seed.py
+Run once from the project root: python scripts/backfill/universe_seed.py
 """
 
 import asyncio

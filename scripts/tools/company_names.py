@@ -1,5 +1,5 @@
 """
-tools/company_names.py
+scripts/tools/company_names.py
 
 Hardcoded mapping of every ticker in the SentimentAPI universe to its
 full company name (S&P 500 snapshot, April 2024).

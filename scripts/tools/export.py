@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-tools/export.py
+scripts/tools/export.py
 
 Standalone database export script for the SentimentAPI pipeline.
 
 Usage
 -----
-    python3 tools/export.py              # full database export (all tables)
-    python3 tools/export.py sentiment    # sentiment history + computed columns
-    python3 tools/export.py signals      # raw signals (last 30 days) + summary
-    python3 tools/export.py articles     # all raw_articles rows
-    python3 tools/export.py scores       # top/bottom 50 + ranked list
+    python3 scripts/tools/export.py              # full database export (all tables)
+    python3 scripts/tools/export.py sentiment    # sentiment history + computed columns
+    python3 scripts/tools/export.py signals      # raw signals (last 30 days) + summary
+    python3 scripts/tools/export.py articles     # all raw_articles rows
+    python3 scripts/tools/export.py scores       # top/bottom 50 + ranked list
 
 All output goes to tools/exports/.
 Progress and file paths are printed to stdout.
@@ -109,7 +109,7 @@ _COMMANDS: dict[str, tuple[str, object]] = {
 
 def _usage() -> None:
     console.print("\n[bold]Usage:[/bold]")
-    console.print("  python3 tools/export.py [command]\n")
+    console.print("  python3 scripts/tools/export.py [command]\n")
     console.print("[bold]Commands:[/bold]")
     for cmd, (desc, _) in _COMMANDS.items():
         console.print(f"  [cyan]{cmd:<12}[/cyan] {desc}")

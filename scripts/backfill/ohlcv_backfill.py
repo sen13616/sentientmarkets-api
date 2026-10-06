@@ -1,5 +1,5 @@
 """
-backfill/ohlcv_backfill.py
+scripts/backfill/ohlcv_backfill.py
 
 Pull 2 years of daily OHLCV for all tier1 tickers from Alpha Vantage
 (TIME_SERIES_DAILY_ADJUSTED, outputsize=full) and write to raw_signals
@@ -17,7 +17,7 @@ The script is resumable: tickers with existing ohlcv_close rows are
 skipped automatically.
 
 Usage:
-  python backfill/ohlcv_backfill.py
+  python scripts/backfill/ohlcv_backfill.py
 """
 
 import asyncio
