@@ -81,6 +81,26 @@ def _session_open_utc(close_utc: datetime) -> datetime:
     return open_et.astimezone(timezone.utc)
 
 
+def last_session_close(now: datetime) -> datetime:
+    """UTC instant of the most-recent weekday 16:00-ET close at or before *now*."""
+    return _session_close_utc(now)
+
+
+def next_session_open(now: datetime) -> datetime:
+    """UTC instant of the next weekday 9:30-ET open strictly after *now*."""
+    et = _as_utc(now).astimezone(_EASTERN)
+    open_et = et.replace(
+        hour=_SESSION_OPEN_ET[0], minute=_SESSION_OPEN_ET[1], second=0, microsecond=0
+    )
+    cand = et if et < open_et else et + timedelta(days=1)
+    while cand.isoweekday() > 5:  # walk forward to a weekday
+        cand += timedelta(days=1)
+    open_et = cand.replace(
+        hour=_SESSION_OPEN_ET[0], minute=_SESSION_OPEN_ET[1], second=0, microsecond=0
+    )
+    return open_et.astimezone(timezone.utc)
+
+
 STALENESS_THRESHOLDS: dict[str, timedelta] = {
     "market": timedelta(minutes=90),
     "news": timedelta(hours=6),

@@ -157,3 +157,45 @@ class TestMarketStaleness:
         old_news = now - timedelta(hours=7)  # 7 h old → stale
         result2 = check_staleness({"news": old_news}, now=now)
         assert result2["news"] is True
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Session boundaries served as `market_hours` (api/response/assembler.py)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class TestSessionBoundaries:
+    def test_summer_boundaries_use_edt(self):
+        from pipeline.confidence.staleness import last_session_close, next_session_open
+
+        # Wednesday 2026-07-15 12:00 UTC (08:00 EDT), before the open.
+        now = _utc(2026, 7, 15, 12, 0)
+        assert next_session_open(now) == _utc(2026, 7, 15, 13, 30)
+        assert last_session_close(now) == _utc(2026, 7, 14, 20, 0)
+
+    def test_winter_boundaries_use_est(self):
+        from pipeline.confidence.staleness import last_session_close, next_session_open
+
+        # Wednesday 2026-01-14 22:00 UTC (17:00 EST), after the close.
+        now = _utc(2026, 1, 14, 22, 0)
+        assert next_session_open(now) == _utc(2026, 1, 15, 14, 30)
+        assert last_session_close(now) == _utc(2026, 1, 14, 21, 0)
+
+    def test_weekend_rolls_to_monday_across_dst_change(self):
+        from pipeline.confidence.staleness import last_session_close, next_session_open
+
+        # Saturday 2026-10-31; DST ends Sunday 2026-11-01.
+        now = _utc(2026, 10, 31, 15, 0)
+        assert last_session_close(now) == _utc(2026, 10, 30, 20, 0)  # Friday, EDT
+        assert next_session_open(now) == _utc(2026, 11, 2, 14, 30)  # Monday, EST
+
+    def test_assembler_payload_matches_is_open(self):
+        from api.response.assembler import _market_hours_info
+
+        # 13:45 UTC is inside the EDT session but before the EST open.
+        summer = _market_hours_info(_utc(2026, 7, 15, 13, 45))
+        assert summer.is_open is True
+        assert summer.next_open == _utc(2026, 7, 16, 13, 30)
+        winter = _market_hours_info(_utc(2026, 1, 15, 13, 45))
+        assert winter.is_open is False
+        assert winter.next_open == _utc(2026, 1, 15, 14, 30)
