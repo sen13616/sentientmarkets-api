@@ -7,7 +7,8 @@
 -- expires_at NULL (never expire — behave exactly as today, including
 -- the keys minted by scripts/tools/generate_keys.py).
 --
--- NOT yet applied. Owner applies manually via psql:
+-- APPLIED in production 2026-07-22 (columns key_type/expires_at and
+-- idx_api_keys_demo_expiry are live). Re-apply on any fresh DB via psql:
 --   psql $DATABASE_URL < scripts/migrations/013_demo_keys.sql
 -- ============================================================
 

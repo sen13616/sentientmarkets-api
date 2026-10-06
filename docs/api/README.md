@@ -57,8 +57,8 @@ curl -H "Authorization: Bearer $SENTIMENT_API_KEY" \
   "cache_age_seconds": 480,
   "market_hours": {
     "is_open": true,
-    "next_open": "2026-04-27T14:30:00Z",
-    "last_close": "2026-04-24T21:00:00Z"
+    "next_open": "2026-04-27T13:30:00Z",
+    "last_close": "2026-04-24T20:00:00Z"
   }
 }
 ```
@@ -119,8 +119,8 @@ curl -H "Authorization: Bearer $SENTIMENT_API_KEY" \
   "cache_age_seconds": 480,
   "market_hours": {
     "is_open": true,
-    "next_open": "2026-04-27T14:30:00Z",
-    "last_close": "2026-04-24T21:00:00Z"
+    "next_open": "2026-04-27T13:30:00Z",
+    "last_close": "2026-04-24T20:00:00Z"
   }
 }
 ```

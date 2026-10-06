@@ -54,18 +54,20 @@ weight is redistributed.
 ## 2. Job Schedule (data ingestion timings)
 
 All jobs are defined in `pipeline/scheduler.py` on an `AsyncIOScheduler(timezone="UTC")`.
-US market hours are treated as **weekdays 14:30–21:00 UTC** (9:30 am–4:00 pm Eastern)
-throughout the codebase.
+US market hours are the regular session, **weekdays 9:30 am–4:00 pm America/New_York**, computed
+with DST-aware `zoneinfo` (13:30–20:00 UTC under EDT, 14:30–21:00 UTC under EST) in
+`pipeline/confidence/staleness.py`. Before 2026-10-06 this was a fixed 14:30–21:00 UTC window,
+an hour late during EDT (§16.5). Intraday cron windows start at 13:00 UTC to cover both regimes.
 
 | Job | Trigger (UTC) | What it does |
 |---|---|---|
-| `scoring_tick_job` | Every 30 min at :00/:30 around the clock, **plus** :15/:45 fills weekdays 14:45–20:45 (`OrTrigger`) → effective **15 min during market hours, 30 min off-hours** | The only scoring job. Recomputes all 4 layers for every active ticker, then publishes universe stats (§12) |
-| `market_job` | Weekdays, hours 14–20, every 15 min (`*/15`) | One batched yfinance OHLCV download for all tickers, then per-ticker derived signals (RSI, returns, order flow, volume ratio, bid-ask) |
+| `scoring_tick_job` | Every 30 min at :00/:30 around the clock, **plus** :15/:45 fills weekdays 13:15–20:45 (`OrTrigger`) → effective **15 min during market hours, 30 min off-hours** | The only scoring job. Recomputes all 4 layers for every active ticker, then publishes universe stats (§12) |
+| `market_job` | Weekdays, hours 13–20, every 15 min (`*/15`) | One batched yfinance OHLCV download for all tickers, then per-ticker derived signals (RSI, returns, order flow, volume ratio, bid-ask) |
 | `market_eod_job` | Weekdays 21:15 | Same as `market_job`; captures definitive closing prices 15 min after the close so the ~21:30 scoring tick produces the end-of-day state that stays fresh overnight/weekend |
 | `narrative_job` | Cron :05 and :35 every hour, 24/7 (cron so deploys don't reset it; a run finishes before the :30/:00 scoring ticks) | 3 phases: (1) fetch news from Alpha Vantage + Finnhub, (2) semantic dedup clustering, (3) FinBERT scoring |
 | `influencer_job` | Cron 00:20 / 06:20 / 12:20 / 18:20 (cron so deploys don't reset the 6 h cadence) | Insider transactions + analyst signals |
 | `macro_daily_job` | Daily 02:00 | FRED Treasury signals (10y, 2y, 10y−2y slope) |
-| `macro_intraday_job` | Weekdays, hourly 14:00–20:00 | VIX + 11 sector ETF closes / 20-day returns |
+| `macro_intraday_job` | Weekdays, hourly 13:00–20:00 | VIX + 11 sector ETF closes / 20-day returns |
 | `short_volume_job` | Weekdays 21:30 | FINRA REGSHO daily short volume (published ~21:30) |
 | `options_job` | Weekdays 21:20 | Research-only: one yfinance option-chain snapshot per ticker (nearest-30-day expiry) → `pcr_volume`, `pcr_oi`, `atm_iv_30d`, `iv_skew_25d` (5%-OTM moneyness proxy for 25Δ). Guards reject after-hours placeholder surfaces (flat IVs, one-sided zero OI). **Feeds no score** — future registered experiment |
 | `retention_job` | Daily 03:30 | Tiered purges (§14) — never touches `sentiment_history` or `price_snapshots` |
@@ -361,7 +363,7 @@ night and all weekend.
 
 | Layer | Raw-data query window |
 |---|---|
-| market | 90 min during hours; back to the last session's **open** (14:30) outside hours |
+| market | 90 min during hours; back to the last session's **open** (9:30 ET) outside hours |
 | narrative | 3 days (matches the fetcher's article lookback) |
 | influencer | 30 days (matches insider ingest window; a 3-day window would silently drop all insider rows) |
 | macro | 72 h |
@@ -708,6 +710,7 @@ excludes them unless `--include-replay`.
 | 2026-09-17 13:42 → 10-02 09:00 | Scoring (and intraday market) jobs hung | No rows served. Replayed hourly by run `news-backfill-2026-10` ("as of" each tick, live scoring code). Market layer from end-of-day rows only (absent during most trading-hour ticks). 178,210 rows. |
 | **2026-10-03 02:47** | **Market-history fix** (`17dae1b`) | Before this, `get_close_history` broke same-timestamp ties arbitrarily and included the current session, and `get_volume_history` averaged the last 20 *rows* (mostly same-day partial volumes). So served intraday `return_1d` compared against an earlier same-day price, `return_5d/20d`, RSI and `sector_etf_return_20d` used arbitrary intraday prices as past closes, and `volume_ratio` was ~2× inflated. **Market-layer values served before this timestamp used the contaminated history.** Derived rows 2026-08-28 → 10-03 were rebuilt at the live 15-min cadence with the corrected readers (originals: `exports/derived_signals_pre_fix_20260828_20261003.csv.gz`); eval re-baseline due after ≥10 trading days. |
 | **2026-10-03 04:16** | **Universe update** (`6dd3af8`, migration 015, `scripts/tools/update_universe.py`) | The seed universe (502, Apr 2024) was never the actual S&P 500. **Retired 28 symbols** that stopped trading (acquired / taken private / merged / ticker changed; cited in `scripts/tools/data/universe_changes_2026-10.csv`): `delisted_at` = last trading day; their history stays queryable, live jobs skip them, and the API answers `status: "delisted"` with the successor. **PARA**'s symbol was reused by an unrelated company (Banzai International), so PARA rows from 2026-08-07 were removed (8,824 signals, 2,778 scores, 35 articles; archived in `exports/universe_cleanup_20261003.json.gz`, with post-delisting derived and frozen-price rows). **Added the 112 missing current S&P 500 members** (warm-started with daily bars, a 25-day derived history and 90 days of short volume) and **kept ~84 still-trading non-members**, so the active universe is **586** = all 503 members (`in_sp500`, a membership snapshot as of 2026-10-03; history isn't tracked) + 83 others. **13 members' GICS sectors were re-synced** (2023 reshuffle), which changes their sector-ETF macro routing. Research consequences: new tickers have scores only from 2026-10-03 (unbalanced panel); filter by `in_sp500` and `delisted_at` for a clean cross-section; cross-sectional percentiles now span 586 names (covered by the ~Oct 19 re-baseline). Offline jobs use the universe *as of* their window (`--universe-as-of`). |
+| **2026-10-06** | **Diagnostics fixes** (from the 2026-07-24 review; merged and deployed 2026-10-06) | Served scores change slightly from this point. **(a) DST-aware session:** market hours, staleness, the market-layer lookback and the API's `market_hours` field use 9:30–16:00 ET; under EDT (Mar–Nov) the old fixed UTC window treated 13:30–14:30 UTC as closed and 20:00–21:00 UTC as open. Intraday ingestion and the 15-minute scoring fills now start at 13:00 UTC. **(b) Confidence:** a missing layer is no longer also charged the stale-source penalty for its own sources (influencer was counted three times), so confidence rises for rows with missing layers. **(c) Short volume:** `short_volume_ratio_otc` has a parametric fallback below the z-score history floor instead of dropping out. Composite weights, normalizers, the EMA and the divergence cap are unchanged. Measured in the scheduled ~2026-10-19 re-baseline (§16.1). |
 
 Backfilled articles (ingested weeks after publication) inflate the eval harness's
 publication→ingestion latency table; restrict that metric to live-ingested articles when

@@ -43,14 +43,24 @@ class TestIsMarketHours:
         now = _utc(2026, 4, 27, 13, 0)
         assert is_market_hours(now) is False
 
-    def test_exactly_at_open_returns_true(self):
-        now = _utc(2026, 4, 27, 14, 30)
-        assert is_market_hours(now) is True
+    def test_exactly_at_open_returns_true_edt(self):
+        # April = EDT: 9:30 ET open == 13:30 UTC.
+        assert is_market_hours(_utc(2026, 4, 27, 13, 30)) is True
+        assert is_market_hours(_utc(2026, 4, 27, 13, 29)) is False  # one min before open
 
-    def test_exactly_at_close_returns_false(self):
-        # 21:00 is not < 21:00
-        now = _utc(2026, 4, 27, 21, 0)
-        assert is_market_hours(now) is False
+    def test_exactly_at_close_returns_false_edt(self):
+        # April = EDT: 16:00 ET close == 20:00 UTC; close is exclusive.
+        assert is_market_hours(_utc(2026, 4, 27, 20, 0)) is False
+        assert is_market_hours(_utc(2026, 4, 27, 19, 59)) is True  # one min before close
+
+    def test_session_window_shifts_with_dst_est(self):
+        # January = EST: 9:30 ET open == 14:30 UTC, 16:00 ET close == 21:00 UTC.
+        # Proves the window tracks DST (this same 14:30 UTC is *inside* the EDT
+        # session but *at open* in EST — the fixed-UTC window got this wrong).
+        assert is_market_hours(_utc(2026, 1, 5, 14, 30)) is True  # Mon 9:30 EST
+        assert is_market_hours(_utc(2026, 1, 5, 14, 29)) is False  # before EST open
+        assert is_market_hours(_utc(2026, 1, 5, 21, 0)) is False  # EST close (exclusive)
+        assert is_market_hours(_utc(2026, 1, 5, 20, 59)) is True
 
     def test_sunday_returns_false(self):
         now = _utc(2026, 4, 26, 18, 0)  # Sunday
@@ -147,3 +157,45 @@ class TestMarketStaleness:
         old_news = now - timedelta(hours=7)  # 7 h old → stale
         result2 = check_staleness({"news": old_news}, now=now)
         assert result2["news"] is True
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Session boundaries served as `market_hours` (api/response/assembler.py)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class TestSessionBoundaries:
+    def test_summer_boundaries_use_edt(self):
+        from pipeline.confidence.staleness import last_session_close, next_session_open
+
+        # Wednesday 2026-07-15 12:00 UTC (08:00 EDT), before the open.
+        now = _utc(2026, 7, 15, 12, 0)
+        assert next_session_open(now) == _utc(2026, 7, 15, 13, 30)
+        assert last_session_close(now) == _utc(2026, 7, 14, 20, 0)
+
+    def test_winter_boundaries_use_est(self):
+        from pipeline.confidence.staleness import last_session_close, next_session_open
+
+        # Wednesday 2026-01-14 22:00 UTC (17:00 EST), after the close.
+        now = _utc(2026, 1, 14, 22, 0)
+        assert next_session_open(now) == _utc(2026, 1, 15, 14, 30)
+        assert last_session_close(now) == _utc(2026, 1, 14, 21, 0)
+
+    def test_weekend_rolls_to_monday_across_dst_change(self):
+        from pipeline.confidence.staleness import last_session_close, next_session_open
+
+        # Saturday 2026-10-31; DST ends Sunday 2026-11-01.
+        now = _utc(2026, 10, 31, 15, 0)
+        assert last_session_close(now) == _utc(2026, 10, 30, 20, 0)  # Friday, EDT
+        assert next_session_open(now) == _utc(2026, 11, 2, 14, 30)  # Monday, EST
+
+    def test_assembler_payload_matches_is_open(self):
+        from api.response.assembler import _market_hours_info
+
+        # 13:45 UTC is inside the EDT session but before the EST open.
+        summer = _market_hours_info(_utc(2026, 7, 15, 13, 45))
+        assert summer.is_open is True
+        assert summer.next_open == _utc(2026, 7, 16, 13, 30)
+        winter = _market_hours_info(_utc(2026, 1, 15, 13, 45))
+        assert winter.is_open is False
+        assert winter.next_open == _utc(2026, 1, 15, 14, 30)

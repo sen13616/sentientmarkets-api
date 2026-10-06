@@ -19,9 +19,13 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
-from pipeline.confidence.staleness import is_market_hours
+from pipeline.confidence.staleness import (
+    is_market_hours,
+    last_session_close,
+    next_session_open,
+)
 from pipeline.scoring.market_overview import PERCENTILE_KEY, XS_KEY
 from scripts.db.queries.sentiment_history import get_latest
 from scripts.db.redis import get_redis
@@ -163,32 +167,13 @@ async def _load_from_db(ticker: str) -> dict | None:
 
 def _market_hours_info(now: datetime) -> MarketHours:
     """
-    Compute market open/close context from the current UTC time.
-
-    next_open  — next weekday at 14:30 UTC.
-    last_close — most recent weekday at 21:00 UTC.
+    Market open/close context for *now*, from the same DST-aware US/Eastern
+    session (9:30–16:00 ET, weekdays) that the staleness rules use.
     """
-    _OPEN_H, _OPEN_M = 14, 30
-    _CLOSE_H, _CLOSE_M = 21, 0
-
-    # ---- last_close ----
-    close_today = now.replace(hour=_CLOSE_H, minute=_CLOSE_M, second=0, microsecond=0)
-    lc_candidate = now if now >= close_today else now - timedelta(days=1)
-    while lc_candidate.isoweekday() > 5:
-        lc_candidate -= timedelta(days=1)
-    last_close = lc_candidate.replace(hour=_CLOSE_H, minute=_CLOSE_M, second=0, microsecond=0)
-
-    # ---- next_open ----
-    open_today = now.replace(hour=_OPEN_H, minute=_OPEN_M, second=0, microsecond=0)
-    no_candidate = now if now < open_today else now + timedelta(days=1)
-    while no_candidate.isoweekday() > 5:
-        no_candidate += timedelta(days=1)
-    next_open = no_candidate.replace(hour=_OPEN_H, minute=_OPEN_M, second=0, microsecond=0)
-
     return MarketHours(
         is_open=is_market_hours(now),
-        next_open=next_open,
-        last_close=last_close,
+        next_open=next_session_open(now),
+        last_close=last_session_close(now),
     )
 
 
