@@ -12,6 +12,8 @@ All requests require a Bearer token in the `Authorization` header.
 Authorization: Bearer sk-sm-your-api-key
 ```
 
+The examples below read the key from an environment variable: `export SENTIMENT_API_KEY=sk-sm-…`.
+
 API keys are available in two tiers:
 
 | Tier | Rate Limit | Access |
@@ -39,7 +41,7 @@ Returns the latest pre-computed sentiment score for a US-listed equity ticker.
 **Free Tier Response**
 
 ```bash
-curl -H "Authorization: Bearer sk-sm-your-key" \
+curl -H "Authorization: Bearer $SENTIMENT_API_KEY" \
   https://sentimentapi-p.up.railway.app/v1/sentiment/AAPL
 ```
 
@@ -66,7 +68,7 @@ curl -H "Authorization: Bearer sk-sm-your-key" \
 **Pro Tier Response**
 
 ```bash
-curl -H "Authorization: Bearer sk-sm-your-key" \
+curl -H "Authorization: Bearer $SENTIMENT_API_KEY" \
   "https://sentimentapi-p.up.railway.app/v1/sentiment/AAPL?detail=full"
 ```
 
@@ -134,7 +136,7 @@ Pro-tier fields beyond the Free set: `universe_percentile` (percentile of this t
 Returns historical sentiment scores for a ticker. **Pro tier only.**
 
 ```bash
-curl -H "Authorization: Bearer sk-sm-your-key" \
+curl -H "Authorization: Bearer $SENTIMENT_API_KEY" \
   "https://sentimentapi-p.up.railway.app/v1/sentiment/AAPL/history?days=30"
 ```
 
@@ -176,7 +178,7 @@ curl -H "Authorization: Bearer sk-sm-your-key" \
 Returns the active universe. Retired symbols (acquired, merged, renamed) are not listed; see the `delisted` status below.
 
 ```bash
-curl -H "Authorization: Bearer sk-sm-your-key" \
+curl -H "Authorization: Bearer $SENTIMENT_API_KEY" \
   https://sentimentapi-p.up.railway.app/v1/tickers
 ```
 
@@ -201,7 +203,7 @@ Each entry is an object with `ticker`, `name` (company name, may be `null` if no
 Universe-level statistics for the latest scoring tick. **Pro tier only** (free keys receive 403). Served from a single per-tick cached blob; returns 503 `temporarily_unavailable` before the first tick after a deployment.
 
 ```bash
-curl -H "Authorization: Bearer sk-sm-your-key" \
+curl -H "Authorization: Bearer $SENTIMENT_API_KEY" \
   https://sentimentapi-p.up.railway.app/v1/market/overview
 ```
 
@@ -244,7 +246,7 @@ curl -H "Authorization: Bearer sk-sm-your-key" \
 Returns API health and last pipeline run timestamps. **Requires a valid API key (any tier)** and counts against the key's rate limit — use `/health` for unauthenticated liveness checks.
 
 ```bash
-curl -H "Authorization: Bearer sk-sm-your-key" \
+curl -H "Authorization: Bearer $SENTIMENT_API_KEY" \
   https://sentimentapi-p.up.railway.app/v1/status
 ```
 
@@ -450,15 +452,15 @@ console.log(proData.explanation);
 
 ```bash
 # Quick score check
-curl -s -H "Authorization: Bearer sk-sm-your-key" \
+curl -s -H "Authorization: Bearer $SENTIMENT_API_KEY" \
   https://sentimentapi-p.up.railway.app/v1/sentiment/TSLA | python3 -m json.tool
 
 # Full pro breakdown
-curl -s -H "Authorization: Bearer sk-sm-your-key" \
+curl -s -H "Authorization: Bearer $SENTIMENT_API_KEY" \
   "https://sentimentapi-p.up.railway.app/v1/sentiment/NVDA?detail=full" | python3 -m json.tool
 
 # Historical scores
-curl -s -H "Authorization: Bearer sk-sm-your-key" \
+curl -s -H "Authorization: Bearer $SENTIMENT_API_KEY" \
   "https://sentimentapi-p.up.railway.app/v1/sentiment/MSFT/history?days=7" | python3 -m json.tool
 ```
 
