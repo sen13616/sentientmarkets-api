@@ -3,6 +3,7 @@ db/queries/raw_signals.py
 
 All raw_signals table operations. No raw SQL anywhere else in the codebase.
 """
+
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
@@ -231,18 +232,31 @@ async def get_latest_close(ticker: str) -> float | None:
 
 
 OHLCV_SIGNAL_TYPES: list[str] = [
-    "yf_open", "yf_high", "yf_low", "yf_close", "yf_volume",
-    "ohlcv_open", "ohlcv_high", "ohlcv_low", "ohlcv_close",
-    "ohlcv_adjusted_close", "ohlcv_volume",
+    "yf_open",
+    "yf_high",
+    "yf_low",
+    "yf_close",
+    "yf_volume",
+    "ohlcv_open",
+    "ohlcv_high",
+    "ohlcv_low",
+    "ohlcv_close",
+    "ohlcv_adjusted_close",
+    "ohlcv_volume",
 ]
 
 # Recomputed by market_job every 15 min from OHLCV/live bars. Deepest read is
 # the RollingZScorer window of 500 observations (~20 trading days at ~25
 # rows/ticker/day), so these get the short DERIVED_RETENTION_DAYS tier.
 DERIVED_INTRADAY_SIGNAL_TYPES: list[str] = [
-    "rsi_14", "return_1d", "return_5d", "return_20d",
+    "rsi_14",
+    "return_1d",
+    "return_5d",
+    "return_20d",
     "volume_ratio",
-    "order_flow_imbalance", "buy_pressure", "sell_pressure",
+    "order_flow_imbalance",
+    "buy_pressure",
+    "sell_pressure",
     "bid_ask_spread_bps",
 ]
 
@@ -257,16 +271,23 @@ QUOTE_SIGNAL_TYPES: list[str] = ["bid", "ask", "bid_ask_spread"]
 # ~100-byte numeric rows accruing ~1.5k/day universe-wide — retention is
 # effectively free. Excluded from the retention_job catch-all purge.
 RESEARCH_RETAIN_SIGNAL_TYPES: list[str] = [
-    "short_volume_otc", "short_volume_total_otc", "short_volume_ratio_otc",
+    "short_volume_otc",
+    "short_volume_total_otc",
+    "short_volume_ratio_otc",
     "insider_net_shares",
     # Analyst channel added 2026-07-22 (Track B2): likely future research input
     # (earnings-revision derivation reads up to 120 rows of EPS history);
     # was purging at 90 days.
-    "analyst_buy_pct", "analyst_target_price", "analyst_eps_estimate_mean",
+    "analyst_buy_pct",
+    "analyst_target_price",
+    "analyst_eps_estimate_mean",
     # Options snapshots (2026-07-22, pipeline/sources/options.py): daily
     # yfinance chain snapshots — UNBACKFILLABLE; every purged day is lost
     # evaluation data forever.
-    "pcr_volume", "pcr_oi", "atm_iv_30d", "iv_skew_25d",
+    "pcr_volume",
+    "pcr_oi",
+    "atm_iv_30d",
+    "iv_skew_25d",
 ]
 
 
@@ -340,7 +361,10 @@ async def replace_signals(
                   AND timestamp  >= $3
                   AND timestamp  <  $4
                 """,
-                ticker, signal_types, start, end,
+                ticker,
+                signal_types,
+                start,
+                end,
             )
             if rows:
                 await conn.executemany(

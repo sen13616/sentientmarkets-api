@@ -7,6 +7,7 @@ Sprint 4 note: score_market_signals, score_influencer_signals, and
 score_macro_signals are now async (z-score requires DB reads).  Tests mock
 get_signal_history to return [] so z-score falls back to parametric.
 """
+
 from __future__ import annotations
 
 import math
@@ -25,6 +26,7 @@ from pipeline.sources.market import _compute_returns
 # ---------------------------------------------------------------------------
 # G-S4: Log returns
 # ---------------------------------------------------------------------------
+
 
 class TestLogReturns:
     """_compute_returns should use log returns: math.log(current/prev)."""
@@ -76,8 +78,7 @@ class TestLogReturns:
     def test_5d_20d_log_returns(self):
         """5d and 20d horizons also use log returns."""
         history = [
-            (datetime(2026, 4, i + 1, 21, 0, tzinfo=timezone.utc), 80.0 + i)
-            for i in range(25)
+            (datetime(2026, 4, i + 1, 21, 0, tzinfo=timezone.utc), 80.0 + i) for i in range(25)
         ]
         current = 110.0
         results = dict(_compute_returns(current, history))
@@ -98,20 +99,27 @@ class TestLogReturns:
 # G-S6: NaN/Inf validation
 # ---------------------------------------------------------------------------
 
+
 def _make_ts():
     return datetime(2026, 5, 1, 14, 0, tzinfo=timezone.utc)
 
 
 # Mock get_signal_history to return [] so z-score falls back to parametric
-_mock_history = patch("scripts.db.queries.raw_signals.get_signal_history",
-                      new_callable=AsyncMock, return_value=[])
+_mock_history = patch(
+    "scripts.db.queries.raw_signals.get_signal_history", new_callable=AsyncMock, return_value=[]
+)
 
 
 class TestNanInfGuardsMarket:
     """score_market_signals should skip NaN/Inf values."""
 
     def _row(self, sig_type: str, value: float) -> dict:
-        return {"signal_type": sig_type, "value": value, "source": "computed", "timestamp": _make_ts()}
+        return {
+            "signal_type": sig_type,
+            "value": value,
+            "source": "computed",
+            "timestamp": _make_ts(),
+        }
 
     async def test_nan_value_skipped(self):
         raw = [self._row("rsi_14", float("nan"))]
@@ -154,8 +162,18 @@ class TestNanInfGuardsNarrative:
     def _art(self, sentiment, relevance=0.7) -> dict:
         return {
             "finbert_score": sentiment,
-            "finbert_pos": max(0, sentiment) if sentiment is not None and not (isinstance(sentiment, float) and (math.isnan(sentiment) or math.isinf(sentiment))) else 0.5,
-            "finbert_neg": max(0, -sentiment) if sentiment is not None and not (isinstance(sentiment, float) and (math.isnan(sentiment) or math.isinf(sentiment))) else 0.3,
+            "finbert_pos": max(0, sentiment)
+            if sentiment is not None
+            and not (
+                isinstance(sentiment, float) and (math.isnan(sentiment) or math.isinf(sentiment))
+            )
+            else 0.5,
+            "finbert_neg": max(0, -sentiment)
+            if sentiment is not None
+            and not (
+                isinstance(sentiment, float) and (math.isnan(sentiment) or math.isinf(sentiment))
+            )
+            else 0.3,
             "finbert_neu": 0.2,
             "relevance_score": relevance,
             "source": "alpha_vantage",
@@ -179,7 +197,12 @@ class TestNanInfGuardsInfluencer:
     """score_influencer_signals should skip NaN/Inf values."""
 
     def _row(self, sig_type: str, value: float) -> dict:
-        return {"signal_type": sig_type, "value": value, "source": "finnhub", "timestamp": _make_ts()}
+        return {
+            "signal_type": sig_type,
+            "value": value,
+            "source": "finnhub",
+            "timestamp": _make_ts(),
+        }
 
     async def test_nan_value_skipped(self):
         raw = [self._row("insider_net_shares", float("nan"))]
@@ -204,7 +227,12 @@ class TestNanInfGuardsMacro:
     """score_macro_signals should skip NaN/Inf values."""
 
     def _row(self, sig_type: str, value: float) -> dict:
-        return {"signal_type": sig_type, "value": value, "source": "alpha_vantage", "timestamp": _make_ts()}
+        return {
+            "signal_type": sig_type,
+            "value": value,
+            "source": "alpha_vantage",
+            "timestamp": _make_ts(),
+        }
 
     async def test_nan_vix_skipped(self):
         raw = [self._row("vix", float("nan"))]
@@ -231,8 +259,8 @@ class TestNanInfGuardsMacro:
 # G-S13 / Sprint A: Source weight reconciliation
 # ---------------------------------------------------------------------------
 
-class TestSourceWeights:
 
+class TestSourceWeights:
     def test_alpha_vantage_weight_is_075(self):
         """Paper §Event-Level Weighting: AV = 0.75 (Sprint A)."""
         assert _SOURCE_WEIGHTS["alpha_vantage"] == 0.75
@@ -260,6 +288,7 @@ class TestSourceWeights:
 # ---------------------------------------------------------------------------
 # G-S14 / Sprint D / Sprint A: Relevance threshold 0.6 + finbert_score
 # ---------------------------------------------------------------------------
+
 
 class TestRelevanceThreshold:
     """Paper Stage 2: articles with relevance_score < 0.6 excluded.
@@ -335,10 +364,10 @@ class TestRelevanceThreshold:
     def test_mixed_articles_filter(self):
         """Mix of above and below threshold — only above-threshold articles scored."""
         articles = [
-            self._art(0.8, 0.05),   # excluded (well below 0.6)
-            self._art(0.5, 0.7),    # included (above 0.6)
+            self._art(0.8, 0.05),  # excluded (well below 0.6)
+            self._art(0.5, 0.7),  # included (above 0.6)
             self._art(-0.2, 0.55),  # excluded (below 0.6)
-            self._art(0.1, 0.8),    # included (above 0.6)
+            self._art(0.1, 0.8),  # included (above 0.6)
         ]
         result = score_narrative_signals("TEST", articles, _make_ts())
         assert len(result) == 2

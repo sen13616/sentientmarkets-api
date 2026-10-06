@@ -69,8 +69,13 @@ async def _run(args) -> int:
         # feed the re-smoothed series through the daily engine as the
         # "smoothed" score; layer columns aren't needed for these metrics
         daily_in = sm.rename(columns={"smoothed": "composite_score_smoothed"})
-        for col in ("market_index", "narrative_index", "influencer_index",
-                    "macro_index", "confidence_score"):
+        for col in (
+            "market_index",
+            "narrative_index",
+            "influencer_index",
+            "macro_index",
+            "confidence_score",
+        ):
             daily_in[col] = None
         s = analyze.prepare_daily(daily_in)
 
@@ -80,15 +85,19 @@ async def _run(args) -> int:
         panel = analyze.build_panel(s, closes)
         ic = analyze.ic_table(panel, feats=["score", "dscore_raw_3"], horizons=[1, 3])
 
-        rows.append({
-            "half_life_h": hl,
-            "leadlag_peak_offset": int(peak["lag_k"]) if peak is not None else None,
-            "leadlag_peak_corr": float(peak["corr"]) if peak is not None else None,
-            "ic_rows": len(ic),
-            "best_abs_ic_t": float(ic["IC_t"].abs().max()) if not ic.empty else None,
-        })
-        print(f"T½={hl}h → peak offset {rows[-1]['leadlag_peak_offset']} "
-              f"(corr {rows[-1]['leadlag_peak_corr']})")
+        rows.append(
+            {
+                "half_life_h": hl,
+                "leadlag_peak_offset": int(peak["lag_k"]) if peak is not None else None,
+                "leadlag_peak_corr": float(peak["corr"]) if peak is not None else None,
+                "ic_rows": len(ic),
+                "best_abs_ic_t": float(ic["IC_t"].abs().max()) if not ic.empty else None,
+            }
+        )
+        print(
+            f"T½={hl}h → peak offset {rows[-1]['leadlag_peak_offset']} "
+            f"(corr {rows[-1]['leadlag_peak_corr']})"
+        )
 
     print("\n" + pd.DataFrame(rows).to_string(index=False))
     return 0

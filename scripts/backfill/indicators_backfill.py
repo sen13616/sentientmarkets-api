@@ -15,6 +15,7 @@ Why compute from DB data instead of calling Alpha Vantage:
 Usage:
   python backfill/indicators_backfill.py
 """
+
 import asyncio
 import sys
 from datetime import datetime, timezone
@@ -29,6 +30,7 @@ from scripts.db.connection import close_pool, get_pool, init_pool
 # --------------------------------------------------------------------------- #
 # RSI computation                                                               #
 # --------------------------------------------------------------------------- #
+
 
 def compute_rsi_14(closes: list[float]) -> list[float | None]:
     """
@@ -46,9 +48,9 @@ def compute_rsi_14(closes: list[float]) -> list[float | None]:
         return [None] * n
 
     arr = np.array(closes, dtype=np.float64)
-    deltas = np.diff(arr)                        # length n-1
+    deltas = np.diff(arr)  # length n-1
 
-    gains  = np.where(deltas > 0,  deltas, 0.0)
+    gains = np.where(deltas > 0, deltas, 0.0)
     losses = np.where(deltas < 0, -deltas, 0.0)
 
     result: list[float | None] = [None] * n
@@ -79,6 +81,7 @@ def compute_rsi_14(closes: list[float]) -> list[float | None]:
 # --------------------------------------------------------------------------- #
 # DB helpers                                                                    #
 # --------------------------------------------------------------------------- #
+
 
 async def _fetch_closes(ticker: str) -> list[tuple[datetime, float]]:
     """Return [(timestamp, close), ...] sorted ascending for ticker."""
@@ -136,6 +139,7 @@ async def _insert_rsi_rows(rows: list[tuple]) -> None:
 # Main                                                                          #
 # --------------------------------------------------------------------------- #
 
+
 async def main() -> None:
     await init_pool()
     pool = await get_pool()
@@ -144,8 +148,7 @@ async def main() -> None:
         tickers: list[str] = [
             r["ticker"]
             for r in await conn.fetch(
-                "SELECT ticker FROM ticker_universe"
-                " WHERE tier = 'tier1_supported' ORDER BY ticker"
+                "SELECT ticker FROM ticker_universe WHERE tier = 'tier1_supported' ORDER BY ticker"
             )
         ]
 
@@ -164,13 +167,15 @@ async def main() -> None:
 
         closes_with_ts = await _fetch_closes(ticker)
 
-        if len(closes_with_ts) < 15:   # need at least period+1 points
+        if len(closes_with_ts) < 15:  # need at least period+1 points
             skipped_no_data += 1
-            print(f"  [{idx}/{total}] {ticker}: insufficient OHLCV data ({len(closes_with_ts)} rows) — skipped.")
+            print(
+                f"  [{idx}/{total}] {ticker}: insufficient OHLCV data ({len(closes_with_ts)} rows) — skipped."
+            )
             continue
 
         timestamps = [row[0] for row in closes_with_ts]
-        closes     = [row[1] for row in closes_with_ts]
+        closes = [row[1] for row in closes_with_ts]
 
         rsi_values = compute_rsi_14(closes)
 

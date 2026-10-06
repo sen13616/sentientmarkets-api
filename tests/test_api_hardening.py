@@ -5,6 +5,7 @@ Regression tests for the 2026-07-20 audit fixes:
   - rate limiter fails OPEN when Redis is unavailable (no 500)
   - assembler tolerates a null confidence score / flags without crashing
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -15,6 +16,7 @@ import pytest
 # ---------------------------------------------------------------------------
 # /health uses the cached lookup, not a direct DB write
 # ---------------------------------------------------------------------------
+
 
 async def test_health_uses_cached_lookup_not_direct_db():
     """health() must call the cached _lookup_tier, never get_key_tier directly."""
@@ -29,7 +31,9 @@ async def test_health_uses_cached_lookup_not_direct_db():
     req = Request(scope)
 
     with (
-        patch.object(health, "_lookup_tier", new_callable=AsyncMock, return_value="pro") as mock_lookup,
+        patch.object(
+            health, "_lookup_tier", new_callable=AsyncMock, return_value="pro"
+        ) as mock_lookup,
         patch("scripts.db.queries.api_keys.get_key_tier", new_callable=AsyncMock) as mock_db,
     ):
         result = await health.health(req)
@@ -42,6 +46,7 @@ async def test_health_uses_cached_lookup_not_direct_db():
 # ---------------------------------------------------------------------------
 # Rate limiter fails open on Redis error
 # ---------------------------------------------------------------------------
+
 
 async def test_rate_limit_fails_open_on_redis_error():
     """A Redis outage must not raise — the request is allowed through."""
@@ -72,10 +77,11 @@ async def test_rate_limit_still_enforces_when_redis_up():
 # Assembler tolerates null confidence score / flags
 # ---------------------------------------------------------------------------
 
+
 def _minimal_state():
     return {
         "ticker": "TEST",
-        "composite_score": 0.0,          # legitimate 0.0 must survive
+        "composite_score": 0.0,  # legitimate 0.0 must survive
         "confidence": {"score": None, "flags": None},
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
@@ -85,8 +91,8 @@ def test_build_free_handles_null_confidence():
     from api.response.assembler import _build_free
 
     resp = _build_free(_minimal_state())
-    assert resp.score == 0          # 0.0 composite preserved, not dropped
-    assert resp.confidence == 0     # None score → 0, no crash
+    assert resp.score == 0  # 0.0 composite preserved, not dropped
+    assert resp.confidence == 0  # None score → 0, no crash
 
 
 def test_build_pro_handles_null_confidence_and_flags():
@@ -94,4 +100,4 @@ def test_build_pro_handles_null_confidence_and_flags():
 
     resp = _build_pro(_minimal_state())
     assert resp.confidence == 0
-    assert resp.confidence_flags == []   # None flags → [], no list(None) crash
+    assert resp.confidence_flags == []  # None flags → [], no list(None) crash

@@ -29,6 +29,7 @@ mapping in api/response/labels.py in spirit, but are finer near 50: a
 universe *average* compresses toward the middle, so the neutral band is
 narrowed and "mildly" tiers are added to keep the summary informative.
 """
+
 from __future__ import annotations
 
 _EMPTY = "No market sentiment data available for this tick."

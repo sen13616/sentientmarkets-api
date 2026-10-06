@@ -5,6 +5,7 @@ Unit tests for the Redis-backed tier cache in api/auth.py.
 
 All external I/O (DB, Redis) is mocked — no live connections required.
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
@@ -49,9 +50,7 @@ class TestLookupTier:
         ):
             assert await _lookup_tier(KEY_HASH) == "free"
         db.assert_awaited_once_with(KEY_HASH)
-        redis.set.assert_awaited_once_with(
-            f"auth:tier:{KEY_HASH}", "free", ex=_TIER_CACHE_TTL
-        )
+        redis.set.assert_awaited_once_with(f"auth:tier:{KEY_HASH}", "free", ex=_TIER_CACHE_TTL)
 
     async def test_unknown_key_caches_miss_marker(self):
         redis = _fake_redis(None)

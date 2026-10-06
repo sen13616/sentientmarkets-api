@@ -9,6 +9,7 @@ latest-written row per date and exclude the current session:
   - market._run_market and macro._run_macro pass the current bar's date
   - reconstruct_signals --interval 15m / --replace support
 """
+
 from __future__ import annotations
 
 import json
@@ -35,15 +36,18 @@ def _sql(call) -> str:
 # Queries
 # ---------------------------------------------------------------------------
 
-class TestHistoryQueries:
 
+class TestHistoryQueries:
     async def _run(self, fn_name, *args, **kwargs):
         conn = MagicMock()
         conn.fetch = AsyncMock(return_value=[])
         conn.fetchval = AsyncMock(return_value=None)
-        with patch("scripts.db.queries.raw_signals.get_pool",
-                   new=AsyncMock(return_value=_mock_pool_with(conn))):
+        with patch(
+            "scripts.db.queries.raw_signals.get_pool",
+            new=AsyncMock(return_value=_mock_pool_with(conn)),
+        ):
             import scripts.db.queries.raw_signals as rs
+
             await getattr(rs, fn_name)(*args, **kwargs)
         return conn
 
@@ -75,12 +79,22 @@ class TestHistoryQueries:
 # Callers pass the current session's date
 # ---------------------------------------------------------------------------
 
+
 async def test_run_market_excludes_current_session_from_history():
     import pipeline.sources.market as mkt
 
     bar_ts = datetime(2026, 9, 22, tzinfo=UTC)
-    ohlcv = {"AAPL": {"open": 340.0, "high": 345.0, "low": 338.0, "close": 339.75,
-                      "volume": 40_000_000.0, "timestamp": bar_ts, "source": "yfinance"}}
+    ohlcv = {
+        "AAPL": {
+            "open": 340.0,
+            "high": 345.0,
+            "low": 338.0,
+            "close": 339.75,
+            "volume": 40_000_000.0,
+            "timestamp": bar_ts,
+            "source": "yfinance",
+        }
+    }
     closes = [(bar_ts - timedelta(days=i), 330.0 + i) for i in range(30, 0, -1)]
     with (
         patch.object(mkt, "is_market_hours", return_value=False),
@@ -116,6 +130,7 @@ async def test_run_macro_excludes_current_session_from_etf_history():
 # reconstruct_signals: 15-min cadence + replace
 # ---------------------------------------------------------------------------
 
+
 def test_15m_marks_mirror_market_job_cron():
     from scripts.backfill import reconstruct_signals as rs
 
@@ -130,17 +145,42 @@ def test_15m_partial_bars_and_type_filter():
     from scripts.backfill import reconstruct_signals as rs
 
     day0 = datetime(2026, 9, 22, 13, 30, tzinfo=UTC)
-    bars = [{"start": day0 + timedelta(minutes=15 * i), "open": 100.0 + i, "high": 101.0 + i,
-             "low": 99.0 + i, "close": 100.5 + i, "volume": 10.0} for i in range(26)]
+    bars = [
+        {
+            "start": day0 + timedelta(minutes=15 * i),
+            "open": 100.0 + i,
+            "high": 101.0 + i,
+            "low": 99.0 + i,
+            "close": 100.5 + i,
+            "volume": 10.0,
+        }
+        for i in range(26)
+    ]
     bar = rs.partial_bar(bars, datetime(2026, 9, 22, 14, 0, tzinfo=UTC), minutes=15)
-    assert bar["close"] == 101.5 and bar["volume"] == 20.0          # 13:30 + 13:45 bars finished by 14:00
+    assert bar["close"] == 101.5 and bar["volume"] == 20.0  # 13:30 + 13:45 bars finished by 14:00
     assert rs.hourly_bar_end(bars[-1]["start"], 15) == datetime(2026, 9, 22, 20, 0, tzinfo=UTC)
 
-    daily = [{"start": datetime(2026, 8, 1, tzinfo=UTC) + timedelta(days=i), "open": 1.0, "high": 2.0,
-              "low": 0.5, "close": 90.0 + i, "volume": 1000.0} for i in range(53)]  # through Sep 22
-    rows = rs.build_ticker_rows("AAPL", bars, daily, datetime(2026, 9, 22, tzinfo=UTC),
-                                datetime(2026, 9, 23, tzinfo=UTC), eod=False, minutes=15,
-                                types=set(rs.REPLACE_MARKET_TYPES))
+    daily = [
+        {
+            "start": datetime(2026, 8, 1, tzinfo=UTC) + timedelta(days=i),
+            "open": 1.0,
+            "high": 2.0,
+            "low": 0.5,
+            "close": 90.0 + i,
+            "volume": 1000.0,
+        }
+        for i in range(53)
+    ]  # through Sep 22
+    rows = rs.build_ticker_rows(
+        "AAPL",
+        bars,
+        daily,
+        datetime(2026, 9, 22, tzinfo=UTC),
+        datetime(2026, 9, 23, tzinfo=UTC),
+        eod=False,
+        minutes=15,
+        types=set(rs.REPLACE_MARKET_TYPES),
+    )
     assert rows and {r[1] for r in rows} <= set(rs.REPLACE_MARKET_TYPES)
     assert min(r[5] for r in rows) == datetime(2026, 9, 22, 14, 0, tzinfo=UTC)
 
@@ -155,7 +195,16 @@ async def test_replace_signals_deletes_then_inserts_in_one_transaction():
     tx.__aenter__ = AsyncMock()
     tx.__aexit__ = AsyncMock(return_value=False)
     conn.transaction.return_value = tx
-    rows = [("AAPL", "rsi_14", 55.0, "computed", "manual_backfill", datetime(2026, 9, 22, 14, tzinfo=UTC))]
+    rows = [
+        (
+            "AAPL",
+            "rsi_14",
+            55.0,
+            "computed",
+            "manual_backfill",
+            datetime(2026, 9, 22, 14, tzinfo=UTC),
+        )
+    ]
     s, e = datetime(2026, 9, 1, tzinfo=UTC), datetime(2026, 10, 3, tzinfo=UTC)
     with patch.object(q, "get_pool", new=AsyncMock(return_value=_mock_pool_with(conn))):
         deleted = await q.replace_signals("AAPL", ["rsi_14"], s, e, rows)

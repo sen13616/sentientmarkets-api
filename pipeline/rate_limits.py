@@ -25,6 +25,7 @@ Retry policy (applied inside guarded_get)
     HTTP 429  : wait 2 s → 4 s → 8 s, max 3 retries, then skip.
     Timeout / ConnectError : wait 2 s, 1 retry, then skip.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -40,19 +41,19 @@ _log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 #: Alpha Vantage premium: 75 req/min → safe at 1 concurrent + 0.85 s gap.
-AV_SEM    = asyncio.Semaphore(1)
-AV_DELAY  = 0.85
+AV_SEM = asyncio.Semaphore(1)
+AV_DELAY = 0.85
 
 #: Finnhub free: 30 req/min → safe at 1 concurrent + 2.1 s gap.
-FINNHUB_SEM   = asyncio.Semaphore(1)
+FINNHUB_SEM = asyncio.Semaphore(1)
 FINNHUB_DELAY = 2.1
 
 #: SEC EDGAR: 10 req/sec → safe at 5 concurrent + 0.5 s spacing per slot.
-EDGAR_SEM   = asyncio.Semaphore(5)
+EDGAR_SEM = asyncio.Semaphore(5)
 EDGAR_DELAY = 0.5
 
 #: Polygon free: ~5 req/min for aggregates → treat same as AV.
-POLYGON_SEM   = asyncio.Semaphore(1)
+POLYGON_SEM = asyncio.Semaphore(1)
 POLYGON_DELAY = 0.85
 
 #: yfinance Ticker.info: no hard rate limit, but each call is a blocking
@@ -69,12 +70,12 @@ YF_OPTIONS_DELAY = 0.15
 #: FRED (St. Louis Fed): documented 120 req/min with API key. The macro
 #: daily job makes 3 calls; the optional backfill makes 3 × 90 = 270 calls
 #: spread over ~5 minutes. Conservative settings keep us well clear.
-FRED_SEM   = asyncio.Semaphore(2)
+FRED_SEM = asyncio.Semaphore(2)
 FRED_DELAY = 0.5
 
 # Auth-failure status codes: do not consume the provider's rate-limit quota.
 _AUTH_FAIL_CODES: frozenset[int] = frozenset((403, 404))
-_BRIEF_DELAY: float = 0.05     # courtesy pause for auth failures
+_BRIEF_DELAY: float = 0.05  # courtesy pause for auth failures
 
 # 429 back-off schedule (applied outside the semaphore, max 3 retries).
 _429_BACKOFF: tuple[int, ...] = (2, 4, 8)
@@ -84,14 +85,15 @@ _429_BACKOFF: tuple[int, ...] = (2, 4, 8)
 # Job-level counters (reset at the start of each scheduler job)
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class _JobCounters:
     rate_limit_skips: int = 0
-    net_error_skips:  int = 0
+    net_error_skips: int = 0
 
     def reset(self) -> None:
         self.rate_limit_skips = 0
-        self.net_error_skips  = 0
+        self.net_error_skips = 0
 
 
 job_counters = _JobCounters()
@@ -101,14 +103,15 @@ job_counters = _JobCounters()
 # Rate-limited HTTP helper
 # ---------------------------------------------------------------------------
 
+
 async def guarded_get(
-    client:  httpx.AsyncClient,
-    url:     str,
-    params:  dict | None = None,
+    client: httpx.AsyncClient,
+    url: str,
+    params: dict | None = None,
     *,
-    sem:     asyncio.Semaphore,
-    delay:   float,
-    label:   str,
+    sem: asyncio.Semaphore,
+    delay: float,
+    label: str,
     headers: dict | None = None,
 ) -> httpx.Response | None:
     """
@@ -138,8 +141,8 @@ async def guarded_get(
       - Timeout / ConnectError after 1 retry
       - Any unexpected exception
     """
-    retries_429: int   = 0
-    retries_net: int   = 0
+    retries_429: int = 0
+    retries_net: int = 0
     wait_before: float = 0.0
 
     while True:
@@ -151,26 +154,18 @@ async def guarded_get(
         async with sem:
             try:
                 resp = await client.get(url, params=params, headers=headers)
-                _hold = (
-                    _BRIEF_DELAY
-                    if resp.status_code in _AUTH_FAIL_CODES
-                    else delay
-                )
+                _hold = _BRIEF_DELAY if resp.status_code in _AUTH_FAIL_CODES else delay
                 await asyncio.sleep(_hold)
 
             except (httpx.TimeoutException, httpx.ConnectError) as exc:
                 await asyncio.sleep(_BRIEF_DELAY)
                 if retries_net < 1:
                     retries_net += 1
-                    _log.warning(
-                        "%s: %s — retrying in 2s", label, type(exc).__name__
-                    )
+                    _log.warning("%s: %s — retrying in 2s", label, type(exc).__name__)
                     wait_before = 2.0
-                    continue   # releases sem, then sleeps 2s, then re-acquires
+                    continue  # releases sem, then sleeps 2s, then re-acquires
                 job_counters.net_error_skips += 1
-                _log.warning(
-                    "%s: %s after retry, skipping", label, type(exc).__name__
-                )
+                _log.warning("%s: %s after retry, skipping", label, type(exc).__name__)
                 return None
 
             except Exception as exc:
@@ -185,7 +180,10 @@ async def guarded_get(
                 retries_429 += 1
                 _log.warning(
                     "%s: 429 rate limited — waiting %ds (retry %d/%d)",
-                    label, wait, retries_429, len(_429_BACKOFF),
+                    label,
+                    wait,
+                    retries_429,
+                    len(_429_BACKOFF),
                 )
                 wait_before = float(wait)
                 continue

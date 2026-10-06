@@ -49,6 +49,7 @@ mode at once):
     strikes within 10% of their moneyness target
   * no expiries / no chain / no spot → ticker skipped (logged at debug)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -71,19 +72,23 @@ _TARGET_DAYS = 30
 # zeroing produced pcr_oi artifacts of 100-343x on mega-caps; require real
 # depth on both sides before trusting either ratio.
 _IV_MIN, _IV_MAX = 0.05, 5.0
-_MIN_SIDE_VOLUME = 50    # contracts per side for pcr_volume
-_MIN_SIDE_OI = 100       # contracts per side for pcr_oi
-_SKEW_MONEYNESS = 0.05          # "25-delta ≈ 5% OTM" approximation
-_SKEW_STRIKE_TOLERANCE = 0.10   # located strike must be within 10% of target
+_MIN_SIDE_VOLUME = 50  # contracts per side for pcr_volume
+_MIN_SIDE_OI = 100  # contracts per side for pcr_oi
+_SKEW_MONEYNESS = 0.05  # "25-delta ≈ 5% OTM" approximation
+_SKEW_STRIKE_TOLERANCE = 0.10  # located strike must be within 10% of target
 
 OPTIONS_SIGNAL_TYPES: list[str] = [
-    "pcr_volume", "pcr_oi", "atm_iv_30d", "iv_skew_25d",
+    "pcr_volume",
+    "pcr_oi",
+    "atm_iv_30d",
+    "iv_skew_25d",
 ]
 
 
 # ---------------------------------------------------------------------------
 # Pure derivation (unit-tested with plain DataFrames)
 # ---------------------------------------------------------------------------
+
 
 def pick_expiry(
     expiries: list[str],
@@ -190,9 +195,14 @@ def derive_options_signals(
     put_target, call_target = spot * (1 - _SKEW_MONEYNESS), spot * (1 + _SKEW_MONEYNESS)
     p_iv, p_strike = _iv_at_strike_nearest(puts, put_target)
     c_iv, c_strike = _iv_at_strike_nearest(calls, call_target)
-    if (p_iv is not None and c_iv is not None
-            and p_strike is not None and abs(p_strike - put_target) / put_target <= _SKEW_STRIKE_TOLERANCE
-            and c_strike is not None and abs(c_strike - call_target) / call_target <= _SKEW_STRIKE_TOLERANCE):
+    if (
+        p_iv is not None
+        and c_iv is not None
+        and p_strike is not None
+        and abs(p_strike - put_target) / put_target <= _SKEW_STRIKE_TOLERANCE
+        and c_strike is not None
+        and abs(c_strike - call_target) / call_target <= _SKEW_STRIKE_TOLERANCE
+    ):
         out["iv_skew_25d"] = round(p_iv - c_iv, 4)
 
     return out
@@ -201,6 +211,7 @@ def derive_options_signals(
 # ---------------------------------------------------------------------------
 # Fetch (blocking yfinance work, run in a thread under the shared semaphore)
 # ---------------------------------------------------------------------------
+
 
 def _fetch_chain(ticker: str, now: datetime):
     """Blocking: (calls, puts, expiry) for the nearest-30d expiry, or None."""
@@ -243,10 +254,7 @@ async def snapshot_ticker(ticker: str, now: datetime) -> bool:
         _log.debug("options %s: chain at %s yielded no sane signals", ticker, expiry)
         return False
 
-    rows = [
-        (ticker, sig_type, value, _SOURCE, "live", now)
-        for sig_type, value in signals.items()
-    ]
+    rows = [(ticker, sig_type, value, _SOURCE, "live", now) for sig_type, value in signals.items()]
     await insert_signals(rows)
     return True
 

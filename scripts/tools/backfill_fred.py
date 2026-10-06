@@ -19,6 +19,7 @@ Usage:
     # Optional override of the lookback window:
     DATABASE_URL=... BACKFILL_DAYS=180 python3 tools/backfill_fred.py
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -60,7 +61,8 @@ async def _existing_observation_dates(
          WHERE ticker      = $1
            AND signal_type = $2
         """,
-        _MACRO_TICKER, signal_type,
+        _MACRO_TICKER,
+        signal_type,
     )
     return {r["timestamp"] for r in rows}
 
@@ -68,22 +70,23 @@ async def _existing_observation_dates(
 async def main() -> int:
     days = int(os.environ.get("BACKFILL_DAYS", "90"))
     start_date = (datetime.now(timezone.utc) - timedelta(days=days)).date()
-    end_date   = datetime.now(timezone.utc).date()
+    end_date = datetime.now(timezone.utc).date()
     _log.info("Backfilling FRED %s → %s (%d days)", start_date, end_date, days)
 
     conn = await asyncpg.connect(_dsn())
     inserted_by_type: dict[str, int] = {}
-    skipped_by_type:  dict[str, int] = {}
+    skipped_by_type: dict[str, int] = {}
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             for sig_type, series_id in SERIES_MAP.items():
                 _log.info("→ %s  (FRED %s)", sig_type, series_id)
                 observations = await _fetch_observation(
-                    client, series_id,
+                    client,
+                    series_id,
                     observation_start=str(start_date),
                     observation_end=str(end_date),
-                    limit=days + 10,           # FRED returns business days only; pad a little
+                    limit=days + 10,  # FRED returns business days only; pad a little
                     sort_order="asc",
                 )
                 if not observations:
@@ -92,7 +95,7 @@ async def main() -> int:
 
                 existing = await _existing_observation_dates(conn, sig_type)
                 inserted = 0
-                skipped  = 0
+                skipped = 0
                 for value, obs_date in observations:
                     if obs_date in existing:
                         skipped += 1
@@ -107,20 +110,29 @@ async def main() -> int:
                             (ticker, signal_type, value, source, upload_type, timestamp)
                         VALUES ($1, $2, $3, $4, $5, $6)
                         """,
-                        _MACRO_TICKER, sig_type, value, "fred", "manual_backfill", obs_date,
+                        _MACRO_TICKER,
+                        sig_type,
+                        value,
+                        "fred",
+                        "manual_backfill",
+                        obs_date,
                     )
                     inserted += 1
 
                 inserted_by_type[sig_type] = inserted
-                skipped_by_type[sig_type]  = skipped
+                skipped_by_type[sig_type] = skipped
                 _log.info("  inserted=%d  skipped(existing)=%d", inserted, skipped)
     finally:
         await conn.close()
 
     total_inserted = sum(inserted_by_type.values())
-    total_skipped  = sum(skipped_by_type.values())
-    _log.info("backfill_fred complete: inserted=%d skipped=%d across %d series",
-              total_inserted, total_skipped, len(SERIES_MAP))
+    total_skipped = sum(skipped_by_type.values())
+    _log.info(
+        "backfill_fred complete: inserted=%d skipped=%d across %d series",
+        total_inserted,
+        total_skipped,
+        len(SERIES_MAP),
+    )
     return 0
 
 

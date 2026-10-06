@@ -13,6 +13,7 @@ interval : 'daily'  (one record per day),
            'raw'    (every scoring cycle).
            When omitted, defaults to 'raw' for days=1 and 'daily' otherwise.
 """
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -37,10 +38,10 @@ router = APIRouter()
     },
 )
 async def get_sentiment_history(
-    ticker:   str,
-    days:     int        = Query(default=30, ge=1, le=365),
+    ticker: str,
+    days: int = Query(default=30, ge=1, le=365),
     interval: str | None = Query(default=None, pattern="^(daily|hourly|raw)$"),
-    tier:     str        = Depends(rate_limited),
+    tier: str = Depends(rate_limited),
 ) -> HistoryResponse:
     # When interval is not explicitly provided, default depends on the window:
     # a 1-day window gets every scoring tick; longer windows collapse to daily.
@@ -59,7 +60,10 @@ async def get_sentiment_history(
     if await get_ticker_status(ticker) is None:
         raise HTTPException(
             status_code=404,
-            detail={"error": "ticker_not_found", "message": f"Ticker {ticker!r} is not in the supported universe"},
+            detail={
+                "error": "ticker_not_found",
+                "message": f"Ticker {ticker!r} is not in the supported universe",
+            },
         )
 
     rows = await get_history(ticker, days=days, interval=interval)
@@ -67,10 +71,10 @@ async def get_sentiment_history(
     entries = []
     for row in rows:
         layer_values = {
-            "market":     row.get("market_index"),
-            "narrative":  row.get("narrative_index"),
+            "market": row.get("market_index"),
+            "narrative": row.get("narrative_index"),
             "influencer": row.get("influencer_index"),
-            "macro":      row.get("macro_index"),
+            "macro": row.get("macro_index"),
         }
         # Prefer smoothed score; fall back to raw for pre-EMA rows
         smoothed = row.get("composite_score_smoothed")
@@ -78,14 +82,14 @@ async def get_sentiment_history(
         display_score = smoothed if smoothed is not None else raw_score
         entries.append(
             HistoryEntry(
-                timestamp      = row["timestamp"],
-                score          = int(round(display_score)),
-                score_raw      = int(round(raw_score)),
-                score_exo      = row.get("composite_score_exo"),
-                label          = score_to_label(int(round(display_score))),
-                confidence     = int(row["confidence_score"]),
-                sub_indices    = HistorySubIndices(**layer_values),
-                missing_layers = [layer for layer, v in layer_values.items() if v is None],
+                timestamp=row["timestamp"],
+                score=int(round(display_score)),
+                score_raw=int(round(raw_score)),
+                score_exo=row.get("composite_score_exo"),
+                label=score_to_label(int(round(display_score))),
+                confidence=int(row["confidence_score"]),
+                sub_indices=HistorySubIndices(**layer_values),
+                missing_layers=[layer for layer, v in layer_values.items() if v is None],
             )
         )
 

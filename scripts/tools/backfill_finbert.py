@@ -14,6 +14,7 @@ Usage:
 
 This script is idempotent — safe to re-run if interrupted.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,7 +31,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 load_dotenv(override=True)
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s"
+)
 _log = logging.getLogger(__name__)
 
 
@@ -139,10 +142,15 @@ async def backfill(batch_size: int = 64, dry_run: bool = False) -> None:
             rate = total_scored / elapsed if elapsed > 0 else 0
             _log.info(
                 "Step 3 progress: %d/%d scored (%.1f articles/sec)",
-                total_scored, unscored_count, rate,
+                total_scored,
+                unscored_count,
+                rate,
             )
-        _log.info("Step 3 done: %d articles FinBERT-scored in %.1fs",
-                   total_scored, time.monotonic() - t_start)
+        _log.info(
+            "Step 3 done: %d articles FinBERT-scored in %.1fs",
+            total_scored,
+            time.monotonic() - t_start,
+        )
 
     await conn.close()
     _log.info("Backfill complete.")

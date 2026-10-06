@@ -28,6 +28,7 @@ Fallback propagation (per spec §Layer 02)
 
 score_ticker() is provided for tests and one-off manual runs.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -78,19 +79,28 @@ _log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _MACRO_TICKER = "_MACRO_"
-_SECTOR_ETFS  = [
-    "XLB", "XLC", "XLE", "XLF", "XLI",
-    "XLK", "XLP", "XLRE", "XLU", "XLV", "XLY",
+_SECTOR_ETFS = [
+    "XLB",
+    "XLC",
+    "XLE",
+    "XLF",
+    "XLI",
+    "XLK",
+    "XLP",
+    "XLRE",
+    "XLU",
+    "XLV",
+    "XLY",
 ]
 
 # Maximum age of the last-scored timestamp before falling back to Redis cache.
 # These are STALENESS thresholds — they determine when a layer's sub-index is
 # considered too stale to trust and Redis cached state is used instead.
 _LAYER_LOOKBACK: dict[str, timedelta] = {
-    "market":     timedelta(minutes=90),
-    "narrative":  timedelta(hours=6),
+    "market": timedelta(minutes=90),
+    "narrative": timedelta(hours=6),
     "influencer": timedelta(days=3),
-    "macro":      timedelta(hours=72),
+    "macro": timedelta(hours=72),
 }
 
 # How far back to look in the DB when fetching raw data for scoring.
@@ -107,21 +117,34 @@ _NARRATIVE_SCORE_LOOKBACK = timedelta(days=3)
 _INFLUENCER_SCORE_LOOKBACK = timedelta(days=30)
 
 _MARKET_SIGNAL_TYPES = [
-    "rsi_14", "return_1d", "return_5d", "return_20d",
+    "rsi_14",
+    "return_1d",
+    "return_5d",
+    "return_20d",
     "volume_ratio",
-    "order_flow_imbalance", "buy_pressure", "sell_pressure",
+    "order_flow_imbalance",
+    "buy_pressure",
+    "sell_pressure",
     "bid_ask_spread_bps",
-    "short_volume_otc", "short_volume_total_otc", "short_volume_ratio_otc",
+    "short_volume_otc",
+    "short_volume_total_otc",
+    "short_volume_ratio_otc",
 ]
 _MARKET_SIGNAL_TYPES_LEGACY = [
     # Old signal types that may still exist in the DB from prior pipeline runs.
     # Included so the scoring layer can pick them up if present.
-    "ohlcv_close", "ohlcv_open", "ohlcv_high", "ohlcv_low", "ohlcv_volume",
+    "ohlcv_close",
+    "ohlcv_open",
+    "ohlcv_high",
+    "ohlcv_low",
+    "ohlcv_volume",
     # Removed Stage 1 — put_call_ratio, short_interest_ratio, implied_volatility
     # excluded from paper's implemented methodology. See docs/SIGNAL_CATALOG.md.
 ]
 _INFLUENCER_SIGNAL_TYPES = [
-    "insider_net_shares", "analyst_buy_pct", "analyst_target_price",
+    "insider_net_shares",
+    "analyst_buy_pct",
+    "analyst_target_price",
     "analyst_eps_estimate_mean",
 ]
 _MACRO_SIGNAL_TYPES = [
@@ -145,6 +168,7 @@ _MACRO_GLOBAL_SIGNAL_TYPES = [
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _ensure_tz(dt: datetime | None) -> datetime | None:
     if dt is None:
@@ -185,7 +209,7 @@ def _fallback_subindex(
         return None, None
 
     freshness = last_state.get("freshness") or {}
-    as_of     = _parse_ts(freshness.get(f"{layer}_as_of"))
+    as_of = _parse_ts(freshness.get(f"{layer}_as_of"))
 
     if as_of is None:
         return None, None
@@ -202,9 +226,9 @@ def _fallback_subindex(
     if entry is None:
         return None, None
 
-    value     = entry.get("value") if isinstance(entry, dict) else float(entry)
+    value = entry.get("value") if isinstance(entry, dict) else float(entry)
     n_signals = entry.get("n_signals", 1) if isinstance(entry, dict) else 1
-    sources   = entry.get("sources", [])  if isinstance(entry, dict) else []
+    sources = entry.get("sources", []) if isinstance(entry, dict) else []
 
     if value is None:
         return None, None
@@ -217,6 +241,7 @@ def _fallback_subindex(
 # Per-layer scoring  (read DB → normalize → sub-index → fallback if empty)
 # ---------------------------------------------------------------------------
 
+
 async def _score_market(
     ticker: str,
     now: datetime,
@@ -226,14 +251,14 @@ async def _score_market(
     # NOTE: If an ingestion job is currently mid-write, this may read data from
     # the prior ingestion cycle for some tickers.  This is correct behavior —
     # the next scoring tick will pick up any in-flight data.
-    raw   = await get_signals_since(ticker, since, _MARKET_SIGNAL_TYPES + _MARKET_SIGNAL_TYPES_LEGACY)
-    raw   = filter_stale_signals(raw, now)
+    raw = await get_signals_since(ticker, since, _MARKET_SIGNAL_TYPES + _MARKET_SIGNAL_TYPES_LEGACY)
+    raw = filter_stale_signals(raw, now)
     if raw:
         # Sprint 4: score_market_signals is now async (z-score requires DB reads).
         # Short volume z-score is handled inline — no separate call needed.
-        sigs  = await score_market_signals(ticker, raw, now)
+        sigs = await score_market_signals(ticker, raw, now)
 
-        si    = compute_market_sub_index(sigs)
+        si = compute_market_sub_index(sigs)
         as_of = _latest_ts(raw)
         if si is not None:
             return si, sigs, as_of
@@ -247,11 +272,11 @@ async def _score_narrative(
     now: datetime,
     last_state: dict | None,
 ) -> tuple[SubIndexResult | None, list[dict], datetime | None]:
-    since    = now - _NARRATIVE_SCORE_LOOKBACK  # articles published in last 3 days
+    since = now - _NARRATIVE_SCORE_LOOKBACK  # articles published in last 3 days
     articles = await get_articles_since(ticker, since)
     if articles:
-        sigs  = score_narrative_signals(ticker, articles, now)
-        si    = compute_sub_index(sigs)
+        sigs = score_narrative_signals(ticker, articles, now)
+        si = compute_sub_index(sigs)
         as_of = _latest_ts(articles, key="published_at")
         if si is not None:
             return si, sigs, as_of
@@ -268,15 +293,17 @@ async def _score_influencer(
 ) -> tuple[SubIndexResult | None, list[dict], datetime | None, datetime | None, datetime | None]:
     """Returns (subindex, sigs, influencer_as_of, analyst_as_of, insider_as_of)."""
     since = now - _INFLUENCER_SCORE_LOOKBACK
-    raw   = await get_signals_since(ticker, since, _INFLUENCER_SIGNAL_TYPES)
+    raw = await get_signals_since(ticker, since, _INFLUENCER_SIGNAL_TYPES)
     if raw:
-        sigs  = await score_influencer_signals(ticker, raw, now, current_price)
-        si    = compute_sub_index(sigs)
+        sigs = await score_influencer_signals(ticker, raw, now, current_price)
+        si = compute_sub_index(sigs)
         as_of = _latest_ts(raw)
 
         # Separate timestamps for analyst vs insider staleness checks
         insider_rows = [r for r in raw if r["signal_type"] == "insider_net_shares"]
-        analyst_rows = [r for r in raw if r["signal_type"] in ("analyst_buy_pct", "analyst_target_price")]
+        analyst_rows = [
+            r for r in raw if r["signal_type"] in ("analyst_buy_pct", "analyst_target_price")
+        ]
         insider_as_of = _latest_ts(insider_rows)
         analyst_as_of = _latest_ts(analyst_rows)
 
@@ -285,7 +312,7 @@ async def _score_influencer(
 
     si, as_of = _fallback_subindex("influencer", last_state, now)
     # Recover individual as_of from last_state freshness if available
-    freshness    = (last_state or {}).get("freshness") or {}
+    freshness = (last_state or {}).get("freshness") or {}
     analyst_as_of = _parse_ts(freshness.get("influencer_as_of"))
     insider_as_of = analyst_as_of  # Phase 1 approximation
     return si, [], as_of, analyst_as_of, insider_as_of
@@ -324,7 +351,8 @@ async def _score_macro(
         else:
             _log.warning(
                 "_score_macro(%s): unknown GICS sector %r — skipping ETF component",
-                ticker, sector,
+                ticker,
+                sector,
             )
     else:
         _log.debug(
@@ -334,8 +362,8 @@ async def _score_macro(
 
     all_raw = global_rows + etf_rows
     if all_raw:
-        sigs  = await score_macro_signals(ticker, sector, all_raw, now)
-        si    = compute_macro_sub_index(sigs)
+        sigs = await score_macro_signals(ticker, sector, all_raw, now)
+        si = compute_macro_sub_index(sigs)
         as_of = _latest_ts(all_raw)
         if si is not None:
             return si, sigs, as_of
@@ -348,14 +376,16 @@ async def _score_macro(
 # Core compute + persist  (no external API calls)
 # ---------------------------------------------------------------------------
 
+
 class ScoreResult(NamedTuple):
     """Per-ticker outcome of one scoring pass, consumed by _score_all."""
-    n_populated: int            # non-null sub-indices (0-4)
-    smoothed_score: float       # EMA-smoothed composite written to state
-    score_change_1d: float | None       # vs 24-48h-old baseline; None if no baseline
-    score_change_1d_pct: float | None   # same basis, as % of the baseline
-    raw_score: float | None = None      # divergence-capped raw composite (cross-sectional stats)
-    exo_score: float | None = None      # exogenous sentiment-only composite (no market layer)
+
+    n_populated: int  # non-null sub-indices (0-4)
+    smoothed_score: float  # EMA-smoothed composite written to state
+    score_change_1d: float | None  # vs 24-48h-old baseline; None if no baseline
+    score_change_1d_pct: float | None  # same basis, as % of the baseline
+    raw_score: float | None = None  # divergence-capped raw composite (cross-sectional stats)
+    exo_score: float | None = None  # exogenous sentiment-only composite (no market layer)
 
 
 async def _score_and_write(
@@ -392,12 +422,16 @@ async def _score_and_write(
     -------
     ScoreResult — (n_populated, smoothed_score, score_change_1d).
     """
-    now        = datetime.now(timezone.utc)
-    ticker     = ticker.upper()
+    now = datetime.now(timezone.utc)
+    ticker = ticker.upper()
     last_state = await read_scored_state(ticker)
 
     state, result = await compute_scored_state(
-        ticker, sector, baseline_score, now=now, last_state=last_state,
+        ticker,
+        sector,
+        baseline_score,
+        now=now,
+        last_state=last_state,
     )
 
     await write_scored_state(ticker, state)
@@ -432,20 +466,28 @@ async def compute_scored_state(
     # value from Redis within the staleness window.
 
     (market_si, market_sigs, market_as_of) = await _score_market(ticker, now, last_state)
-    (narrative_si, narrative_sigs, narrative_as_of) = await _score_narrative(ticker, now, last_state)
-    (influencer_si, influencer_sigs, influencer_as_of, analyst_as_of, insider_as_of) = await _score_influencer(ticker, now, last_state, current_price)
+    (narrative_si, narrative_sigs, narrative_as_of) = await _score_narrative(
+        ticker, now, last_state
+    )
+    (
+        influencer_si,
+        influencer_sigs,
+        influencer_as_of,
+        analyst_as_of,
+        insider_as_of,
+    ) = await _score_influencer(ticker, now, last_state, current_price)
     (macro_si, macro_sigs, macro_as_of) = await _score_macro(ticker, sector, now, last_state)
 
     sub_indices: dict = {
-        "market":     market_si,
-        "narrative":  narrative_si,
+        "market": market_si,
+        "narrative": narrative_si,
         "influencer": influencer_si,
-        "macro":      macro_si,
+        "macro": macro_si,
     }
 
     # ── Composite + divergence ─────────────────────────────────────────────────
-    composite_result           = compute_composite(sub_indices)
-    present_values             = {k: v.value for k, v in sub_indices.items() if v is not None}
+    composite_result = compute_composite(sub_indices)
+    present_values = {k: v.value for k, v in sub_indices.items() if v is not None}
     div_result, effective_score = compute_divergence(present_values, composite_result.score)
 
     # Exogenous sentiment-only composite (nowcasting plan, Phase 3): raw only —
@@ -459,18 +501,18 @@ async def compute_scored_state(
     dt_hours: float = 0.0
 
     if last_state:
-        prev_smoothed  = last_state.get("composite_score_smoothed")
+        prev_smoothed = last_state.get("composite_score_smoothed")
         # Fall back to composite_score if composite_score_smoothed is absent
         # (pre-Sprint-5a states in Redis have no smoothed key).
         if prev_smoothed is None:
             prev_smoothed = last_state.get("composite_score")
         prev_obs_count = int(last_state.get("ema_obs_count") or 0)
-        prev_ts        = _parse_ts(last_state.get("timestamp"))
+        prev_ts = _parse_ts(last_state.get("timestamp"))
         if prev_ts is not None:
             dt_hours = max(0.0, (now - prev_ts).total_seconds() / 3600.0)
 
     smoothed_score = compute_ema(effective_score, prev_smoothed, dt_hours)
-    ema_obs_count  = prev_obs_count + 1
+    ema_obs_count = prev_obs_count + 1
 
     # ── 1-day change vs the 24–48h-old baseline (null across gaps) ────────────
     score_change_1d: float | None = None
@@ -484,26 +526,26 @@ async def compute_scored_state(
 
     # ── Staleness and confidence ───────────────────────────────────────────────
     as_of_map = {
-        "market":  market_as_of,
-        "news":    narrative_as_of,
+        "market": market_as_of,
+        "news": narrative_as_of,
         "analyst": analyst_as_of,
         "insider": insider_as_of,
-        "macro":   macro_as_of,
+        "macro": macro_as_of,
     }
-    stale_list  = stale_sources(as_of_map, now=now)
+    stale_list = stale_sources(as_of_map, now=now)
 
-    all_sigs    = market_sigs + narrative_sigs + influencer_sigs + macro_sigs
-    n_signals   = sum(1 for s in all_sigs if (s.get("weight") or 0) > 0)
+    all_sigs = market_sigs + narrative_sigs + influencer_sigs + macro_sigs
+    n_signals = sum(1 for s in all_sigs if (s.get("weight") or 0) > 0)
 
     conf_result = compute_confidence(
-        missing_layers  = composite_result.missing_layers,
-        stale_sources   = stale_list,
-        n_signals       = n_signals,
-        divergence_flag = div_result.flag,
+        missing_layers=composite_result.missing_layers,
+        stale_sources=stale_list,
+        n_signals=n_signals,
+        divergence_flag=div_result.flag,
     )
 
     # ── Drivers + explanation ──────────────────────────────────────────────────
-    drivers     = extract_drivers(all_sigs)
+    drivers = extract_drivers(all_sigs)
     explanation = generate_explanation(drivers)
 
     # ── Narrative surprise (Phase 5b — flag-off by default, research-only) ────
@@ -534,21 +576,23 @@ async def compute_scored_state(
     # writes it to the DB column of the same name (the DB composite_score column
     # retains the raw value — see pg_writer.py).
     state: dict = {
-        "ticker":                    ticker,
-        "timestamp":                 now,
-        "composite_score":           round(smoothed_score, 2),
-        "composite_score_raw":       round(effective_score, 2),
-        "composite_score_smoothed":  round(smoothed_score, 2),
-        "score_exo":                 score_exo,
-        "score_change_1d":           score_change_1d,
-        "score_change_1d_pct":       score_change_1d_pct,
-        "ema_obs_count":             ema_obs_count,
+        "ticker": ticker,
+        "timestamp": now,
+        "composite_score": round(smoothed_score, 2),
+        "composite_score_raw": round(effective_score, 2),
+        "composite_score_smoothed": round(smoothed_score, 2),
+        "score_exo": score_exo,
+        "score_change_1d": score_change_1d,
+        "score_change_1d_pct": score_change_1d_pct,
+        "ema_obs_count": ema_obs_count,
         "sub_indices": {
             k: {
-                "value":     round(v.value, 2),
+                "value": round(v.value, 2),
                 "n_signals": v.n_signals,
-                "sources":   v.sources,
-            } if v is not None else None
+                "sources": v.sources,
+            }
+            if v is not None
+            else None
             for k, v in sub_indices.items()
         },
         "confidence": {
@@ -558,14 +602,14 @@ async def compute_scored_state(
         "top_drivers": [d.to_dict() for d in drivers],
         "explanation": explanation,
         "freshness": {
-            "market_as_of":     market_as_of,
-            "narrative_as_of":  narrative_as_of,
+            "market_as_of": market_as_of,
+            "narrative_as_of": narrative_as_of,
             "influencer_as_of": influencer_as_of,
-            "macro_as_of":      macro_as_of,
+            "macro_as_of": macro_as_of,
         },
         "divergence": div_result.flag,
         "price": {
-            "close":  current_price,
+            "close": current_price,
             "volume": None,  # populated by market fetcher in raw_signals; snapshot uses close only
         },
     }
@@ -600,6 +644,7 @@ async def compute_scored_state(
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 async def score_ticker(
     ticker: str,

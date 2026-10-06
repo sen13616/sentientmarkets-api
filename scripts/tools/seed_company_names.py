@@ -12,6 +12,7 @@ Run after applying migrations/005_add_company_name.sql:
 
 Requires DATABASE_URL in .env (or the environment).
 """
+
 from __future__ import annotations
 
 import asyncio

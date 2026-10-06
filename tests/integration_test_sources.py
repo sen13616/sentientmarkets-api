@@ -11,6 +11,7 @@ Requires:
 Run with:
     pytest -m integration
 """
+
 import pytest  # noqa: F401  (marker used via decorator)
 
 from pipeline.sources.influencer import fetch_influencer_signals

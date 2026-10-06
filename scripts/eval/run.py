@@ -44,8 +44,8 @@ from scripts.eval import analyze, data, intraday, scorecard
 # The 2026-06-23..07-03 ingestion outage is the boundary between the windows.
 # ---------------------------------------------------------------------------
 RESEARCH_START = "2026-04-24"
-RESEARCH_END = "2026-06-23"     # exclusive → research window is through 06-22
-HOLDOUT_START = "2026-07-03"    # holdout runs to the present, open-ended
+RESEARCH_END = "2026-06-23"  # exclusive → research window is through 06-22
+HOLDOUT_START = "2026-07-03"  # holdout runs to the present, open-ended
 
 
 def resolve_window(
@@ -84,28 +84,47 @@ def resolve_window(
 
 def _parse_args(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--window", choices=["research", "holdout", "all"],
-                   default="research",
-                   help="evaluation window (default: research; see HOLDOUT.md)")
-    p.add_argument("--start", help="window start, YYYY-MM-DD (UTC); "
-                                   "defaults to the --window bound")
-    p.add_argument("--end", help="window end (exclusive), YYYY-MM-DD (UTC); "
-                                 "defaults to the --window bound")
+    p.add_argument(
+        "--window",
+        choices=["research", "holdout", "all"],
+        default="research",
+        help="evaluation window (default: research; see HOLDOUT.md)",
+    )
+    p.add_argument("--start", help="window start, YYYY-MM-DD (UTC); defaults to the --window bound")
+    p.add_argument(
+        "--end", help="window end (exclusive), YYYY-MM-DD (UTC); defaults to the --window bound"
+    )
     p.add_argument("--out", default="exports/eval", help="output directory")
     p.add_argument("--baseline", help="baseline scorecard JSON to gate against")
-    p.add_argument("--intraday", action="store_true",
-                   help="also run the intraday lead-lag (heavier query)")
-    p.add_argument("--prices", choices=["snapshots", "yfinance"], default="snapshots",
-                   help="intraday price source (default: price_snapshots)")
-    p.add_argument("--cost-bps", type=float, default=15.0,
-                   help="round-trip transaction cost (bps) charged on quintile "
-                        "L/S leg turnover; 0 disables the overlay (default: 15)")
-    p.add_argument("--include-replay", action="store_true",
-                   help="include rows recomputed offline (replay_run IS NOT NULL); "
-                        "default excludes them — the gate scores served values")
-    p.add_argument("--gap", action="append", default=None, metavar="START:END",
-                   help="data-gap window to excise (repeatable); "
-                        "default: 2026-06-23:2026-07-03")
+    p.add_argument(
+        "--intraday", action="store_true", help="also run the intraday lead-lag (heavier query)"
+    )
+    p.add_argument(
+        "--prices",
+        choices=["snapshots", "yfinance"],
+        default="snapshots",
+        help="intraday price source (default: price_snapshots)",
+    )
+    p.add_argument(
+        "--cost-bps",
+        type=float,
+        default=15.0,
+        help="round-trip transaction cost (bps) charged on quintile "
+        "L/S leg turnover; 0 disables the overlay (default: 15)",
+    )
+    p.add_argument(
+        "--include-replay",
+        action="store_true",
+        help="include rows recomputed offline (replay_run IS NOT NULL); "
+        "default excludes them — the gate scores served values",
+    )
+    p.add_argument(
+        "--gap",
+        action="append",
+        default=None,
+        metavar="START:END",
+        help="data-gap window to excise (repeatable); default: 2026-06-23:2026-07-03",
+    )
     return p.parse_args(argv)
 
 
@@ -139,10 +158,13 @@ async def _run(args) -> int:
             file=sys.stderr,
         )
 
-    print(f"loading sentiment (daily) + closes for {args.start}..{args.end} "
-          f"(window={args.window}) ...")
+    print(
+        f"loading sentiment (daily) + closes for {args.start}..{args.end} "
+        f"(window={args.window}) ..."
+    )
     sent = await data.load_sentiment_panel(
-        start, end, granularity="daily", include_replay=args.include_replay)
+        start, end, granularity="daily", include_replay=args.include_replay
+    )
     closes = await data.load_close_panel(start, end)
     latency = await data.load_article_latency(start, end)
     if sent.empty or closes.empty:
@@ -150,8 +172,10 @@ async def _run(args) -> int:
         return 2
 
     s = analyze.prepare_daily(sent)
-    print(f"sentiment: {s['ticker'].nunique()} tickers, {len(s)} ticker-days; "
-          f"prices: {closes.shape[1]} tickers, {closes.shape[0]} trading days")
+    print(
+        f"sentiment: {s['ticker'].nunique()} tickers, {len(s)} ticker-days; "
+        f"prices: {closes.shape[1]} tickers, {closes.shape[0]} trading days"
+    )
 
     panel = analyze.build_panel(s, closes, gaps=gaps)
     panel.to_csv(out / "panel.csv", index=False)
@@ -168,12 +192,22 @@ async def _run(args) -> int:
     ic.to_csv(out / "ic_table.csv", index=False)
 
     ls_rows = []
-    for feat in (["score_raw", "xs_pct", "exo", "exo_pct",
-                  "dscore_raw_1", "dscore_raw_3", "dexo_1", "dexo_3", "dexo_5",
-                  "narrative", "influencer", "macro"] + rf_cols):
+    for feat in [
+        "score_raw",
+        "xs_pct",
+        "exo",
+        "exo_pct",
+        "dscore_raw_1",
+        "dscore_raw_3",
+        "dexo_1",
+        "dexo_3",
+        "dexo_5",
+        "narrative",
+        "influencer",
+        "macro",
+    ] + rf_cols:
         for h in [1, 2, 3, 5]:
-            r = analyze.quintile_ls(panel, feat, h, neutral=True,
-                                    cost_bps=args.cost_bps)
+            r = analyze.quintile_ls(panel, feat, h, neutral=True, cost_bps=args.cost_bps)
             if r:
                 ls_rows.append(r)
     pd.DataFrame(ls_rows).to_csv(out / "quintile_ls.csv", index=False)
@@ -191,10 +225,17 @@ async def _run(args) -> int:
             leadlag_research[col] = scorecard._leadlag_summary(ll)
 
     card = scorecard.build_scorecard(
-        s, ic, ll_raw, ll_exo,
-        meta={"start": args.start, "end": args.end, "window": args.window,
-              "gaps": [f"{g0.date()}:{g1.date()}" for g0, g1 in gaps],
-              "generated_at": datetime.now(timezone.utc).isoformat()},
+        s,
+        ic,
+        ll_raw,
+        ll_exo,
+        meta={
+            "start": args.start,
+            "end": args.end,
+            "window": args.window,
+            "gaps": [f"{g0.date()}:{g1.date()}" for g0, g1 in gaps],
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        },
         latency=latency,
         ls=ls_rows,
     )
@@ -204,7 +245,8 @@ async def _run(args) -> int:
     if args.intraday:
         print("loading raw sentiment ticks + intraday prices ...")
         raw = await data.load_sentiment_panel(
-            start, end, granularity="raw", include_replay=args.include_replay)
+            start, end, granularity="raw", include_replay=args.include_replay
+        )
         st = intraday.prepare_raw_sentiment(raw)
         if args.prices == "yfinance":
             prices = intraday.fetch_yf_intraday(sorted(st["ticker"].unique()))
@@ -220,13 +262,18 @@ async def _run(args) -> int:
                 ll = intraday.leadlag(long, sig)
                 ll.to_csv(out / f"intraday_leadlag_{sig}.csv", index=False)
                 card["leadlag_intraday"][sig] = scorecard._leadlag_summary(
-                    ll, offset_col="lag_bars")
+                    ll, offset_col="lag_bars"
+                )
             ov = intraday.overnight(st, closes, gaps=gaps)
             ov.to_csv(out / "overnight.csv", index=False)
-            card["overnight"] = {} if ov.empty else {
-                r["signal"]: {"corr_nextday": r["corr_nextday"], "n": r["n"]}
-                for _, r in ov.iterrows()
-            }
+            card["overnight"] = (
+                {}
+                if ov.empty
+                else {
+                    r["signal"]: {"corr_nextday": r["corr_nextday"], "n": r["n"]}
+                    for _, r in ov.iterrows()
+                }
+            )
 
     scorecard.save(card, str(out / "scorecard.json"), str(out / "scorecard.md"))
     print(f"\nscorecard written to {out}/scorecard.{{json,md}}")

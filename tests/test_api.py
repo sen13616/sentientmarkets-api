@@ -7,6 +7,7 @@ All external I/O (DB, Redis) is mocked — no live connections required.
 TestClient runs routes synchronously without triggering the FastAPI lifespan,
 so no DB pool or Redis client is initialised during these tests.
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
@@ -22,39 +23,40 @@ from main import app
 # ---------------------------------------------------------------------------
 
 _MOCK_STATE: dict = {
-    "ticker":          "AAPL",
+    "ticker": "AAPL",
     "composite_score": 72.0,
-    "confidence":      {"score": 81, "flags": []},
-    "timestamp":       "2026-04-23T14:32:00+00:00",
+    "confidence": {"score": 81, "flags": []},
+    "timestamp": "2026-04-23T14:32:00+00:00",
     "sub_indices": {
-        "market":     {"value": 78.0},
-        "narrative":  {"value": 69.0},
+        "market": {"value": 78.0},
+        "narrative": {"value": 69.0},
         "influencer": {"value": 80.0},
-        "macro":      {"value": 61.0},
+        "macro": {"value": 61.0},
     },
-    "divergence":  "aligned",
+    "divergence": "aligned",
     "top_drivers": [
         {
-            "signal":       "Insider transaction",
-            "description":  "Insider purchased 5,000 shares for AAPL",
-            "direction":    "bullish",
-            "magnitude":    0.8,
+            "signal": "Insider transaction",
+            "description": "Insider purchased 5,000 shares for AAPL",
+            "direction": "bullish",
+            "magnitude": 0.8,
             "source_layer": "influencer",
-            "confidence":   0.9,
+            "confidence": 0.9,
         }
     ],
     "explanation": "Sentiment is primarily driven by strong insider conviction.",
     "freshness": {
-        "market_as_of":     "2026-04-23T14:30:00+00:00",
-        "narrative_as_of":  "2026-04-23T14:00:00+00:00",
+        "market_as_of": "2026-04-23T14:30:00+00:00",
+        "narrative_as_of": "2026-04-23T14:00:00+00:00",
         "influencer_as_of": "2026-04-23T08:00:00+00:00",
-        "macro_as_of":      "2026-04-23T02:00:00+00:00",
+        "macro_as_of": "2026-04-23T02:00:00+00:00",
     },
 }
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def plain_client():
@@ -82,13 +84,26 @@ def pro_client():
 # Helper — patches common to every sentiment route call
 # ---------------------------------------------------------------------------
 
+
 def _sentiment_patches(*, supported: bool = True, state: dict | None = _MOCK_STATE):
     """Return a combined context manager for the three most common patches."""
     return (
         patch("api.rate_limit.check_rate_limit", AsyncMock()),
-        patch("api.routes.sentiment.get_ticker_status", AsyncMock(return_value=(
-            {"ticker": "AAPL", "delisted_at": None, "successor_ticker": None, "delisted_reason": None}
-            if supported else None))),
+        patch(
+            "api.routes.sentiment.get_ticker_status",
+            AsyncMock(
+                return_value=(
+                    {
+                        "ticker": "AAPL",
+                        "delisted_at": None,
+                        "successor_ticker": None,
+                        "delisted_reason": None,
+                    }
+                    if supported
+                    else None
+                )
+            ),
+        ),
         patch("api.response.assembler._load_from_redis", AsyncMock(return_value=state)),
     )
 
@@ -97,8 +112,8 @@ def _sentiment_patches(*, supported: bool = True, state: dict | None = _MOCK_STA
 # GET /health
 # ===========================================================================
 
-class TestHealth:
 
+class TestHealth:
     def test_returns_200_and_ok_body(self, plain_client):
         r = plain_client.get("/health")
         assert r.status_code == 200
@@ -109,8 +124,8 @@ class TestHealth:
 # GET /v1/sentiment/{ticker} — authentication
 # ===========================================================================
 
-class TestSentimentAuth:
 
+class TestSentimentAuth:
     def test_no_auth_header_returns_401(self, plain_client):
         # No Authorization header → HTTPBearer returns None → 401
         r = plain_client.get("/v1/sentiment/AAPL")
@@ -130,8 +145,8 @@ class TestSentimentAuth:
 # GET /v1/sentiment/{ticker} — free tier field filtering
 # ===========================================================================
 
-class TestSentimentFreeTier:
 
+class TestSentimentFreeTier:
     def _request(self, client):
         p1, p2, p3 = _sentiment_patches()
         with p1, p2, p3:
@@ -145,15 +160,30 @@ class TestSentimentFreeTier:
 
     def test_required_fields_present(self, free_client):
         data = self._request(free_client).json()
-        for field in ("ticker", "score", "score_raw", "label", "confidence",
-                      "timestamp", "cache_age_seconds"):
+        for field in (
+            "ticker",
+            "score",
+            "score_raw",
+            "label",
+            "confidence",
+            "timestamp",
+            "cache_age_seconds",
+        ):
             assert field in data, f"Missing expected field: {field!r}"
 
     def test_pro_fields_absent(self, free_client):
         data = self._request(free_client).json()
-        for field in ("sub_indices", "top_drivers", "explanation", "freshness",
-                      "score_raw_z", "score_raw_percentile", "sector_percentile",
-                      "score_exo", "score_exo_percentile"):
+        for field in (
+            "sub_indices",
+            "top_drivers",
+            "explanation",
+            "freshness",
+            "score_raw_z",
+            "score_raw_percentile",
+            "sector_percentile",
+            "score_exo",
+            "score_exo_percentile",
+        ):
             assert field not in data, f"Pro-only field leaked to free tier: {field!r}"
 
     def test_score_label_confidence_values(self, free_client):
@@ -167,8 +197,8 @@ class TestSentimentFreeTier:
 # GET /v1/sentiment/{ticker}?detail=full — pro tier
 # ===========================================================================
 
-class TestSentimentProTier:
 
+class TestSentimentProTier:
     def _request(self, client):
         p1, p2, p3 = _sentiment_patches()
         with p1, p2, p3:
@@ -194,8 +224,8 @@ class TestSentimentProTier:
 # GET /v1/sentiment/{ticker} — unknown ticker
 # ===========================================================================
 
-class TestSentimentUnknownTicker:
 
+class TestSentimentUnknownTicker:
     def test_status_field_is_ticker_not_found(self, free_client):
         p1, p2, p3 = _sentiment_patches(supported=False)
         with p1, p2, p3:
@@ -212,12 +242,12 @@ class TestSentimentUnknownTicker:
 # GET /v1/tickers
 # ===========================================================================
 
-class TestTickers:
 
+class TestTickers:
     _MOCK_ROWS = [
-        {"ticker": "AAPL", "company_name": "Apple Inc.",     "sector": "Information Technology"},
+        {"ticker": "AAPL", "company_name": "Apple Inc.", "sector": "Information Technology"},
         {"ticker": "MSFT", "company_name": "Microsoft Corp.", "sector": "Information Technology"},
-        {"ticker": "NVDA", "company_name": "NVIDIA Corp.",   "sector": "Information Technology"},
+        {"ticker": "NVDA", "company_name": "NVIDIA Corp.", "sector": "Information Technology"},
     ]
 
     def test_returns_universe_size_and_tickers_list(self, free_client):
@@ -263,8 +293,8 @@ class TestTickers:
 # GET /v1/status
 # ===========================================================================
 
-class TestStatus:
 
+class TestStatus:
     def test_requires_authentication(self):
         # /v1/status is auth-gated (any tier); anonymous pollers get 401.
         r = TestClient(app).get("/v1/status")
@@ -273,7 +303,10 @@ class TestStatus:
     def test_returns_operational_status(self, free_client):
         with (
             patch("api.rate_limit.check_rate_limit", AsyncMock()),
-            patch("api.routes.status._read_all_ts", AsyncMock(side_effect=lambda keys: {k: None for k in keys})),
+            patch(
+                "api.routes.status._read_all_ts",
+                AsyncMock(side_effect=lambda keys: {k: None for k in keys}),
+            ),
         ):
             r = free_client.get("/v1/status", headers={"Authorization": "Bearer k"})
         assert r.status_code == 200
@@ -285,8 +318,9 @@ class TestStatus:
         # The macro job was split into macro_daily + macro_intraday; last_macro_run
         # must report the most recent of the two (not the retired `macro` key).
         from datetime import datetime
+
         runs = {
-            "pipeline:last_run:macro_daily":    "2026-04-24T02:00:00+00:00",
+            "pipeline:last_run:macro_daily": "2026-04-24T02:00:00+00:00",
             "pipeline:last_run:macro_intraday": "2026-04-24T18:00:00+00:00",
         }
 
@@ -305,7 +339,10 @@ class TestStatus:
     def test_last_macro_run_null_when_no_macro_runs_recorded(self, free_client):
         with (
             patch("api.rate_limit.check_rate_limit", AsyncMock()),
-            patch("api.routes.status._read_all_ts", AsyncMock(side_effect=lambda keys: {k: None for k in keys})),
+            patch(
+                "api.routes.status._read_all_ts",
+                AsyncMock(side_effect=lambda keys: {k: None for k in keys}),
+            ),
         ):
             r = free_client.get("/v1/status", headers={"Authorization": "Bearer k"})
         assert r.json()["last_macro_run"] is None

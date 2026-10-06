@@ -31,6 +31,7 @@ Expected input per signal dict
 Returns None (missing layer) when the signal list is empty or all weights
 are zero.  The orchestration layer redistributes composite weight accordingly.
 """
+
 from __future__ import annotations
 
 import logging
@@ -41,8 +42,8 @@ _log = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class SubIndexResult:
-    value: float          # shrinkage-adjusted sub-index, 0–100
-    n_signals: int        # number of valid contributing signals
+    value: float  # shrinkage-adjusted sub-index, 0–100
+    n_signals: int  # number of valid contributing signals
     sources: list[str] = field(default_factory=list, compare=False)
 
 
@@ -103,19 +104,22 @@ def compute_sub_index(
 # Sprint 2 (G-S3): volume added as 6th component at 0.10; returns reduced
 # from 0.35→0.30 and order_flow from 0.25→0.20 to compensate.
 MARKET_COMPONENT_WEIGHTS: dict[str, float] = {
-    "returns":      0.30,
-    "momentum":     0.15,
-    "order_flow":   0.20,
-    "liquidity":    0.10,
+    "returns": 0.30,
+    "momentum": 0.15,
+    "order_flow": 0.20,
+    "liquidity": 0.10,
     "short_volume": 0.15,
-    "volume":       0.10,
+    "volume": 0.10,
 }
 
 # Signal types that feed each component
 _RETURNS_TYPES = frozenset({"return_1d", "return_5d", "return_20d"})
 _COMPONENT_TYPES = _RETURNS_TYPES | {
-    "rsi_14", "order_flow_imbalance", "bid_ask_spread_bps",
-    "short_volume_ratio_otc", "volume_ratio",
+    "rsi_14",
+    "order_flow_imbalance",
+    "bid_ask_spread_bps",
+    "short_volume_ratio_otc",
+    "volume_ratio",
 }
 
 
@@ -173,7 +177,7 @@ def compute_market_sub_index(signals: list[dict]) -> SubIndexResult | None:
     ret_vals: list[float] = []
     for rt in ("return_1d", "return_5d", "return_20d"):
         if rt in by_type:
-            best = by_type[rt][0]          # most recent (DESC from DB)
+            best = by_type[rt][0]  # most recent (DESC from DB)
             ret_vals.append((best["score"] - 50.0) / 50.0)
     if ret_vals:
         components["returns"] = sum(ret_vals) / len(ret_vals)
@@ -221,7 +225,8 @@ def compute_market_sub_index(signals: list[dict]) -> SubIndexResult | None:
 
     # ── Collect metadata ──────────────────────────────────────────────────
     valid = [
-        s for s in signals
+        s
+        for s in signals
         if (s.get("weight") or 0) > 0 and s.get("signal_type") in _COMPONENT_TYPES
     ]
     sources = sorted({s["source"] for s in valid})
@@ -251,11 +256,11 @@ def compute_market_sub_index(signals: list[dict]) -> SubIndexResult | None:
 #: discontinued in 2022 with LIBOR; the paper text needs to be updated to
 #: reflect the substitution and is queued for the next paper-edit cycle.
 _MACRO_SIGNAL_WEIGHTS: dict[str, float] = {
-    "vix":                   1.0,    # Paper §Macroeconomic Signals — risk gauge
-    "sector_etf_return_20d": 1.5,    # Paper §Macroeconomic Signals — sector trend; only per-ticker macro input
-    "treasury_yield_10y":    1.0,    # Paper §Macroeconomic Signals — long-end rates
-    "treasury_yield_2y":     0.75,   # Paper §Macroeconomic Signals — short-end rates (lower weight: high-correlation with 10y)
-    "ted_spread":            1.0,    # Paper §Macroeconomic Signals — yield-curve / credit-stress proxy (T10Y2Y substitute)
+    "vix": 1.0,  # Paper §Macroeconomic Signals — risk gauge
+    "sector_etf_return_20d": 1.5,  # Paper §Macroeconomic Signals — sector trend; only per-ticker macro input
+    "treasury_yield_10y": 1.0,  # Paper §Macroeconomic Signals — long-end rates
+    "treasury_yield_2y": 0.75,  # Paper §Macroeconomic Signals — short-end rates (lower weight: high-correlation with 10y)
+    "ted_spread": 1.0,  # Paper §Macroeconomic Signals — yield-curve / credit-stress proxy (T10Y2Y substitute)
 }
 
 
@@ -317,7 +322,9 @@ def compute_macro_sub_index(signals: list[dict]) -> SubIndexResult | None:
 
     _log.debug(
         "compute_macro_sub_index: components=%s effective_weights=%s value=%.2f",
-        sorted(grouped), {k: round(v, 3) for k, v in effective.items()}, value,
+        sorted(grouped),
+        {k: round(v, 3) for k, v in effective.items()},
+        value,
     )
 
     sources = sorted({s.get("source", "unknown") for s in grouped.values()})

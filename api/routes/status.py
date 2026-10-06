@@ -12,6 +12,7 @@ Run timestamps are stored in Redis by the scheduler jobs under keys:
 
 If Redis has no record for a job, the key is absent from the response (None).
 """
+
 from __future__ import annotations
 
 import logging
@@ -25,13 +26,13 @@ from pipeline.confidence.staleness import is_market_hours
 from scripts.db.redis import get_redis
 
 router = APIRouter()
-_log   = logging.getLogger(__name__)
+_log = logging.getLogger(__name__)
 
 _JOB_KEYS = {
-    "last_market_run":     "pipeline:last_run:market",
-    "last_narrative_run":  "pipeline:last_run:narrative",
+    "last_market_run": "pipeline:last_run:market",
+    "last_narrative_run": "pipeline:last_run:narrative",
     "last_influencer_run": "pipeline:last_run:influencer",
-    "last_eod_run":          "pipeline:last_run:market_eod",
+    "last_eod_run": "pipeline:last_run:market_eod",
     "last_scoring_tick_run": "pipeline:last_run:scoring_tick",
 }
 
@@ -85,7 +86,7 @@ async def get_status(
     timestamps["last_macro_run"] = max(macro_runs) if macro_runs else None
 
     return StatusResponse(
-        status         = "operational",
-        market_is_open = is_market_hours(datetime.now(timezone.utc)),
+        status="operational",
+        market_is_open=is_market_hours(datetime.now(timezone.utc)),
         **timestamps,
     )

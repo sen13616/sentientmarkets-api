@@ -19,6 +19,7 @@ credentials.  Its own protections are:
 The cap fails OPEN on a Redis outage (matching api/rate_limit.py's
 degradation contract); pruning bounds the damage.
 """
+
 from __future__ import annotations
 
 import logging
@@ -87,6 +88,7 @@ def origin_allowed(origin: str) -> bool:
     if origin in EXACT_ORIGINS:
         return True
     return bool(_WILDCARD_RE and _WILDCARD_RE.fullmatch(origin))
+
 
 DEMO_KEY_IP_CAP = int(os.getenv("DEMO_KEY_IP_CAP", "5"))
 DEMO_KEY_IP_WINDOW = int(os.getenv("DEMO_KEY_IP_WINDOW", "86400"))

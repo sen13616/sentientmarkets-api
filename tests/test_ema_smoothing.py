@@ -11,6 +11,7 @@ Validates:
 - Zero dt behavior (smoothed unchanged)
 - Negative dt clamping (treated as 0)
 """
+
 from __future__ import annotations
 
 import pytest
@@ -21,8 +22,8 @@ from pipeline.scoring.ema import compute_ema
 # Cold-start
 # ---------------------------------------------------------------------------
 
-class TestEMAColdStart:
 
+class TestEMAColdStart:
     def test_cold_start_returns_raw(self):
         """When prev_smoothed is None, return raw_t unchanged."""
         assert compute_ema(65.0, None, dt_hours=0.5) == 65.0
@@ -41,8 +42,8 @@ class TestEMAColdStart:
 # Normal update
 # ---------------------------------------------------------------------------
 
-class TestEMANormalUpdate:
 
+class TestEMANormalUpdate:
     def test_basic_update(self):
         """Verify the α formula produces the correct weighted average."""
         raw = 70.0
@@ -90,8 +91,8 @@ class TestEMANormalUpdate:
 # Half-life property
 # ---------------------------------------------------------------------------
 
-class TestEMAHalfLife:
 
+class TestEMAHalfLife:
     def test_half_life_closes_50_percent(self):
         """After exactly one half-life, the gap between prev and raw closes by 50%."""
         raw = 100.0
@@ -137,8 +138,8 @@ class TestEMAHalfLife:
 # Large dt (gap behavior)
 # ---------------------------------------------------------------------------
 
-class TestEMALargeDt:
 
+class TestEMALargeDt:
     def test_24h_gap_nearly_resets(self):
         """After 24h (6 half-lives), α ≈ 0.984 — smoothed ≈ raw."""
         raw = 70.0
@@ -164,8 +165,8 @@ class TestEMALargeDt:
 # Zero dt
 # ---------------------------------------------------------------------------
 
-class TestEMAZeroDt:
 
+class TestEMAZeroDt:
     def test_zero_dt_returns_prev(self):
         """dt = 0 → α = 0 → smoothed unchanged (returns prev_smoothed)."""
         result = compute_ema(100.0, 50.0, dt_hours=0.0)
@@ -181,8 +182,8 @@ class TestEMAZeroDt:
 # Negative dt clamping
 # ---------------------------------------------------------------------------
 
-class TestEMANegativeDt:
 
+class TestEMANegativeDt:
     def test_negative_dt_clamped_to_zero(self):
         """Negative dt is treated as dt = 0 → smoothed unchanged."""
         result = compute_ema(100.0, 50.0, dt_hours=-1.0)
@@ -201,12 +202,14 @@ class TestHalfLifeEnvOverride:
 
     def test_default_is_four_hours(self):
         import pipeline.scoring.ema as ema
+
         assert ema._HALF_LIFE_HOURS == 4.0
 
     def test_env_override_binds_at_import(self, monkeypatch):
         import importlib
 
         import pipeline.scoring.ema as ema
+
         monkeypatch.setenv("EMA_HALF_LIFE_HOURS", "2.0")
         try:
             importlib.reload(ema)

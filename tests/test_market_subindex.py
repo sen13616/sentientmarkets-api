@@ -15,6 +15,7 @@ volume are absent. The missing weight (0.15 + 0.10 = 0.25) is redistributed
 across the 4 present components (sum = 0.75), so effective weights differ
 from the nominal values.
 """
+
 from __future__ import annotations
 
 from pipeline.scoring.subindices import (
@@ -25,6 +26,7 @@ from pipeline.scoring.subindices import (
 # ---------------------------------------------------------------------------
 # Helpers — build synthetic signal dicts
 # ---------------------------------------------------------------------------
+
 
 def _sig(signal_type: str, score: float, value: float = 0.0, weight: float = 0.9) -> dict:
     """Build a minimal signal dict for testing."""
@@ -47,12 +49,12 @@ def _full_signals(
 ) -> list[dict]:
     """Build signals for the 4 original components (short_volume + volume absent)."""
     return [
-        _sig("return_1d",  return_score),
-        _sig("return_5d",  return_score),
+        _sig("return_1d", return_score),
+        _sig("return_5d", return_score),
         _sig("return_20d", return_score),
-        _sig("rsi_14",     0.0, value=rsi_raw),   # score unused; raw value matters
+        _sig("rsi_14", 0.0, value=rsi_raw),  # score unused; raw value matters
         _sig("order_flow_imbalance", ofi_score),
-        _sig("bid_ask_spread_bps",   spread_score),
+        _sig("bid_ask_spread_bps", spread_score),
     ]
 
 
@@ -61,14 +63,14 @@ def _full_signals(
 #     (short_volume + volume missing → weight redistributed across 4 present)
 # ---------------------------------------------------------------------------
 
-class TestAllPositive:
 
+class TestAllPositive:
     def test_strongly_bullish(self):
         sigs = _full_signals(
-            return_score=100.0,     # → +1.0
-            rsi_raw=70.0,           # → +1.0
-            ofi_score=100.0,        # → +1.0
-            spread_score=100.0,     # → +1.0 (very tight spread)
+            return_score=100.0,  # → +1.0
+            rsi_raw=70.0,  # → +1.0
+            ofi_score=100.0,  # → +1.0
+            spread_score=100.0,  # → +1.0 (very tight spread)
         )
         si = compute_market_sub_index(sigs)
         assert si is not None
@@ -77,10 +79,10 @@ class TestAllPositive:
 
     def test_moderately_bullish(self):
         sigs = _full_signals(
-            return_score=75.0,      # → +0.5
-            rsi_raw=60.0,           # → +0.5
-            ofi_score=75.0,         # → +0.5
-            spread_score=75.0,      # → +0.5
+            return_score=75.0,  # → +0.5
+            rsi_raw=60.0,  # → +0.5
+            ofi_score=75.0,  # → +0.5
+            spread_score=75.0,  # → +0.5
         )
         si = compute_market_sub_index(sigs)
         assert si is not None
@@ -92,14 +94,14 @@ class TestAllPositive:
 # (b) All 4 negative → sub-index near 0
 # ---------------------------------------------------------------------------
 
-class TestAllNegative:
 
+class TestAllNegative:
     def test_strongly_bearish(self):
         sigs = _full_signals(
-            return_score=0.0,       # → -1.0
-            rsi_raw=30.0,           # → -1.0
-            ofi_score=0.0,          # → -1.0
-            spread_score=0.0,       # → -1.0 (very wide spread)
+            return_score=0.0,  # → -1.0
+            rsi_raw=30.0,  # → -1.0
+            ofi_score=0.0,  # → -1.0
+            spread_score=0.0,  # → -1.0 (very wide spread)
         )
         si = compute_market_sub_index(sigs)
         assert si is not None
@@ -107,10 +109,10 @@ class TestAllNegative:
 
     def test_moderately_bearish(self):
         sigs = _full_signals(
-            return_score=25.0,      # → -0.5
-            rsi_raw=40.0,           # → -0.5
-            ofi_score=25.0,         # → -0.5
-            spread_score=25.0,      # → -0.5
+            return_score=25.0,  # → -0.5
+            rsi_raw=40.0,  # → -0.5
+            ofi_score=25.0,  # → -0.5
+            spread_score=25.0,  # → -0.5
         )
         si = compute_market_sub_index(sigs)
         assert si is not None
@@ -121,8 +123,8 @@ class TestAllNegative:
 # (c) Order flow and returns disagree → partial cancellation
 # ---------------------------------------------------------------------------
 
-class TestDisagreement:
 
+class TestDisagreement:
     def test_returns_bullish_order_flow_bearish(self):
         """Returns strongly bullish (+1) but order flow strongly bearish (-1).
 
@@ -134,10 +136,10 @@ class TestDisagreement:
         Value = 50 + 50*0.1333 ≈ 56.67
         """
         sigs = _full_signals(
-            return_score=100.0,     # → +1.0
-            rsi_raw=50.0,           # → 0.0 (neutral)
-            ofi_score=0.0,          # → -1.0
-            spread_score=50.0,      # → 0.0 (neutral)
+            return_score=100.0,  # → +1.0
+            rsi_raw=50.0,  # → 0.0 (neutral)
+            ofi_score=0.0,  # → -1.0
+            spread_score=50.0,  # → 0.0 (neutral)
         )
         si = compute_market_sub_index(sigs)
         assert si is not None
@@ -150,10 +152,10 @@ class TestDisagreement:
         Value = 50 + 50*(-0.1333) ≈ 43.33
         """
         sigs = _full_signals(
-            return_score=0.0,       # → -1.0
-            rsi_raw=50.0,           # → 0.0
-            ofi_score=100.0,        # → +1.0
-            spread_score=50.0,      # → 0.0
+            return_score=0.0,  # → -1.0
+            rsi_raw=50.0,  # → 0.0
+            ofi_score=100.0,  # → +1.0
+            spread_score=50.0,  # → 0.0
         )
         si = compute_market_sub_index(sigs)
         assert si is not None
@@ -164,8 +166,8 @@ class TestDisagreement:
 # (d) One component missing → weight redistributed
 # ---------------------------------------------------------------------------
 
-class TestMissingOneComponent:
 
+class TestMissingOneComponent:
     def test_liquidity_missing_weight_redistributed(self):
         """Liquidity missing (no bid_ask_spread_bps signal).
 
@@ -177,8 +179,8 @@ class TestMissingOneComponent:
         value = 50 + 50*1.0 = 100
         """
         sigs = [
-            _sig("return_1d",  100.0),
-            _sig("return_5d",  100.0),
+            _sig("return_1d", 100.0),
+            _sig("return_5d", 100.0),
             _sig("return_20d", 100.0),
             _sig("rsi_14", 0.0, value=70.0),
             _sig("order_flow_imbalance", 100.0),
@@ -199,12 +201,12 @@ class TestMissingOneComponent:
         value = 50 + 50*0.8333 ≈ 91.67
         """
         sigs = [
-            _sig("return_1d",  100.0),
-            _sig("return_5d",  100.0),
+            _sig("return_1d", 100.0),
+            _sig("return_5d", 100.0),
             _sig("return_20d", 100.0),
             # No rsi_14
             _sig("order_flow_imbalance", 100.0),
-            _sig("bid_ask_spread_bps",    50.0),
+            _sig("bid_ask_spread_bps", 50.0),
         ]
         si = compute_market_sub_index(sigs)
         assert si is not None
@@ -222,9 +224,9 @@ class TestMissingOneComponent:
         """
         sigs = [
             # No return_* signals
-            _sig("rsi_14", 0.0, value=60.0),              # → +0.5
-            _sig("order_flow_imbalance", 75.0),            # → +0.5
-            _sig("bid_ask_spread_bps",   75.0),            # → +0.5
+            _sig("rsi_14", 0.0, value=60.0),  # → +0.5
+            _sig("order_flow_imbalance", 75.0),  # → +0.5
+            _sig("bid_ask_spread_bps", 75.0),  # → +0.5
         ]
         si = compute_market_sub_index(sigs)
         assert si is not None
@@ -237,8 +239,8 @@ class TestMissingOneComponent:
         base_si = compute_market_sub_index(base)
 
         with_extras = base + [
-            _sig("buy_pressure",   95.0),
-            _sig("sell_pressure",   5.0),
+            _sig("buy_pressure", 95.0),
+            _sig("sell_pressure", 5.0),
         ]
         extras_si = compute_market_sub_index(with_extras)
 
@@ -251,8 +253,8 @@ class TestMissingOneComponent:
 # (e) 5 of 6 components missing → sub-index returns None
 # ---------------------------------------------------------------------------
 
-class TestFiveMissing:
 
+class TestFiveMissing:
     def test_only_returns_present(self):
         sigs = [_sig("return_1d", 80.0)]
         assert compute_market_sub_index(sigs) is None
@@ -291,6 +293,7 @@ class TestFiveMissing:
 # RSI momentum sign convention
 # ---------------------------------------------------------------------------
 
+
 class TestRSIMomentumConvention:
     """RSI is treated as a MOMENTUM indicator in the sub-index: high RSI = bullish."""
 
@@ -303,10 +306,10 @@ class TestRSIMomentumConvention:
         value = 50 + 50*0.20 = 60.0
         """
         sigs = [
-            _sig("return_1d", 50.0),             # neutral
-            _sig("rsi_14", 0.0, value=70.0),     # → +1.0
-            _sig("order_flow_imbalance", 50.0),   # neutral
-            _sig("bid_ask_spread_bps",   50.0),   # neutral
+            _sig("return_1d", 50.0),  # neutral
+            _sig("rsi_14", 0.0, value=70.0),  # → +1.0
+            _sig("order_flow_imbalance", 50.0),  # neutral
+            _sig("bid_ask_spread_bps", 50.0),  # neutral
         ]
         si = compute_market_sub_index(sigs)
         assert si is not None
@@ -322,9 +325,9 @@ class TestRSIMomentumConvention:
         """
         sigs = [
             _sig("return_1d", 50.0),
-            _sig("rsi_14", 0.0, value=30.0),     # → -1.0
+            _sig("rsi_14", 0.0, value=30.0),  # → -1.0
             _sig("order_flow_imbalance", 50.0),
-            _sig("bid_ask_spread_bps",   50.0),
+            _sig("bid_ask_spread_bps", 50.0),
         ]
         si = compute_market_sub_index(sigs)
         assert si is not None
@@ -342,8 +345,8 @@ class TestRSIMomentumConvention:
 # Metadata
 # ---------------------------------------------------------------------------
 
-class TestMetadata:
 
+class TestMetadata:
     def test_n_signals_counts_only_component_signals(self):
         sigs = _full_signals() + [_sig("buy_pressure", 60.0)]
         si = compute_market_sub_index(sigs)
@@ -367,12 +370,12 @@ class TestMetadata:
         # return_1d = +1.0, return_5d = -1.0, return_20d = 0.0
         # mean = 0.0 → neutral
         sigs = [
-            _sig("return_1d",  100.0),  # → +1.0
-            _sig("return_5d",    0.0),  # → -1.0
-            _sig("return_20d",  50.0),  # →  0.0
+            _sig("return_1d", 100.0),  # → +1.0
+            _sig("return_5d", 0.0),  # → -1.0
+            _sig("return_20d", 50.0),  # →  0.0
             _sig("rsi_14", 0.0, value=50.0),
             _sig("order_flow_imbalance", 50.0),
-            _sig("bid_ask_spread_bps",   50.0),
+            _sig("bid_ask_spread_bps", 50.0),
         ]
         si = compute_market_sub_index(sigs)
         assert si is not None
@@ -384,6 +387,7 @@ class TestMetadata:
 # 6-component aggregation (all 6 including short_volume + volume)
 # ---------------------------------------------------------------------------
 
+
 def _full_6_signals(
     return_score: float = 50.0,
     rsi_raw: float = 50.0,
@@ -394,12 +398,12 @@ def _full_6_signals(
 ) -> list[dict]:
     """Build signals for all 6 components."""
     return [
-        _sig("return_1d",  return_score),
-        _sig("return_5d",  return_score),
+        _sig("return_1d", return_score),
+        _sig("return_5d", return_score),
         _sig("return_20d", return_score),
-        _sig("rsi_14",     0.0, value=rsi_raw),
+        _sig("rsi_14", 0.0, value=rsi_raw),
         _sig("order_flow_imbalance", ofi_score),
-        _sig("bid_ask_spread_bps",   spread_score),
+        _sig("bid_ask_spread_bps", spread_score),
         _sig("short_volume_ratio_otc", sv_score),
         _sig("volume_ratio", vol_score),
     ]
@@ -411,34 +415,34 @@ class TestSixComponentAggregation:
     def test_all_six_strongly_bullish(self):
         """All 6 components at +1.0 → value = 100."""
         sigs = _full_6_signals(
-            return_score=100.0,    # → +1.0
-            rsi_raw=70.0,          # → +1.0
-            ofi_score=100.0,       # → +1.0
-            spread_score=100.0,    # → +1.0
-            sv_score=100.0,        # → +1.0
-            vol_score=80.0,        # → +0.6 (volume_ratio scorer caps at 80)
+            return_score=100.0,  # → +1.0
+            rsi_raw=70.0,  # → +1.0
+            ofi_score=100.0,  # → +1.0
+            spread_score=100.0,  # → +1.0
+            sv_score=100.0,  # → +1.0
+            vol_score=80.0,  # → +0.6 (volume_ratio scorer caps at 80)
         )
         si = compute_market_sub_index(sigs)
         assert si is not None
         # volume component = (80-50)/50 = +0.6, all others +1.0
         # combined = 0.30*1 + 0.15*1 + 0.20*1 + 0.10*1 + 0.15*1 + 0.10*0.6 = 0.96
-        assert abs(si.value - (50 + 50*0.96)) < 0.01
+        assert abs(si.value - (50 + 50 * 0.96)) < 0.01
 
     def test_all_six_strongly_bearish(self):
         """All 6 components at -1.0 → value = 0."""
         sigs = _full_6_signals(
-            return_score=0.0,      # → -1.0
-            rsi_raw=30.0,          # → -1.0
-            ofi_score=0.0,         # → -1.0
-            spread_score=0.0,      # → -1.0
-            sv_score=0.0,          # → -1.0
-            vol_score=20.0,        # → -0.6 (volume_ratio scorer floors at 20)
+            return_score=0.0,  # → -1.0
+            rsi_raw=30.0,  # → -1.0
+            ofi_score=0.0,  # → -1.0
+            spread_score=0.0,  # → -1.0
+            sv_score=0.0,  # → -1.0
+            vol_score=20.0,  # → -0.6 (volume_ratio scorer floors at 20)
         )
         si = compute_market_sub_index(sigs)
         assert si is not None
         # volume component = (20-50)/50 = -0.6
         # combined = 0.30*(-1) + ... + 0.10*(-0.6) = -0.96
-        assert abs(si.value - (50 + 50*(-0.96))) < 0.01
+        assert abs(si.value - (50 + 50 * (-0.96))) < 0.01
 
     def test_all_six_neutral(self):
         """All 6 at neutral → value = 50."""
@@ -455,12 +459,12 @@ class TestSixComponentAggregation:
         value = 50 + 50*(-0.15) = 42.5
         """
         sigs = _full_6_signals(
-            return_score=50.0,     # neutral
-            rsi_raw=50.0,          # neutral
-            ofi_score=50.0,        # neutral
-            spread_score=50.0,     # neutral
-            sv_score=0.0,          # → -1.0 (bearish spike)
-            vol_score=50.0,        # neutral
+            return_score=50.0,  # neutral
+            rsi_raw=50.0,  # neutral
+            ofi_score=50.0,  # neutral
+            spread_score=50.0,  # neutral
+            sv_score=0.0,  # → -1.0 (bearish spike)
+            vol_score=50.0,  # neutral
         )
         si = compute_market_sub_index(sigs)
         assert si is not None
@@ -477,7 +481,7 @@ class TestSixComponentAggregation:
             rsi_raw=50.0,
             ofi_score=50.0,
             spread_score=50.0,
-            sv_score=100.0,        # → +1.0 (low short volume = bullish)
+            sv_score=100.0,  # → +1.0 (low short volume = bullish)
             vol_score=50.0,
         )
         si = compute_market_sub_index(sigs)
@@ -496,7 +500,7 @@ class TestSixComponentAggregation:
             ofi_score=50.0,
             spread_score=50.0,
             sv_score=50.0,
-            vol_score=80.0,        # → +0.6 (elevated volume = mild bullish)
+            vol_score=80.0,  # → +0.6 (elevated volume = mild bullish)
         )
         si = compute_market_sub_index(sigs)
         assert si is not None
@@ -514,7 +518,7 @@ class TestSixComponentAggregation:
             ofi_score=50.0,
             spread_score=50.0,
             sv_score=50.0,
-            vol_score=20.0,        # → -0.6 (low volume = mild bearish)
+            vol_score=20.0,  # → -0.6 (low volume = mild bearish)
         )
         si = compute_market_sub_index(sigs)
         assert si is not None
@@ -531,9 +535,9 @@ class TestSixComponentAggregation:
         value = 50 + 50*0.5 = 75.0
         """
         sigs = [
-            _sig("return_1d",  75.0),   # → +0.5
-            _sig("return_5d",  75.0),   # → +0.5
-            _sig("return_20d", 75.0),   # → +0.5
+            _sig("return_1d", 75.0),  # → +0.5
+            _sig("return_5d", 75.0),  # → +0.5
+            _sig("return_20d", 75.0),  # → +0.5
             _sig("short_volume_ratio_otc", 75.0),  # → +0.5
         ]
         si = compute_market_sub_index(sigs)

@@ -6,6 +6,7 @@ Ad-hoc API/pipeline health diagnostic. Probes the live /health endpoint and
 runs the tools/db_health.py queries against the configured DATABASE_URL, then
 prints a human-readable report. Read-only.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -42,8 +43,8 @@ def _age(ts) -> str:
     if mins < 60:
         return f"{mins:.0f}m ago"
     if mins < 60 * 24:
-        return f"{mins/60:.1f}h ago"
-    return f"{mins/1440:.1f}d ago"
+        return f"{mins / 60:.1f}h ago"
+    return f"{mins / 1440:.1f}d ago"
 
 
 async def main() -> None:
@@ -81,7 +82,9 @@ async def main() -> None:
         if not fresh:
             print("  (no raw_signals in last 24h)")
         for r in fresh:
-            print(f"  {r['source']:<16} {r['n_signals_24h']:>7,} signals   latest {_age(r['latest'])}")
+            print(
+                f"  {r['source']:<16} {r['n_signals_24h']:>7,} signals   latest {_age(r['latest'])}"
+            )
 
         arts = await H.query_article_volume_24h(conn)
         print("\n» ARTICLE VOLUME BY SOURCE (24h)")
@@ -96,7 +99,7 @@ async def main() -> None:
         if tot:
             for layer in ("market", "narrative", "influencer", "macro"):
                 n = miss.get(f"{layer}_null", 0) or 0
-                print(f"  {layer:<12} null in {n:>6,}/{tot:,}  ({n/tot*100:.1f}%)")
+                print(f"  {layer:<12} null in {n:>6,}/{tot:,}  ({n / tot * 100:.1f}%)")
         else:
             print("  (no scored rows)")
 
@@ -116,7 +119,9 @@ async def main() -> None:
         print("\n» STALE / UNSCORED TICKERS (>24h, cap 50)")
         print(f"  count (capped): {len(stale)}")
         for r in stale[:15]:
-            print(f"  {r['ticker']:<8} {str(r['company_name'] or '')[:28]:<28} last {_age(r['last_scored'])}")
+            print(
+                f"  {r['ticker']:<8} {str(r['company_name'] or '')[:28]:<28} last {_age(r['last_scored'])}"
+            )
         if len(stale) > 15:
             print(f"  ... and {len(stale) - 15} more")
 

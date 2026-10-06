@@ -3,6 +3,7 @@ db/queries/universe.py
 
 All ticker_universe table operations.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -95,10 +96,10 @@ async def get_all_tickers(include_delisted: bool = False) -> list[dict]:
         )
     return [
         {
-            "ticker":       r["ticker"],
+            "ticker": r["ticker"],
             "company_name": r["company_name"],
-            "sector":       r["sector"],
-            "in_sp500":     r["in_sp500"],
+            "sector": r["sector"],
+            "in_sp500": r["in_sp500"],
         }
         for r in rows
     ]
@@ -145,6 +146,8 @@ async def get_universe_as_of(as_of: datetime) -> list[str]:
     """
     tickers = await get_active_tickers(as_of)
     if not tickers:
-        raise ValueError(f"no tickers in the universe as of {as_of.isoformat()} "
-                         "(before the 2026-04-24 seed?) — pass --universe-as-of")
+        raise ValueError(
+            f"no tickers in the universe as of {as_of.isoformat()} "
+            "(before the 2026-04-24 seed?) — pass --universe-as-of"
+        )
     return tickers

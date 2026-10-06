@@ -30,6 +30,7 @@ Union-Find over the article set.
 
 The sentence-transformers model is loaded lazily on first call (≈80 MB).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -52,6 +53,7 @@ def _get_model():
     global _model
     if _model is None:
         from sentence_transformers import SentenceTransformer  # noqa: PLC0415
+
         _log.info("Loading sentence-transformer model '%s' …", _MODEL_NAME)
         _model = SentenceTransformer(_MODEL_NAME)
     return _model
@@ -61,9 +63,10 @@ def _get_model():
 # Union-Find (path-compressed)
 # ---------------------------------------------------------------------------
 
+
 def _find(parent: list[int], x: int) -> int:
     while parent[x] != x:
-        parent[x] = parent[parent[x]]   # path halving
+        parent[x] = parent[parent[x]]  # path halving
         x = parent[x]
     return x
 
@@ -77,6 +80,7 @@ def _union(parent: list[int], x: int, y: int) -> None:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def cluster_members(
     articles: list[dict],
@@ -149,7 +153,7 @@ async def cluster_articles(
     embeddings = await asyncio.to_thread(
         lambda: _get_model().encode(
             titles,
-            normalize_embeddings=True,   # unit-vectors → cosine = dot product
+            normalize_embeddings=True,  # unit-vectors → cosine = dot product
             show_progress_bar=False,
             batch_size=64,
         )
@@ -168,11 +172,15 @@ async def cluster_articles(
         await set_cluster_ids(art_ids, cluster_id)
         _log.debug(
             "cluster_articles(%s): cluster %s → %d articles",
-            ticker, cluster_id[:8], len(members),
+            ticker,
+            cluster_id[:8],
+            len(members),
         )
 
     _log.info(
         "cluster_articles(%s): %d cluster(s) from %d articles",
-        ticker, len(multi_clusters), n,
+        ticker,
+        len(multi_clusters),
+        n,
     )
     return len(multi_clusters)

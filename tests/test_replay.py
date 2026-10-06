@@ -5,6 +5,7 @@ with the PRODUCTION pure functions (including production rounding, i.e. what
 the orchestrator writes) must be reproduced EXACTLY by replaying the
 production config. Plus config-surface behavior and point-in-time discipline.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -34,26 +35,24 @@ def _simulate_production(ticks: list[dict]) -> pd.DataFrame:
         present = {k: v for k, v in subs.items() if v is not None}
         _, effective = compute_divergence(present, comp.score)
         tk, ts = t["ticker"], t["ts"]
-        dt_h = (
-            (ts - prev_ts[tk]).total_seconds() / 3600.0 if tk in prev_ts else 0.0
-        )
-        smoothed = round(
-            compute_ema(effective, prev_smoothed.get(tk), dt_h), 2
-        )
+        dt_h = (ts - prev_ts[tk]).total_seconds() / 3600.0 if tk in prev_ts else 0.0
+        smoothed = round(compute_ema(effective, prev_smoothed.get(tk), dt_h), 2)
         prev_smoothed[tk] = smoothed  # production reads back the rounded value
         prev_ts[tk] = ts
         exo = compute_exo_composite(subs)
-        rows.append({
-            "ticker": tk,
-            "timestamp": ts,
-            "composite_score": round(effective, 2),
-            "composite_score_smoothed": smoothed,
-            "composite_score_exo": round(exo.score, 2) if exo else None,
-            "market_index": subs["market"],
-            "narrative_index": subs["narrative"],
-            "influencer_index": subs["influencer"],
-            "macro_index": subs["macro"],
-        })
+        rows.append(
+            {
+                "ticker": tk,
+                "timestamp": ts,
+                "composite_score": round(effective, 2),
+                "composite_score_smoothed": smoothed,
+                "composite_score_exo": round(exo.score, 2) if exo else None,
+                "market_index": subs["market"],
+                "narrative_index": subs["narrative"],
+                "influencer_index": subs["influencer"],
+                "macro_index": subs["macro"],
+            }
+        )
     return pd.DataFrame(rows)
 
 
@@ -66,16 +65,20 @@ def _ticks(n=40, tickers=("AAPL", "MSFT")):
                 # cap-biting tick: composite ≈ 85 > 75, one layer < 30
                 mkt, narr, infl, mac = 92.0, 95.0, 90.0, 25.0
             else:
-                mkt = 50.0 + 10 * ((i + j) % 5) - 20            # 30..70
+                mkt = 50.0 + 10 * ((i + j) % 5) - 20  # 30..70
                 narr = 55.0
-                infl = None if i % 3 == 0 else 60.0             # missing-layer path
+                infl = None if i % 3 == 0 else 60.0  # missing-layer path
                 mac = 45.0
-            out.append({
-                "ticker": tk,
-                "ts": base + timedelta(minutes=30 * i),
-                "market": mkt, "narrative": narr,
-                "influencer": infl, "macro": mac,
-            })
+            out.append(
+                {
+                    "ticker": tk,
+                    "ts": base + timedelta(minutes=30 * i),
+                    "market": mkt,
+                    "narrative": narr,
+                    "influencer": infl,
+                    "macro": mac,
+                }
+            )
     return out
 
 
@@ -89,9 +92,12 @@ class TestIdentitySynthetic:
 
     def test_exo_config_reproduces_stored_exo(self):
         stored = _simulate_production(_ticks())
-        cfg = {"name": "exo", "layers": {"narrative": 0.30, "influencer": 0.25,
-                                         "macro": 0.10},
-               "ema_half_life_hours": None, "divergence_cap": False}
+        cfg = {
+            "name": "exo",
+            "layers": {"narrative": 0.30, "influencer": 0.25, "macro": 0.10},
+            "ema_half_life_hours": None,
+            "divergence_cap": False,
+        }
         replayed = replay_ticks(stored, cfg)
         m = stored.merge(replayed, on=["ticker", "timestamp"])
         m = m[m["composite_score_exo"].notna()]
@@ -123,12 +129,18 @@ class TestConfigSurface:
         assert (off["replay_raw"] > on["replay_raw"]).any()  # the cap actually bit
 
     def test_all_layers_missing_gives_neutral_50(self):
-        stored = pd.DataFrame([{
-            "ticker": "AAPL",
-            "timestamp": datetime(2026, 5, 1, tzinfo=timezone.utc),
-            "market_index": None, "narrative_index": None,
-            "influencer_index": None, "macro_index": None,
-        }])
+        stored = pd.DataFrame(
+            [
+                {
+                    "ticker": "AAPL",
+                    "timestamp": datetime(2026, 5, 1, tzinfo=timezone.utc),
+                    "market_index": None,
+                    "narrative_index": None,
+                    "influencer_index": None,
+                    "macro_index": None,
+                }
+            ]
+        )
         r = replay_ticks(stored, PRODUCTION_CONFIG)
         assert r["replay_raw"].iloc[0] == 50.0
 

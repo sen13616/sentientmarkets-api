@@ -15,6 +15,7 @@ Usage
 All output goes to tools/exports/.
 Progress and file paths are printed to stdout.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -41,6 +42,7 @@ console = Console()
 # Command handlers
 # ---------------------------------------------------------------------------
 
+
 async def cmd_full() -> None:
     console.print("[bold yellow]Full database export[/bold yellow] — fetching all tables…\n")
 
@@ -59,8 +61,7 @@ async def cmd_sentiment() -> None:
     console.print("[bold yellow]Exporting sentiment history…[/bold yellow]")
     path, n = await export_sentiment_history()
     console.print(
-        f"[bold green]Done.[/bold green]  "
-        f"[yellow]{n:,}[/yellow] rows → [cyan]{path}[/cyan]"
+        f"[bold green]Done.[/bold green]  [yellow]{n:,}[/yellow] rows → [cyan]{path}[/cyan]"
     )
 
 
@@ -78,8 +79,7 @@ async def cmd_articles() -> None:
     console.print("[bold yellow]Exporting articles…[/bold yellow]")
     path, n = await export_articles()
     console.print(
-        f"[bold green]Done.[/bold green]  "
-        f"[yellow]{n:,}[/yellow] rows → [cyan]{path}[/cyan]"
+        f"[bold green]Done.[/bold green]  [yellow]{n:,}[/yellow] rows → [cyan]{path}[/cyan]"
     )
 
 
@@ -99,11 +99,11 @@ async def cmd_scores() -> None:
 # ---------------------------------------------------------------------------
 
 _COMMANDS: dict[str, tuple[str, object]] = {
-    "full":      ("Full database export (all tables)", cmd_full),
+    "full": ("Full database export (all tables)", cmd_full),
     "sentiment": ("Sentiment history + computed columns", cmd_sentiment),
-    "signals":   ("Raw signals — last 30 days + summary", cmd_signals),
-    "articles":  ("All articles", cmd_articles),
-    "scores":    ("Top / bottom 50 scores today", cmd_scores),
+    "signals": ("Raw signals — last 30 days + summary", cmd_signals),
+    "articles": ("All articles", cmd_articles),
+    "scores": ("Top / bottom 50 scores today", cmd_scores),
 }
 
 
@@ -114,8 +114,7 @@ def _usage() -> None:
     for cmd, (desc, _) in _COMMANDS.items():
         console.print(f"  [cyan]{cmd:<12}[/cyan] {desc}")
     console.print(
-        "\n  (no command)   Full database export\n"
-        f"\nOutput directory: [cyan]{EXPORTS_DIR}[/cyan]\n"
+        f"\n  (no command)   Full database export\n\nOutput directory: [cyan]{EXPORTS_DIR}[/cyan]\n"
     )
 
 

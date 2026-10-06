@@ -20,6 +20,7 @@ scoring tick and narrative job have both completed recently, 503 otherwise
 Railway gates deploys on /health — right after a restart the pipeline is
 legitimately stale, and failing there would block the deploy that fixes it.
 """
+
 from __future__ import annotations
 
 import logging
@@ -50,7 +51,7 @@ async def health(request: Request) -> dict:
     if not auth_header.startswith("Bearer "):
         return {"status": "ok"}
 
-    token = auth_header[len("Bearer "):].strip()
+    token = auth_header[len("Bearer ") :].strip()
     if not token:
         return {"status": "ok"}
 

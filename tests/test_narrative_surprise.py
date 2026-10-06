@@ -37,6 +37,7 @@ def _patch_queries(current_rows, baseline_rows):
     async def fake(ticker, since, until):
         # the current window ends at now; the baseline window ends before it
         return current_rows if until == _NOW else baseline_rows
+
     return patch(
         "pipeline.features.surprise.get_article_scores_between",
         AsyncMock(side_effect=fake),
@@ -88,18 +89,25 @@ class TestComputeNarrativeSurprise:
             assert await surprise.compute_narrative_surprise("AAPL", _NOW) is None
 
     async def test_positive_surprise_above_50(self):
-        baseline = _baseline([0.0, 0.1, -0.1, 0.05, -0.05, 0.0, 0.1,
-                              -0.1, 0.05, -0.05, 0.0, 0.1, -0.1, 0.0])
+        baseline = _baseline(
+            [0.0, 0.1, -0.1, 0.05, -0.05, 0.0, 0.1, -0.1, 0.05, -0.05, 0.0, 0.1, -0.1, 0.0]
+        )
         with _patch_queries([_row(0.2, 0.9)], baseline):
             score = await surprise.compute_narrative_surprise("AAPL", _NOW)
         assert score is not None and score > 50.0
 
     async def test_inline_coverage_near_50(self):
-        baseline = _baseline([0.0, 0.1, -0.1, 0.05, -0.05, 0.0, 0.1,
-                              -0.1, 0.05, -0.05, 0.0, 0.1, -0.1, 0.0])
+        baseline = _baseline(
+            [0.0, 0.1, -0.1, 0.05, -0.05, 0.0, 0.1, -0.1, 0.05, -0.05, 0.0, 0.1, -0.1, 0.0]
+        )
         # current coverage tone == baseline mean (0.0) → z ≈ 0 → ≈ 50
-        current = [{"published_at": _NOW - timedelta(hours=1),
-                    "finbert_score": 0.0, "relevance_score": 0.8}]
+        current = [
+            {
+                "published_at": _NOW - timedelta(hours=1),
+                "finbert_score": 0.0,
+                "relevance_score": 0.8,
+            }
+        ]
         with _patch_queries(current, baseline):
             score = await surprise.compute_narrative_surprise("AAPL", _NOW)
         assert score == pytest.approx(50.0, abs=1.0)
@@ -112,8 +120,9 @@ class TestComputeNarrativeSurprise:
             calls.append((since, until))
             return []
 
-        with patch("pipeline.features.surprise.get_article_scores_between",
-                   AsyncMock(side_effect=spy)):
+        with patch(
+            "pipeline.features.surprise.get_article_scores_between", AsyncMock(side_effect=spy)
+        ):
             await surprise.compute_narrative_surprise("AAPL", _NOW)
 
         (cur_since, cur_until) = calls[0]
@@ -135,4 +144,5 @@ class TestHeadlineUnaffected:
     def test_surprise_never_in_composite_inputs(self):
         """The composite only ever sees the four layer sub-indices."""
         from pipeline.scoring.composite import LAYER_WEIGHTS
+
         assert "narrative_surprise" not in LAYER_WEIGHTS

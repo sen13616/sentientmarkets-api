@@ -14,6 +14,7 @@ Tier filtering
 Free tier  : score, label, confidence, timestamp, cache_age_seconds only.
 Pro tier   : all fields including sub_indices, drivers, freshness, explanation.
 """
+
 from __future__ import annotations
 
 import json
@@ -131,27 +132,27 @@ async def _load_from_db(ticker: str) -> dict | None:
         smoothed = row.get("composite_score_smoothed")
         raw_score = row["composite_score"]
         return {
-            "ticker":                    ticker.upper(),
-            "composite_score":           smoothed if smoothed is not None else raw_score,
-            "composite_score_raw":       raw_score,
-            "composite_score_smoothed":  smoothed,
-            "score_exo":                 row.get("composite_score_exo"),
-            "ema_obs_count":             row.get("ema_obs_count") or 0,
-            "confidence":                {"score": row["confidence_score"], "flags": flags or []},
+            "ticker": ticker.upper(),
+            "composite_score": smoothed if smoothed is not None else raw_score,
+            "composite_score_raw": raw_score,
+            "composite_score_smoothed": smoothed,
+            "score_exo": row.get("composite_score_exo"),
+            "ema_obs_count": row.get("ema_obs_count") or 0,
+            "confidence": {"score": row["confidence_score"], "flags": flags or []},
             "sub_indices": {
-                "market":     {"value": row.get("market_index")},
-                "narrative":  {"value": row.get("narrative_index")},
+                "market": {"value": row.get("market_index")},
+                "narrative": {"value": row.get("narrative_index")},
                 "influencer": {"value": row.get("influencer_index")},
-                "macro":      {"value": row.get("macro_index")},
+                "macro": {"value": row.get("macro_index")},
             },
-            "divergence":  row.get("divergence"),
+            "divergence": row.get("divergence"),
             "top_drivers": drivers or [],
             "explanation": "",
             "freshness": {
-                "market_as_of":     row.get("market_as_of"),
-                "narrative_as_of":  row.get("narrative_as_of"),
+                "market_as_of": row.get("market_as_of"),
+                "narrative_as_of": row.get("narrative_as_of"),
                 "influencer_as_of": row.get("influencer_as_of"),
-                "macro_as_of":      row.get("macro_as_of"),
+                "macro_as_of": row.get("macro_as_of"),
             },
             "timestamp": row["timestamp"],
         }
@@ -167,8 +168,8 @@ def _market_hours_info(now: datetime) -> MarketHours:
     next_open  — next weekday at 14:30 UTC.
     last_close — most recent weekday at 21:00 UTC.
     """
-    _OPEN_H, _OPEN_M   = 14, 30
-    _CLOSE_H, _CLOSE_M = 21,  0
+    _OPEN_H, _OPEN_M = 14, 30
+    _CLOSE_H, _CLOSE_M = 21, 0
 
     # ---- last_close ----
     close_today = now.replace(hour=_CLOSE_H, minute=_CLOSE_M, second=0, microsecond=0)
@@ -185,9 +186,9 @@ def _market_hours_info(now: datetime) -> MarketHours:
     next_open = no_candidate.replace(hour=_OPEN_H, minute=_OPEN_M, second=0, microsecond=0)
 
     return MarketHours(
-        is_open    = is_market_hours(now),
-        next_open  = next_open,
-        last_close = last_close,
+        is_open=is_market_hours(now),
+        next_open=next_open,
+        last_close=last_close,
     )
 
 
@@ -223,23 +224,23 @@ def _confidence_score(conf) -> int:
 
 def _build_free(state: dict) -> FreeTierResponse:
     score = _composite_score(state)
-    conf  = state.get("confidence") or {}
+    conf = state.get("confidence") or {}
     confidence = _confidence_score(conf)
-    ts    = _parse_dt(state.get("timestamp"))
-    now   = _now_utc()
+    ts = _parse_dt(state.get("timestamp"))
+    now = _now_utc()
     change, change_pct = _change_fields(state)
     raw_val = state.get("composite_score_raw")
     return FreeTierResponse(
-        ticker              = state["ticker"].upper(),
-        score               = score,
-        score_raw           = int(round(raw_val)) if raw_val is not None else None,
-        score_change_1d     = change,
-        score_change_1d_pct = change_pct,
-        label               = score_to_label(score),
-        confidence          = confidence,
-        timestamp           = ts or now,
-        cache_age_seconds   = _cache_age(state.get("timestamp")),
-        market_hours        = _market_hours_info(now),
+        ticker=state["ticker"].upper(),
+        score=score,
+        score_raw=int(round(raw_val)) if raw_val is not None else None,
+        score_change_1d=change,
+        score_change_1d_pct=change_pct,
+        label=score_to_label(score),
+        confidence=confidence,
+        timestamp=ts or now,
+        cache_age_seconds=_cache_age(state.get("timestamp")),
+        market_hours=_market_hours_info(now),
     )
 
 
@@ -249,38 +250,38 @@ def _build_pro(
     xs: dict | None = None,
 ) -> ProTierResponse:
     score = _composite_score(state)
-    conf  = state.get("confidence") or {}
+    conf = state.get("confidence") or {}
     confidence = _confidence_score(conf)
     flags = (conf.get("flags") or []) if isinstance(conf, dict) else []
-    ts    = _parse_dt(state.get("timestamp"))
-    now   = _now_utc()
+    ts = _parse_dt(state.get("timestamp"))
+    now = _now_utc()
 
     freshness_raw = state.get("freshness") or {}
     freshness = Freshness(
-        market_as_of     = _parse_dt(freshness_raw.get("market_as_of")),
-        narrative_as_of  = _parse_dt(freshness_raw.get("narrative_as_of")),
-        influencer_as_of = _parse_dt(freshness_raw.get("influencer_as_of")),
-        macro_as_of      = _parse_dt(freshness_raw.get("macro_as_of")),
+        market_as_of=_parse_dt(freshness_raw.get("market_as_of")),
+        narrative_as_of=_parse_dt(freshness_raw.get("narrative_as_of")),
+        influencer_as_of=_parse_dt(freshness_raw.get("influencer_as_of")),
+        macro_as_of=_parse_dt(freshness_raw.get("macro_as_of")),
     )
 
     raw_drivers = state.get("top_drivers") or []
     drivers = [
         Driver(
-            signal       = d.get("signal", ""),
-            description  = d.get("description", ""),
-            direction    = d.get("direction", "neutral"),
-            magnitude    = float(d.get("magnitude", 0.0)),
-            source_layer = d.get("source_layer", ""),
+            signal=d.get("signal", ""),
+            description=d.get("description", ""),
+            direction=d.get("direction", "neutral"),
+            magnitude=float(d.get("magnitude", 0.0)),
+            source_layer=d.get("source_layer", ""),
         )
         for d in raw_drivers
         if isinstance(d, dict)
     ]
 
     layer_values = {
-        "market":     _sub_val(state, "market"),
-        "narrative":  _sub_val(state, "narrative"),
+        "market": _sub_val(state, "market"),
+        "narrative": _sub_val(state, "narrative"),
         "influencer": _sub_val(state, "influencer"),
-        "macro":      _sub_val(state, "macro"),
+        "macro": _sub_val(state, "macro"),
     }
     missing_layers = [layer for layer, val in layer_values.items() if val is None]
 
@@ -295,30 +296,30 @@ def _build_pro(
     change, change_pct = _change_fields(state)
 
     return ProTierResponse(
-        ticker            = state["ticker"].upper(),
-        score             = score,
-        score_raw         = score_raw,
-        score_change_1d     = change,
-        score_change_1d_pct = change_pct,
-        universe_percentile = universe_percentile,
-        score_raw_z          = (xs or {}).get("raw_z"),
-        score_raw_percentile = (xs or {}).get("raw_pctl"),
-        sector_percentile    = (xs or {}).get("sector_pctl"),
-        score_exo            = state.get("score_exo"),
-        score_exo_percentile = (xs or {}).get("exo_pctl"),
-        ema_obs_count     = ema_obs_count,
-        label             = score_to_label(score),
-        confidence        = confidence,
-        sub_indices       = SubIndices(**layer_values),
-        missing_layers    = missing_layers,
-        divergence        = state.get("divergence"),
-        top_drivers       = drivers,
-        explanation       = state.get("explanation") or "",
-        freshness         = freshness,
-        confidence_flags  = list(flags),
-        timestamp         = ts or now,
-        cache_age_seconds = _cache_age(state.get("timestamp")),
-        market_hours      = _market_hours_info(now),
+        ticker=state["ticker"].upper(),
+        score=score,
+        score_raw=score_raw,
+        score_change_1d=change,
+        score_change_1d_pct=change_pct,
+        universe_percentile=universe_percentile,
+        score_raw_z=(xs or {}).get("raw_z"),
+        score_raw_percentile=(xs or {}).get("raw_pctl"),
+        sector_percentile=(xs or {}).get("sector_pctl"),
+        score_exo=state.get("score_exo"),
+        score_exo_percentile=(xs or {}).get("exo_pctl"),
+        ema_obs_count=ema_obs_count,
+        label=score_to_label(score),
+        confidence=confidence,
+        sub_indices=SubIndices(**layer_values),
+        missing_layers=missing_layers,
+        divergence=state.get("divergence"),
+        top_drivers=drivers,
+        explanation=state.get("explanation") or "",
+        freshness=freshness,
+        confidence_flags=list(flags),
+        timestamp=ts or now,
+        cache_age_seconds=_cache_age(state.get("timestamp")),
+        market_hours=_market_hours_info(now),
     )
 
 
@@ -345,12 +346,12 @@ async def assemble(
 
     if state is None:
         return NoDataResponse(
-            ticker  = ticker,
-            status  = "insufficient_data",
-            message = "Not enough historical data to compute a reliable sentiment score yet.",
+            ticker=ticker,
+            status="insufficient_data",
+            message="Not enough historical data to compute a reliable sentiment score yet.",
         )
 
-    use_full = (tier == "pro" and detail == "full")
+    use_full = tier == "pro" and detail == "full"
     if use_full:
         percentile = await _load_percentile(ticker)
         xs = await _load_xs(ticker)

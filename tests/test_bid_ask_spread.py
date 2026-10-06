@@ -5,6 +5,7 @@ Unit tests for _fetch_bid_ask_spread in pipeline/sources/market.py.
 
 All tests mock yfinance.Ticker so no network calls are made.
 """
+
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -13,7 +14,6 @@ from pipeline.sources.market import _fetch_bid_ask_spread
 
 
 class TestFetchBidAskSpread:
-
     @patch("yfinance.Ticker")
     def test_valid_bid_ask_returns_correct_spread(self, mock_ticker_cls):
         mock_ticker_cls.return_value.info = {"bid": 149.50, "ask": 150.50}

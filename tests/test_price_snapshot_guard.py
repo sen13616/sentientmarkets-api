@@ -4,6 +4,7 @@ tests/test_price_snapshot_guard.py — price_snapshots writes are market-hours o
 persist_scored_state() must skip the price_snapshots insert outside US market
 hours (weekdays 14:30–21:00 UTC) while still writing sentiment_history.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -12,11 +13,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from pipeline.persistence.pg_writer import persist_scored_state
 
 # 2026-07-15 is a Wednesday.
-IN_HOURS      = datetime(2026, 7, 15, 15, 0, tzinfo=timezone.utc)
-OPEN_BOUNDARY = datetime(2026, 7, 15, 14, 30, tzinfo=timezone.utc)   # inclusive
-CLOSE_BOUNDARY = datetime(2026, 7, 15, 21, 0, tzinfo=timezone.utc)   # exclusive
+IN_HOURS = datetime(2026, 7, 15, 15, 0, tzinfo=timezone.utc)
+OPEN_BOUNDARY = datetime(2026, 7, 15, 14, 30, tzinfo=timezone.utc)  # inclusive
+CLOSE_BOUNDARY = datetime(2026, 7, 15, 21, 0, tzinfo=timezone.utc)  # exclusive
 WEEKDAY_NIGHT = datetime(2026, 7, 15, 23, 0, tzinfo=timezone.utc)
-SUNDAY        = datetime(2026, 7, 19, 15, 0, tzinfo=timezone.utc)
+SUNDAY = datetime(2026, 7, 19, 15, 0, tzinfo=timezone.utc)
 
 
 def _mock_pool():

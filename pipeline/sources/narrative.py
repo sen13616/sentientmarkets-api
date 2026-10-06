@@ -18,6 +18,7 @@ Language detection (Sprint A): langdetect is run on title+summary at
 ingestion time, storing the detected language in raw_articles.language.
 FinBERT scoring (Phase 3 of narrative_job) filters on language='en'.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -42,13 +43,13 @@ _log = logging.getLogger(__name__)
 
 load_dotenv(override=False)
 
-_AV_KEY      = os.environ.get("ALPHA_VANTAGE_KEY", "")
+_AV_KEY = os.environ.get("ALPHA_VANTAGE_KEY", "")
 _FINNHUB_KEY = os.environ.get("FINNHUB_KEY", "")
 
-_AV_BASE      = "https://www.alphavantage.co/query"
+_AV_BASE = "https://www.alphavantage.co/query"
 _FINNHUB_BASE = "https://finnhub.io/api/v1"
 
-_ARTICLE_LOOKBACK_DAYS = 3   # fetch news from the last N days
+_ARTICLE_LOOKBACK_DAYS = 3  # fetch news from the last N days
 
 
 def _hash_url(url: str) -> str:
@@ -69,6 +70,7 @@ def _detect_language(text: str) -> str | None:
 # ---------------------------------------------------------------------------
 # Alpha Vantage NEWS_SENTIMENT
 # ---------------------------------------------------------------------------
+
 
 def _parse_av_time(time_str: str) -> datetime | None:
     """Parse AV timestamp format: '20240115T163000' → datetime UTC."""
@@ -102,9 +104,9 @@ async def fetch_av_news_window(
     """
     params = {
         "function": "NEWS_SENTIMENT",
-        "tickers":  ticker,
-        "limit":    limit,
-        "apikey":   _AV_KEY,
+        "tickers": ticker,
+        "limit": limit,
+        "apikey": _AV_KEY,
     }
     if time_from is not None:
         params["time_from"] = time_from.strftime("%Y%m%dT%H%M")
@@ -112,9 +114,12 @@ async def fetch_av_news_window(
         params["time_to"] = time_to.strftime("%Y%m%dT%H%M")
 
     resp = await guarded_get(
-        client, _AV_BASE,
+        client,
+        _AV_BASE,
         params=params,
-        sem=AV_SEM, delay=delay, label=f"AV NEWS_SENTIMENT {ticker}",
+        sem=AV_SEM,
+        delay=delay,
+        label=f"AV NEWS_SENTIMENT {ticker}",
     )
     if resp is None:
         return None
@@ -140,27 +145,29 @@ async def fetch_av_news_window(
 
         # Extract per-ticker relevance and sentiment from ticker_sentiment list
         provider_sentiment: float | None = None
-        relevance_score:    float | None = None
+        relevance_score: float | None = None
         for ts in item.get("ticker_sentiment", []):
             if ts.get("ticker", "").upper() == ticker.upper():
                 try:
                     provider_sentiment = float(ts["ticker_sentiment_score"])
-                    relevance_score    = float(ts["relevance_score"])
+                    relevance_score = float(ts["relevance_score"])
                 except (KeyError, ValueError) as exc:
                     _log.debug("AV ticker_sentiment field malformed for %s: %s", ticker, exc)
                 break
 
-        articles.append({
-            "ticker":             ticker,
-            "title":              item.get("title", "")[:500],
-            "summary":            (item.get("summary") or "")[:2000] or None,
-            "source":             "alpha_vantage",
-            "source_url":         url,
-            "published_at":       published_at,
-            "provider_sentiment": provider_sentiment,
-            "relevance_score":    relevance_score,
-            "content_hash":       _hash_url(url),
-        })
+        articles.append(
+            {
+                "ticker": ticker,
+                "title": item.get("title", "")[:500],
+                "summary": (item.get("summary") or "")[:2000] or None,
+                "source": "alpha_vantage",
+                "source_url": url,
+                "published_at": published_at,
+                "provider_sentiment": provider_sentiment,
+                "relevance_score": relevance_score,
+                "content_hash": _hash_url(url),
+            }
+        )
 
     return articles
 
@@ -180,13 +187,14 @@ async def _fetch_av_news(ticker: str, client: httpx.AsyncClient) -> list[dict]:
 # Finnhub company-news (fallback)
 # ---------------------------------------------------------------------------
 
+
 async def _fetch_finnhub_news(ticker: str, client: httpx.AsyncClient) -> list[dict]:
     """
     Finnhub /company-news for last N days.
     Returns list of normalized article dicts (provider_sentiment=None).
     """
-    today      = datetime.now(timezone.utc).date()
-    from_date  = (datetime.now(timezone.utc) - timedelta(days=_ARTICLE_LOOKBACK_DAYS)).date()
+    today = datetime.now(timezone.utc).date()
+    from_date = (datetime.now(timezone.utc) - timedelta(days=_ARTICLE_LOOKBACK_DAYS)).date()
     return await fetch_finnhub_news_window(ticker, client, from_date, today) or []
 
 
@@ -204,14 +212,17 @@ async def fetch_finnhub_news_window(
     failed (no response or non-200) so callers can tell failure from "no news".
     """
     resp = await guarded_get(
-        client, f"{_FINNHUB_BASE}/company-news",
+        client,
+        f"{_FINNHUB_BASE}/company-news",
         params={
             "symbol": ticker,
-            "from":   str(from_date),
-            "to":     str(to_date),
-            "token":  _FINNHUB_KEY,
+            "from": str(from_date),
+            "to": str(to_date),
+            "token": _FINNHUB_KEY,
         },
-        sem=FINNHUB_SEM, delay=delay, label=f"Finnhub company-news {ticker}",
+        sem=FINNHUB_SEM,
+        delay=delay,
+        label=f"Finnhub company-news {ticker}",
     )
     if resp is None or resp.status_code != 200:
         return None
@@ -240,17 +251,19 @@ async def fetch_finnhub_news_window(
         except (ValueError, OSError):
             continue
 
-        articles.append({
-            "ticker":             ticker,
-            "title":              (item.get("headline") or "")[:500],
-            "summary":            (item.get("summary") or "")[:2000] or None,
-            "source":             "finnhub",
-            "source_url":         url,
-            "published_at":       published_at,
-            "provider_sentiment": None,
-            "relevance_score":    1.0,  # Paper Stage 2: ticker-keyed endpoint → w_rel=1.0
-            "content_hash":       _hash_url(url),
-        })
+        articles.append(
+            {
+                "ticker": ticker,
+                "title": (item.get("headline") or "")[:500],
+                "summary": (item.get("summary") or "")[:2000] or None,
+                "source": "finnhub",
+                "source_url": url,
+                "published_at": published_at,
+                "provider_sentiment": None,
+                "relevance_score": 1.0,  # Paper Stage 2: ticker-keyed endpoint → w_rel=1.0
+                "content_hash": _hash_url(url),
+            }
+        )
 
     return articles
 
@@ -258,6 +271,7 @@ async def fetch_finnhub_news_window(
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
+
 
 async def _run_narrative(ticker: str, client: httpx.AsyncClient) -> None:
     """Core implementation — requires a live client."""
@@ -289,16 +303,16 @@ async def _run_narrative(ticker: str, client: httpx.AsyncClient) -> None:
 
         try:
             await insert_article(
-                ticker             = article["ticker"],
-                title              = article["title"],
-                summary            = article["summary"],
-                source             = article["source"],
-                source_url         = article["source_url"],
-                published_at       = article["published_at"],
-                provider_sentiment = article["provider_sentiment"],
-                relevance_score    = article["relevance_score"],
-                content_hash       = article["content_hash"],
-                language           = language,
+                ticker=article["ticker"],
+                title=article["title"],
+                summary=article["summary"],
+                source=article["source"],
+                source_url=article["source_url"],
+                published_at=article["published_at"],
+                provider_sentiment=article["provider_sentiment"],
+                relevance_score=article["relevance_score"],
+                content_hash=article["content_hash"],
+                language=language,
             )
         except Exception as exc:
             _log.warning("insert_article error for %s: %s", ticker, exc)

@@ -11,6 +11,7 @@ Label thresholds (per spec)
     61–80  → Bullish
     81–100 → Strongly Bullish
 """
+
 from __future__ import annotations
 
 

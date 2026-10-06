@@ -95,10 +95,11 @@ def build_scorecard(
 
 # ---------------------------------------------------------------- regression --
 
+
 @dataclass(frozen=True)
 class Rule:
-    path: str          # dot-path into the scorecard dict
-    better: str        # "higher" | "lower"
+    path: str  # dot-path into the scorecard dict
+    better: str  # "higher" | "lower"
     abs_tol: float = 0.0
     rel_tol: float = 0.0
 
@@ -110,10 +111,7 @@ DEFAULT_RULES = [
     Rule("calibration.composite_raw.std", "higher", rel_tol=0.10),
     Rule("calibration.composite_raw.xs_dispersion", "higher", rel_tol=0.10),
     # calibration: layer means must not drift further from neutral-50
-    *[
-        Rule(f"calibration.layers.{ly}.abs_dev_from_50", "lower", abs_tol=1.0)
-        for ly in LAYERS
-    ],
+    *[Rule(f"calibration.layers.{ly}.abs_dev_from_50", "lower", abs_tol=1.0) for ly in LAYERS],
     # the lead-lag peak must never move further into the past
     Rule("leadlag.raw_change.peak_offset", "higher"),
     Rule("leadlag.exo_change.peak_offset", "higher"),
@@ -155,6 +153,7 @@ def diff(baseline: dict, current: dict, rules: list[Rule] = DEFAULT_RULES) -> li
 
 # ----------------------------------------------------------------- rendering --
 
+
 def render_markdown(card: dict) -> str:
     lines = ["# Eval scorecard", ""]
     meta = card.get("meta", {})
@@ -168,12 +167,17 @@ def render_markdown(card: dict) -> str:
         lines.append("")
 
     cal = card.get("calibration", {})
-    lines += ["## Calibration & dispersion", "",
-              "| series | mean | std | xs dispersion | |mean−50| |",
-              "|---|---|---|---|---|"]
-    named = [("composite_raw", cal.get("composite_raw")),
-             ("composite_smoothed", cal.get("composite_smoothed")),
-             ("exo", cal.get("exo"))]
+    lines += [
+        "## Calibration & dispersion",
+        "",
+        "| series | mean | std | xs dispersion | |mean−50| |",
+        "|---|---|---|---|---|",
+    ]
+    named = [
+        ("composite_raw", cal.get("composite_raw")),
+        ("composite_smoothed", cal.get("composite_smoothed")),
+        ("exo", cal.get("exo")),
+    ]
     named += [(ly, cal.get("layers", {}).get(ly)) for ly in LAYERS]
     for name, st in named:
         if st:
@@ -197,9 +201,12 @@ def render_markdown(card: dict) -> str:
 
     top = card.get("predictive", {}).get("top_by_abs_t", [])
     if top:
-        lines += ["## Top ICs (by |t|)", "",
-                  "| feature | h | target | IC | t | hit | days |",
-                  "|---|---|---|---|---|---|---|"]
+        lines += [
+            "## Top ICs (by |t|)",
+            "",
+            "| feature | h | target | IC | t | hit | days |",
+            "|---|---|---|---|---|---|---|",
+        ]
         for r in top:
             lines.append(
                 f"| {r['feature']} | {r['horizon_d']} | {r['target']} | "
@@ -215,11 +222,13 @@ def render_markdown(card: dict) -> str:
     ls = card.get("quintile_ls")
     if ls:
         cost = ls[0].get("cost_bps", "?")
-        lines += [f"## Quintile L/S — gross vs net ({cost} bps round-trip on leg turnover)",
-                  "",
-                  "| feature | h | gross/period | net/period | t | t_net | "
-                  "ann Sharpe | ann Sharpe net | leg turnover | days |",
-                  "|---|---|---|---|---|---|---|---|---|---|"]
+        lines += [
+            f"## Quintile L/S — gross vs net ({cost} bps round-trip on leg turnover)",
+            "",
+            "| feature | h | gross/period | net/period | t | t_net | "
+            "ann Sharpe | ann Sharpe net | leg turnover | days |",
+            "|---|---|---|---|---|---|---|---|---|---|",
+        ]
         for r in ls:
             lines.append(
                 f"| {r['feature']} | {r['horizon_d']} | "
@@ -232,12 +241,14 @@ def render_markdown(card: dict) -> str:
 
     lat = card.get("information_latency")
     if lat:
-        lines += ["## Information latency (created_at − published_at)", "",
-                  "| source | median (min) | p90 (min) | n |", "|---|---|---|---|"]
+        lines += [
+            "## Information latency (created_at − published_at)",
+            "",
+            "| source | median (min) | p90 (min) | n |",
+            "|---|---|---|---|",
+        ]
         for src, st in sorted(lat.items()):
-            lines.append(
-                f"| {src} | {st['median_minutes']} | {st['p90_minutes']} | {st['n']} |"
-            )
+            lines.append(f"| {src} | {st['median_minutes']} | {st['p90_minutes']} | {st['n']} |")
         lines.append("")
     return "\n".join(lines)
 

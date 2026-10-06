@@ -34,16 +34,31 @@ def _mock_response(body):
 
 class TestAvArticleSkipping:
     async def test_bad_time_published_skips_article(self):
-        body = {"feed": [
-            {"url": "https://a.example/1", "time_published": "20260115T163000",
-             "title": "good", "ticker_sentiment": []},
-            {"url": "https://a.example/2", "time_published": "not-a-time",
-             "title": "bad ts", "ticker_sentiment": []},
-            {"url": "https://a.example/3", "time_published": "",
-             "title": "empty ts", "ticker_sentiment": []},
-        ]}
-        with patch("pipeline.sources.narrative.guarded_get",
-                   AsyncMock(return_value=_mock_response(body))):
+        body = {
+            "feed": [
+                {
+                    "url": "https://a.example/1",
+                    "time_published": "20260115T163000",
+                    "title": "good",
+                    "ticker_sentiment": [],
+                },
+                {
+                    "url": "https://a.example/2",
+                    "time_published": "not-a-time",
+                    "title": "bad ts",
+                    "ticker_sentiment": [],
+                },
+                {
+                    "url": "https://a.example/3",
+                    "time_published": "",
+                    "title": "empty ts",
+                    "ticker_sentiment": [],
+                },
+            ]
+        }
+        with patch(
+            "pipeline.sources.narrative.guarded_get", AsyncMock(return_value=_mock_response(body))
+        ):
             articles = await _fetch_av_news("AAPL", MagicMock())
         assert len(articles) == 1
         assert articles[0]["published_at"] == datetime(2026, 1, 15, 16, 30, tzinfo=timezone.utc)
@@ -52,18 +67,16 @@ class TestAvArticleSkipping:
 class TestFinnhubArticleSkipping:
     async def test_bad_unix_ts_skips_article(self):
         body = [
-            {"url": "https://f.example/1", "datetime": 1768494600,
-             "headline": "good"},
+            {"url": "https://f.example/1", "datetime": 1768494600, "headline": "good"},
             {"url": "https://f.example/2", "datetime": None, "headline": "no ts"},
             {"url": "https://f.example/3", "datetime": "garbage", "headline": "bad ts"},
         ]
-        with patch("pipeline.sources.narrative.guarded_get",
-                   AsyncMock(return_value=_mock_response(body))):
+        with patch(
+            "pipeline.sources.narrative.guarded_get", AsyncMock(return_value=_mock_response(body))
+        ):
             articles = await _fetch_finnhub_news("AAPL", MagicMock())
         assert len(articles) == 1
-        assert articles[0]["published_at"] == datetime.fromtimestamp(
-            1768494600, tz=timezone.utc
-        )
+        assert articles[0]["published_at"] == datetime.fromtimestamp(1768494600, tz=timezone.utc)
 
 
 class TestNarrativeAsOfIsInformationTime:
@@ -72,8 +85,7 @@ class TestNarrativeAsOfIsInformationTime:
         information time — not the fetch/scoring time."""
         older = datetime(2026, 1, 15, 12, 0, tzinfo=timezone.utc)
         newer = datetime(2026, 1, 15, 18, 0, tzinfo=timezone.utc)
-        rows = [{"published_at": older}, {"published_at": newer},
-                {"published_at": None}]
+        rows = [{"published_at": older}, {"published_at": newer}, {"published_at": None}]
         assert _latest_ts(rows, key="published_at") == newer
 
     def test_latest_ts_empty_is_none(self):

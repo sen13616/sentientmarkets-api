@@ -20,6 +20,7 @@ Design
 - Timestamps: each historical file's date at 21:00 UTC (market close).
 - upload_type: 'manual_backfill' to distinguish from live ingestion.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -44,33 +45,37 @@ _log = logging.getLogger(__name__)
 
 # US market holidays in 2025 (dates when FINRA does not publish files).
 # This is a minimal list covering the backfill window; extend as needed.
-US_MARKET_HOLIDAYS_2025 = frozenset({
-    date(2025, 1, 1),   # New Year's Day
-    date(2025, 1, 20),  # MLK Day
-    date(2025, 2, 17),  # Presidents' Day
-    date(2025, 4, 18),  # Good Friday
-    date(2025, 5, 26),  # Memorial Day
-    date(2025, 6, 19),  # Juneteenth
-    date(2025, 7, 4),   # Independence Day
-    date(2025, 9, 1),   # Labor Day
-    date(2025, 11, 27), # Thanksgiving
-    date(2025, 12, 25), # Christmas Day
-})
+US_MARKET_HOLIDAYS_2025 = frozenset(
+    {
+        date(2025, 1, 1),  # New Year's Day
+        date(2025, 1, 20),  # MLK Day
+        date(2025, 2, 17),  # Presidents' Day
+        date(2025, 4, 18),  # Good Friday
+        date(2025, 5, 26),  # Memorial Day
+        date(2025, 6, 19),  # Juneteenth
+        date(2025, 7, 4),  # Independence Day
+        date(2025, 9, 1),  # Labor Day
+        date(2025, 11, 27),  # Thanksgiving
+        date(2025, 12, 25),  # Christmas Day
+    }
+)
 
 
 # NYSE holidays 2026 (for the June-gap backfill, 2026-06-22 → 07-02).
-US_MARKET_HOLIDAYS_2026 = frozenset({
-    date(2026, 1, 1),   # New Year's Day
-    date(2026, 1, 19),  # MLK Day
-    date(2026, 2, 16),  # Presidents' Day
-    date(2026, 4, 3),   # Good Friday
-    date(2026, 5, 25),  # Memorial Day
-    date(2026, 6, 19),  # Juneteenth
-    date(2026, 7, 3),   # Independence Day (observed)
-    date(2026, 9, 7),   # Labor Day
-    date(2026, 11, 26), # Thanksgiving
-    date(2026, 12, 25), # Christmas Day
-})
+US_MARKET_HOLIDAYS_2026 = frozenset(
+    {
+        date(2026, 1, 1),  # New Year's Day
+        date(2026, 1, 19),  # MLK Day
+        date(2026, 2, 16),  # Presidents' Day
+        date(2026, 4, 3),  # Good Friday
+        date(2026, 5, 25),  # Memorial Day
+        date(2026, 6, 19),  # Juneteenth
+        date(2026, 7, 3),  # Independence Day (observed)
+        date(2026, 9, 7),  # Labor Day
+        date(2026, 11, 26),  # Thanksgiving
+        date(2026, 12, 25),  # Christmas Day
+    }
+)
 
 
 def is_trading_day(d: date) -> bool:
@@ -158,7 +163,8 @@ async def backfill(
     to_fetch = [d for d in dates if d not in existing]
     _log.info(
         "Already have %d dates in DB, %d to fetch",
-        len(dates) - len(to_fetch), len(to_fetch),
+        len(dates) - len(to_fetch),
+        len(to_fetch),
     )
 
     if not to_fetch:
@@ -194,8 +200,13 @@ async def backfill(
 
             # Build signal timestamp: target_date at 21:00 UTC (market close)
             ts = datetime(
-                target_date.year, target_date.month, target_date.day,
-                21, 0, 0, tzinfo=timezone.utc,
+                target_date.year,
+                target_date.month,
+                target_date.day,
+                21,
+                0,
+                0,
+                tzinfo=timezone.utc,
             )
 
             rows: list[tuple] = []
@@ -205,9 +216,29 @@ async def backfill(
                 short_vol = vols["short_volume"]
                 total_vol = vols["total_volume"]
                 ratio = short_vol / total_vol if total_vol > 0 else 0.0
-                rows.append((ticker, "short_volume_otc",       float(short_vol), "finra_regsho", "manual_backfill", ts))
-                rows.append((ticker, "short_volume_total_otc", float(total_vol), "finra_regsho", "manual_backfill", ts))
-                rows.append((ticker, "short_volume_ratio_otc", ratio,            "finra_regsho", "manual_backfill", ts))
+                rows.append(
+                    (
+                        ticker,
+                        "short_volume_otc",
+                        float(short_vol),
+                        "finra_regsho",
+                        "manual_backfill",
+                        ts,
+                    )
+                )
+                rows.append(
+                    (
+                        ticker,
+                        "short_volume_total_otc",
+                        float(total_vol),
+                        "finra_regsho",
+                        "manual_backfill",
+                        ts,
+                    )
+                )
+                rows.append(
+                    (ticker, "short_volume_ratio_otc", ratio, "finra_regsho", "manual_backfill", ts)
+                )
 
             if rows and tickers:
                 await insert_signals(rows)
@@ -230,7 +261,11 @@ async def backfill(
 
             _log.info(
                 "  [%d/%d] %s: %d tickers (%d rows)",
-                i + 1, len(to_fetch), target_date.isoformat(), n_tickers, len(rows),
+                i + 1,
+                len(to_fetch),
+                target_date.isoformat(),
+                n_tickers,
+                len(rows),
             )
 
             # Throttle: 0.5s between fetches (max 2 req/s)
@@ -238,7 +273,9 @@ async def backfill(
 
     _log.info(
         "Backfill complete: %d dates fetched, %d skipped, %d total rows inserted",
-        fetched, skipped, total_rows,
+        fetched,
+        skipped,
+        total_rows,
     )
     await close_pool()
 
@@ -250,11 +287,17 @@ def main() -> None:
     )
 
     parser = argparse.ArgumentParser(description="Backfill FINRA short volume data")
-    parser.add_argument("--days", type=int, default=90, help="Number of trading days to backfill (default 90)")
+    parser.add_argument(
+        "--days", type=int, default=90, help="Number of trading days to backfill (default 90)"
+    )
     parser.add_argument("--start", type=str, default=None, help="Start date (YYYY-MM-DD)")
     parser.add_argument("--end", type=str, default=None, help="End date (YYYY-MM-DD)")
-    parser.add_argument("--tickers", type=str, default=None,
-                        help="comma-separated tickers to backfill (all dates in the window, dedup-guarded)")
+    parser.add_argument(
+        "--tickers",
+        type=str,
+        default=None,
+        help="comma-separated tickers to backfill (all dates in the window, dedup-guarded)",
+    )
     args = parser.parse_args()
 
     start = date.fromisoformat(args.start) if args.start else None

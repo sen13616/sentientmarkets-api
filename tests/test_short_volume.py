@@ -6,6 +6,7 @@ Unit tests for FINRA REGSHO daily short volume parsing and fetching.
 All tests are pure and synchronous or use mocked HTTP — no DB, Redis, or
 real network calls required.
 """
+
 from __future__ import annotations
 
 from datetime import date
@@ -60,6 +61,7 @@ Total|1 records
 # (a) Valid CNMS file parses correctly
 # ---------------------------------------------------------------------------
 
+
 class TestParsing:
     """Test _parse_short_volume with valid CNMS data."""
 
@@ -96,7 +98,10 @@ class TestParsing:
         assert _parse_short_volume("") == {}
 
     def test_header_only(self):
-        assert _parse_short_volume("Date|Symbol|ShortVolume|ShortExemptVolume|TotalVolume|Market\n") == {}
+        assert (
+            _parse_short_volume("Date|Symbol|ShortVolume|ShortExemptVolume|TotalVolume|Market\n")
+            == {}
+        )
 
     def test_zero_total_volume_skipped(self):
         text = "20260501|BADTK|100|0|0|CNMS\n"
@@ -118,6 +123,7 @@ class TestParsing:
 # ---------------------------------------------------------------------------
 # TRF combination
 # ---------------------------------------------------------------------------
+
 
 class TestCombineTRF:
     """Test _combine_trf_data merges volumes correctly."""
@@ -150,8 +156,8 @@ class TestCombineTRF:
 # URL construction
 # ---------------------------------------------------------------------------
 
-class TestURLBuilder:
 
+class TestURLBuilder:
     def test_cnms_url(self):
         url = _url_for("CNMSshvol", date(2026, 5, 1))
         assert url == "https://cdn.finra.org/equity/regsho/daily/CNMSshvol20260501.txt"
@@ -164,6 +170,7 @@ class TestURLBuilder:
 # ---------------------------------------------------------------------------
 # (b) Date fallback when today's file is 404
 # ---------------------------------------------------------------------------
+
 
 class TestDateFallback:
     """latest_short_volume walks back up to 4 days on 404."""
@@ -234,6 +241,7 @@ class TestDateFallback:
 # (c) CNMS fail → TRF fallback
 # ---------------------------------------------------------------------------
 
+
 class TestCNMSToTRFFallback:
     """When CNMS returns 404, individual TRF files are fetched and combined."""
 
@@ -303,6 +311,7 @@ class TestCNMSToTRFFallback:
 # (d) Off-universe tickers filtered out (ingest_short_volume)
 # ---------------------------------------------------------------------------
 
+
 class TestUniverseFiltering:
     """ingest_short_volume only writes tickers in the active universe."""
 
@@ -326,6 +335,7 @@ class TestUniverseFiltering:
             patch("pipeline.sources.short_volume.latest_short_volume", side_effect=mock_latest),
         ):
             from pipeline.sources.short_volume import ingest_short_volume
+
             client = AsyncMock()
             n = await ingest_short_volume(client)
 
@@ -358,11 +368,16 @@ class TestUniverseFiltering:
             patch("pipeline.sources.short_volume.latest_short_volume", side_effect=mock_latest),
         ):
             from pipeline.sources.short_volume import ingest_short_volume
+
             client = AsyncMock()
             await ingest_short_volume(client)
 
         signal_types = {r[1] for r in written_rows}
-        assert signal_types == {"short_volume_otc", "short_volume_total_otc", "short_volume_ratio_otc"}
+        assert signal_types == {
+            "short_volume_otc",
+            "short_volume_total_otc",
+            "short_volume_ratio_otc",
+        }
 
     @pytest.mark.asyncio
     async def test_source_is_finra_regsho(self):
@@ -384,6 +399,7 @@ class TestUniverseFiltering:
             patch("pipeline.sources.short_volume.latest_short_volume", side_effect=mock_latest),
         ):
             from pipeline.sources.short_volume import ingest_short_volume
+
             client = AsyncMock()
             await ingest_short_volume(client)
 
@@ -411,6 +427,7 @@ class TestUniverseFiltering:
             patch("pipeline.sources.short_volume.latest_short_volume", side_effect=mock_latest),
         ):
             from pipeline.sources.short_volume import ingest_short_volume
+
             client = AsyncMock()
             await ingest_short_volume(client)
 
@@ -421,6 +438,7 @@ class TestUniverseFiltering:
     @pytest.mark.asyncio
     async def test_no_data_returns_zero(self):
         """When latest_short_volume returns None, ingest returns 0."""
+
         async def mock_tickers():
             return ["AAPL"]
 
@@ -432,6 +450,7 @@ class TestUniverseFiltering:
             patch("pipeline.sources.short_volume.latest_short_volume", side_effect=mock_latest),
         ):
             from pipeline.sources.short_volume import ingest_short_volume
+
             client = AsyncMock()
             n = await ingest_short_volume(client)
 

@@ -4,6 +4,7 @@ tests/test_new_scorers.py
 Unit tests for the 4 new market scorer functions added in normalize.py.
 Pure functions — no DB, no async.
 """
+
 from __future__ import annotations
 
 from pipeline.features.normalize import (
@@ -17,8 +18,8 @@ from pipeline.features.normalize import (
 # order_flow_imbalance  (CLV in [-1, 1] → score [0, 100])
 # ---------------------------------------------------------------------------
 
-class TestScoreOrderFlowImbalance:
 
+class TestScoreOrderFlowImbalance:
     def test_positive_clv_is_bullish(self):
         assert _score_order_flow_imbalance(0.5) == 75.0
 
@@ -47,8 +48,8 @@ class TestScoreOrderFlowImbalance:
 # buy_pressure  (x in [0, 1] → score [0, 100])
 # ---------------------------------------------------------------------------
 
-class TestScoreBuyPressure:
 
+class TestScoreBuyPressure:
     def test_neutral(self):
         assert _score_buy_pressure(0.5) == 50.0
 
@@ -75,8 +76,8 @@ class TestScoreBuyPressure:
 # sell_pressure  (x in [0, 1] → score [0, 100], inverted)
 # ---------------------------------------------------------------------------
 
-class TestScoreSellPressure:
 
+class TestScoreSellPressure:
     def test_neutral(self):
         assert _score_sell_pressure(0.5) == 50.0
 
@@ -106,8 +107,8 @@ class TestScoreSellPressure:
 # bid_ask_spread_bps  (bps → score [0, 100], tanh-based)
 # ---------------------------------------------------------------------------
 
-class TestScoreBidAskSpreadBps:
 
+class TestScoreBidAskSpreadBps:
     def test_neutral_at_10bps(self):
         score = _score_bid_ask_spread_bps(10.0)
         assert score == 50.0

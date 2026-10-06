@@ -2,6 +2,7 @@
 tests/test_scheduler_config.py — Verify scheduler cron triggers fire within
 the correct UTC windows, and that the scoring tick job is correctly configured.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -60,11 +61,14 @@ def _scoring_tick_trigger():
     `_market_trigger`).  Production omits `timezone=` and relies on the
     Railway server running in UTC."""
     from apscheduler.triggers.combining import OrTrigger
-    return OrTrigger([
-        CronTrigger(minute="0,30", timezone="UTC"),
-        CronTrigger(day_of_week="mon-fri", hour=14, minute=45, timezone="UTC"),
-        CronTrigger(day_of_week="mon-fri", hour="15-20", minute="15,45", timezone="UTC"),
-    ])
+
+    return OrTrigger(
+        [
+            CronTrigger(minute="0,30", timezone="UTC"),
+            CronTrigger(day_of_week="mon-fri", hour=14, minute=45, timezone="UTC"),
+            CronTrigger(day_of_week="mon-fri", hour="15-20", minute="15,45", timezone="UTC"),
+        ]
+    )
 
 
 def test_scoring_tick_job_registered():
@@ -97,7 +101,7 @@ def test_scoring_tick_job_registered():
     assert fires == [
         datetime(2026, 5, 18, 14, 30, tzinfo=timezone.utc),
         datetime(2026, 5, 18, 14, 45, tzinfo=timezone.utc),
-        datetime(2026, 5, 18, 15,  0, tzinfo=timezone.utc),
+        datetime(2026, 5, 18, 15, 0, tzinfo=timezone.utc),
         datetime(2026, 5, 18, 15, 15, tzinfo=timezone.utc),
         datetime(2026, 5, 18, 15, 30, tzinfo=timezone.utc),
         datetime(2026, 5, 18, 15, 45, tzinfo=timezone.utc),
@@ -113,7 +117,7 @@ def test_scoring_tick_job_registered():
         cur = nxt + timedelta(seconds=1)
     assert fires == [
         datetime(2026, 5, 18, 21, 30, tzinfo=timezone.utc),
-        datetime(2026, 5, 18, 22,  0, tzinfo=timezone.utc),
+        datetime(2026, 5, 18, 22, 0, tzinfo=timezone.utc),
         datetime(2026, 5, 18, 22, 30, tzinfo=timezone.utc),
     ]
 
@@ -121,6 +125,7 @@ def test_scoring_tick_job_registered():
 # ---------------------------------------------------------------------------
 # Sprint P4.3 — macro scheduler split
 # ---------------------------------------------------------------------------
+
 
 def test_macro_daily_job_registered():
     """macro_daily job (FRED Treasury) must run once daily at 02:00 UTC."""
@@ -130,7 +135,7 @@ def test_macro_daily_job_registered():
     assert job is not None, "macro_daily job not found in scheduler"
     # CronTrigger fields are CronTriggerField objects; stringify to check
     fields = {f.name: str(f) for f in job.trigger.fields}
-    assert fields["hour"]   == "2"
+    assert fields["hour"] == "2"
     assert fields["minute"] == "0"
 
 
@@ -142,13 +147,14 @@ def test_macro_intraday_job_registered():
     assert job is not None, "macro_intraday job not found in scheduler"
     fields = {f.name: str(f) for f in job.trigger.fields}
     assert fields["day_of_week"] == "mon-fri"
-    assert fields["hour"]        == "14-20"
-    assert fields["minute"]      == "0"
+    assert fields["hour"] == "14-20"
+    assert fields["minute"] == "0"
 
 
 def test_legacy_macro_job_no_longer_registered():
     """The pre-P4.3 single `macro` job id is gone — replaced by daily + intraday."""
     from pipeline.scheduler import scheduler
+
     assert scheduler.get_job("macro") is None
 
 
@@ -156,18 +162,29 @@ async def test_scoring_tick_calls_score_all_for_active_tickers():
     """scoring_tick_job must call _score_all with the full ticker list + preloaded sector map (Sprint P4.2)."""
     mock_tickers = ["AAPL", "MSFT", "GOOGL"]
     mock_sector_map = {
-        "AAPL":  "Information Technology",
-        "MSFT":  "Information Technology",
+        "AAPL": "Information Technology",
+        "MSFT": "Information Technology",
         "GOOGL": "Communication Services",
     }
 
     with (
-        patch("pipeline.scheduler.get_active_tickers", new_callable=AsyncMock, return_value=mock_tickers),
-        patch("pipeline.scheduler.get_ticker_sector_map", new_callable=AsyncMock, return_value=mock_sector_map),
-        patch("pipeline.scheduler._score_all", new_callable=AsyncMock, return_value=(3, 12)) as mock_score_all,
+        patch(
+            "pipeline.scheduler.get_active_tickers",
+            new_callable=AsyncMock,
+            return_value=mock_tickers,
+        ),
+        patch(
+            "pipeline.scheduler.get_ticker_sector_map",
+            new_callable=AsyncMock,
+            return_value=mock_sector_map,
+        ),
+        patch(
+            "pipeline.scheduler._score_all", new_callable=AsyncMock, return_value=(3, 12)
+        ) as mock_score_all,
         patch("pipeline.scheduler._record_run", new_callable=AsyncMock),
     ):
         from pipeline.scheduler import scoring_tick_job
+
         await scoring_tick_job()
 
     mock_score_all.assert_called_once_with(mock_tickers, "SCORING_TICK", sector_map=mock_sector_map)
@@ -183,15 +200,35 @@ async def test_score_and_write_recomputes_all_four_layers():
     with (
         patch("pipeline.orchestrator.read_scored_state", new_callable=AsyncMock, return_value=None),
         patch("pipeline.orchestrator.get_latest_close", new_callable=AsyncMock, return_value=100.0),
-        patch("pipeline.orchestrator._score_market", new_callable=AsyncMock, return_value=(si, [], now)) as mock_market,
-        patch("pipeline.orchestrator._score_narrative", new_callable=AsyncMock, return_value=(si, [], now)) as mock_narrative,
-        patch("pipeline.orchestrator._score_influencer", new_callable=AsyncMock, return_value=(si, [], now, now, now)) as mock_influencer,
-        patch("pipeline.orchestrator._score_macro", new_callable=AsyncMock, return_value=(si, [], now)) as mock_macro,
-        patch("pipeline.orchestrator.compute_confidence", return_value=__import__("pipeline.confidence.scorer", fromlist=["ConfidenceResult"]).ConfidenceResult(score=80, flags=[])),
+        patch(
+            "pipeline.orchestrator._score_market",
+            new_callable=AsyncMock,
+            return_value=(si, [], now),
+        ) as mock_market,
+        patch(
+            "pipeline.orchestrator._score_narrative",
+            new_callable=AsyncMock,
+            return_value=(si, [], now),
+        ) as mock_narrative,
+        patch(
+            "pipeline.orchestrator._score_influencer",
+            new_callable=AsyncMock,
+            return_value=(si, [], now, now, now),
+        ) as mock_influencer,
+        patch(
+            "pipeline.orchestrator._score_macro", new_callable=AsyncMock, return_value=(si, [], now)
+        ) as mock_macro,
+        patch(
+            "pipeline.orchestrator.compute_confidence",
+            return_value=__import__(
+                "pipeline.confidence.scorer", fromlist=["ConfidenceResult"]
+            ).ConfidenceResult(score=80, flags=[]),
+        ),
         patch("pipeline.orchestrator.write_scored_state", new_callable=AsyncMock),
         patch("pipeline.orchestrator.persist_scored_state", new_callable=AsyncMock),
     ):
         from pipeline.orchestrator import _score_and_write
+
         await _score_and_write("AAPL")
 
     mock_market.assert_called_once()

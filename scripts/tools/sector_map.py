@@ -11,6 +11,7 @@ Re-run tools/generate_sector_map.py to regenerate.
 Values must match keys of pipeline.sources.macro.SECTOR_ETFS exactly
 (11-class GICS taxonomy). Validation is enforced at import time below.
 """
+
 from __future__ import annotations
 
 TICKER_SECTORS: dict[str, str] = {

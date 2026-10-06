@@ -4,6 +4,7 @@ tests/test_scoring.py
 Unit tests for the Block 6 composite scoring and confidence modules.
 All functions are pure (no DB / async) so these are plain pytest tests.
 """
+
 from datetime import datetime, timedelta, timezone
 
 from pipeline.confidence.scorer import compute_confidence
@@ -15,11 +16,14 @@ from pipeline.scoring.divergence import compute_divergence
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _si(value: float):
     """Lightweight stand-in for SubIndexResult with a .value attribute."""
+
     class _R:
         def __init__(self, v):
             self.value = v
+
     return _R(value)
 
 
@@ -27,14 +31,14 @@ def _si(value: float):
 # composite.py
 # ===========================================================================
 
-class TestComputeComposite:
 
+class TestComputeComposite:
     def test_all_four_layers_present(self):
         sub = {
-            "market":     _si(70.0),
-            "narrative":  _si(60.0),
+            "market": _si(70.0),
+            "narrative": _si(60.0),
             "influencer": _si(65.0),
-            "macro":      _si(55.0),
+            "macro": _si(55.0),
         }
         r = compute_composite(sub)
         expected = 0.35 * 70 + 0.30 * 60 + 0.25 * 65 + 0.10 * 55  # 64.25
@@ -51,10 +55,10 @@ class TestComputeComposite:
 
     def test_one_layer_missing_macro(self):
         sub = {
-            "market":     _si(70.0),
-            "narrative":  _si(60.0),
+            "market": _si(70.0),
+            "narrative": _si(60.0),
             "influencer": _si(65.0),
-            "macro":      None,
+            "macro": None,
         }
         r = compute_composite(sub)
         assert r.missing_layers == ["macro"]
@@ -66,10 +70,10 @@ class TestComputeComposite:
 
     def test_one_layer_missing_market(self):
         sub = {
-            "market":     None,
-            "narrative":  _si(60.0),
+            "market": None,
+            "narrative": _si(60.0),
             "influencer": _si(65.0),
-            "macro":      _si(55.0),
+            "macro": _si(55.0),
         }
         r = compute_composite(sub)
         assert r.missing_layers == ["market"]
@@ -80,10 +84,10 @@ class TestComputeComposite:
 
     def test_two_layers_missing(self):
         sub = {
-            "market":     _si(70.0),
-            "narrative":  _si(60.0),
+            "market": _si(70.0),
+            "narrative": _si(60.0),
             "influencer": None,
-            "macro":      None,
+            "macro": None,
         }
         r = compute_composite(sub)
         assert set(r.missing_layers) == {"influencer", "macro"}
@@ -94,10 +98,10 @@ class TestComputeComposite:
 
     def test_three_layers_missing(self):
         sub = {
-            "market":     _si(80.0),
-            "narrative":  None,
+            "market": _si(80.0),
+            "narrative": None,
             "influencer": None,
-            "macro":      None,
+            "macro": None,
         }
         r = compute_composite(sub)
         assert len(r.missing_layers) == 3
@@ -123,8 +127,8 @@ class TestComputeComposite:
 # divergence.py
 # ===========================================================================
 
-class TestComputeDivergence:
 
+class TestComputeDivergence:
     def test_aligned_small_spread(self):
         # spread = 65 − 58 = 7  →  "aligned"
         result, score = compute_divergence(
@@ -193,7 +197,7 @@ class TestComputeDivergence:
             composite=55.0,
         )
         assert result.cap_applied
-        assert score == 55.0   # min(55, 75) = 55
+        assert score == 55.0  # min(55, 75) = 55
 
     def test_single_layer_no_spread(self):
         result, score = compute_divergence({"market": 70.0}, composite=70.0)
@@ -218,8 +222,8 @@ class TestComputeDivergence:
 # staleness.py
 # ===========================================================================
 
-class TestCheckStaleness:
 
+class TestCheckStaleness:
     def _now(self):
         # Friday 16:00 UTC — firmly within US market hours (14:30–21:00)
         # so the 90-minute intraday threshold is active for market staleness.
@@ -228,11 +232,11 @@ class TestCheckStaleness:
     def test_all_fresh(self):
         now = self._now()
         as_of = {
-            "market":  now - timedelta(minutes=30),
-            "news":    now - timedelta(hours=2),
+            "market": now - timedelta(minutes=30),
+            "news": now - timedelta(hours=2),
             "analyst": now - timedelta(days=1),
             "insider": now - timedelta(days=10),
-            "macro":   now - timedelta(hours=12),
+            "macro": now - timedelta(hours=12),
         }
         result = check_staleness(as_of, now=now)
         assert not any(result.values())
@@ -240,11 +244,11 @@ class TestCheckStaleness:
     def test_market_stale_at_91_minutes(self):
         now = self._now()
         as_of = {
-            "market":  now - timedelta(minutes=91),   # > 90 min threshold
-            "news":    now - timedelta(hours=2),
+            "market": now - timedelta(minutes=91),  # > 90 min threshold
+            "news": now - timedelta(hours=2),
             "analyst": now - timedelta(days=1),
             "insider": now - timedelta(days=10),
-            "macro":   now - timedelta(hours=12),
+            "macro": now - timedelta(hours=12),
         }
         result = check_staleness(as_of, now=now)
         assert result["market"] is True
@@ -253,11 +257,11 @@ class TestCheckStaleness:
     def test_news_stale_at_7_hours(self):
         now = self._now()
         as_of = {
-            "market":  now - timedelta(minutes=30),
-            "news":    now - timedelta(hours=7),     # > 6 hr threshold
+            "market": now - timedelta(minutes=30),
+            "news": now - timedelta(hours=7),  # > 6 hr threshold
             "analyst": now - timedelta(days=1),
             "insider": now - timedelta(days=10),
-            "macro":   now - timedelta(hours=12),
+            "macro": now - timedelta(hours=12),
         }
         result = check_staleness(as_of, now=now)
         assert result["news"] is True
@@ -266,11 +270,11 @@ class TestCheckStaleness:
     def test_insider_stale_at_31_days(self):
         now = self._now()
         as_of = {
-            "market":  now - timedelta(minutes=10),
-            "news":    now - timedelta(hours=1),
+            "market": now - timedelta(minutes=10),
+            "news": now - timedelta(hours=1),
             "analyst": now - timedelta(days=1),
-            "insider": now - timedelta(days=31),    # > 30 day threshold
-            "macro":   now - timedelta(hours=1),
+            "insider": now - timedelta(days=31),  # > 30 day threshold
+            "macro": now - timedelta(hours=1),
         }
         result = check_staleness(as_of, now=now)
         assert result["insider"] is True
@@ -293,11 +297,11 @@ class TestCheckStaleness:
     def test_stale_sources_helper_returns_list(self):
         now = self._now()
         as_of = {
-            "market":  now - timedelta(minutes=91),  # stale
-            "news":    now - timedelta(hours=1),       # fresh
-            "analyst": now - timedelta(days=4),        # stale (> 3 days)
-            "insider": now - timedelta(days=5),        # fresh
-            "macro":   now - timedelta(hours=1),       # fresh
+            "market": now - timedelta(minutes=91),  # stale
+            "news": now - timedelta(hours=1),  # fresh
+            "analyst": now - timedelta(days=4),  # stale (> 3 days)
+            "insider": now - timedelta(days=5),  # fresh
+            "macro": now - timedelta(hours=1),  # fresh
         }
         result = stale_sources(as_of, now=now)
         assert "market" in result
@@ -308,7 +312,7 @@ class TestCheckStaleness:
         # Boundary: exactly at threshold is NOT stale (> not >=)
         now = self._now()
         as_of = {
-            "market": now - timedelta(minutes=90),   # == threshold, not stale
+            "market": now - timedelta(minutes=90),  # == threshold, not stale
         }
         result = check_staleness(as_of, now=now)
         assert result["market"] is False
@@ -318,8 +322,8 @@ class TestCheckStaleness:
 # scorer.py
 # ===========================================================================
 
-class TestComputeConfidence:
 
+class TestComputeConfidence:
     def test_perfect_score(self):
         r = compute_confidence(
             missing_layers=[], stale_sources=[], n_signals=10, divergence_flag="aligned"
@@ -331,15 +335,17 @@ class TestComputeConfidence:
         r = compute_confidence(
             missing_layers=["macro"], stale_sources=[], n_signals=10, divergence_flag="aligned"
         )
-        assert r.score == 85   # 100 − 15
+        assert r.score == 85  # 100 − 15
         assert "missing_layer:macro" in r.flags
 
     def test_two_missing_layers(self):
         r = compute_confidence(
             missing_layers=["macro", "narrative"],
-            stale_sources=[], n_signals=10, divergence_flag="aligned"
+            stale_sources=[],
+            n_signals=10,
+            divergence_flag="aligned",
         )
-        assert r.score == 70   # 100 − 15 − 15
+        assert r.score == 70  # 100 − 15 − 15
         assert "missing_layer:macro" in r.flags
         assert "missing_layer:narrative" in r.flags
 
@@ -347,20 +353,23 @@ class TestComputeConfidence:
         r = compute_confidence(
             missing_layers=[], stale_sources=["market"], n_signals=10, divergence_flag="aligned"
         )
-        assert r.score == 90   # 100 − 10
+        assert r.score == 90  # 100 − 10
         assert "stale:market" in r.flags
 
     def test_two_stale_sources(self):
         r = compute_confidence(
-            missing_layers=[], stale_sources=["market", "news"], n_signals=10, divergence_flag="aligned"
+            missing_layers=[],
+            stale_sources=["market", "news"],
+            n_signals=10,
+            divergence_flag="aligned",
         )
-        assert r.score == 80   # 100 − 10 − 10
+        assert r.score == 80  # 100 − 10 − 10
 
     def test_low_signal_volume(self):
         r = compute_confidence(
             missing_layers=[], stale_sources=[], n_signals=3, divergence_flag="aligned"
         )
-        assert r.score == 80   # 100 − 20
+        assert r.score == 80  # 100 − 20
         assert "low_signal_volume" in r.flags
 
     def test_exactly_5_signals_no_penalty(self):
@@ -374,13 +383,13 @@ class TestComputeConfidence:
         r = compute_confidence(
             missing_layers=[], stale_sources=[], n_signals=4, divergence_flag="aligned"
         )
-        assert r.score == 80   # 100 − 20
+        assert r.score == 80  # 100 − 20
 
     def test_high_divergence_penalty(self):
         r = compute_confidence(
             missing_layers=[], stale_sources=[], n_signals=10, divergence_flag="high_divergence"
         )
-        assert r.score == 85   # 100 − 15
+        assert r.score == 85  # 100 − 15
         assert "high_divergence" in r.flags
 
     def test_moderate_divergence_no_penalty(self):
@@ -392,18 +401,18 @@ class TestComputeConfidence:
 
     def test_penalties_accumulate(self):
         r = compute_confidence(
-            missing_layers=["macro", "influencer"],   # −15 × 2 = −30
-            stale_sources=["market", "news"],          # −10 × 2 = −20
-            n_signals=2,                               # −20
-            divergence_flag="high_divergence",         # −15
+            missing_layers=["macro", "influencer"],  # −15 × 2 = −30
+            stale_sources=["market", "news"],  # −10 × 2 = −20
+            n_signals=2,  # −20
+            divergence_flag="high_divergence",  # −15
         )
-        assert r.score == 15   # 100 − 30 − 20 − 20 − 15
+        assert r.score == 15  # 100 − 30 − 20 − 20 − 15
 
     def test_clips_at_zero(self):
         r = compute_confidence(
             missing_layers=["market", "narrative", "influencer", "macro"],  # −60
             stale_sources=["market", "news", "analyst", "insider", "macro"],  # −50
-            n_signals=0,               # −20
+            n_signals=0,  # −20
             divergence_flag="high_divergence",  # −15
         )
         # 100 − 60 − 50 − 20 − 15 = −45  →  clipped to 0
@@ -417,7 +426,9 @@ class TestComputeConfidence:
 
     def test_flags_are_strings(self):
         r = compute_confidence(
-            missing_layers=["macro"], stale_sources=["market"],
-            n_signals=2, divergence_flag="high_divergence"
+            missing_layers=["macro"],
+            stale_sources=["market"],
+            n_signals=2,
+            divergence_flag="high_divergence",
         )
         assert all(isinstance(f, str) for f in r.flags)

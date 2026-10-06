@@ -5,6 +5,7 @@ Lifespan events:
   startup  → init DB pool, init Redis, start APScheduler
   shutdown → stop scheduler, close Redis, close DB pool
 """
+
 from __future__ import annotations
 
 import logging
@@ -63,8 +64,8 @@ app.add_middleware(
 # ── Routes ────────────────────────────────────────────────────────────────────
 app.include_router(health.router)
 app.include_router(sentiment.router, prefix="/v1")
-app.include_router(history.router,   prefix="/v1")
-app.include_router(market.router,    prefix="/v1")
-app.include_router(tickers.router,   prefix="/v1")
-app.include_router(status.router,    prefix="/v1")
-app.include_router(demo_key.router,  prefix="/v1")
+app.include_router(history.router, prefix="/v1")
+app.include_router(market.router, prefix="/v1")
+app.include_router(tickers.router, prefix="/v1")
+app.include_router(status.router, prefix="/v1")
+app.include_router(demo_key.router, prefix="/v1")

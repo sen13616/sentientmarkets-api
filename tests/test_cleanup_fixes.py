@@ -7,6 +7,7 @@ Tests for the 2026-07-15 pipeline-fix/cleanup pass:
     loop (asyncio.to_thread), so the in-process API keeps serving during
     the narrative job.
 """
+
 from __future__ import annotations
 
 import threading
@@ -21,8 +22,8 @@ from pipeline.sources.market import to_yahoo_symbol
 # to_yahoo_symbol
 # ===========================================================================
 
-class TestToYahooSymbol:
 
+class TestToYahooSymbol:
     def test_class_shares_use_dash(self):
         assert to_yahoo_symbol("BRK.B") == "BRK-B"
         assert to_yahoo_symbol("BF.B") == "BF-B"
@@ -36,6 +37,7 @@ class TestToYahooSymbol:
 # cluster_articles encodes off the event loop
 # ===========================================================================
 
+
 class _StubModel:
     """Records which thread encode() ran on; returns identical unit vectors."""
 
@@ -48,7 +50,6 @@ class _StubModel:
 
 
 class TestClusterArticlesOffLoop:
-
     async def test_encode_runs_in_worker_thread(self):
         from pipeline.nlp import dedup
 

@@ -10,6 +10,7 @@ carry a sliding expiry that every successful lookup pushes forward by
 DEMO_KEY_TTL_DAYS — inside the same UPDATE that already writes
 last_used_at, so the slide costs zero extra statements.
 """
+
 from __future__ import annotations
 
 import os

@@ -15,6 +15,7 @@ Usage:
     python3 scripts/tools/compact_drivers_backfill.py --dry-run
     python3 scripts/tools/compact_drivers_backfill.py [--out PATH]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -88,7 +89,9 @@ async def backfill(out_path: str, dry_run: bool) -> None:
                         _log.info("  archived %d/%d", archived, matched)
 
         if archived != matched:
-            _log.error("Archive count %d != matched count %d — ABORTING compaction.", archived, matched)
+            _log.error(
+                "Archive count %d != matched count %d — ABORTING compaction.", archived, matched
+            )
             sys.exit(1)
         _log.info("Archive complete: %d rows.", archived)
     finally:
@@ -105,7 +108,8 @@ async def backfill(out_path: str, dry_run: bool) -> None:
         _log.error(
             "Compacted %d rows but archived %d — counts differ (new rows may have "
             "crossed the cutoff during the run); investigate before re-running.",
-            compacted, archived,
+            compacted,
+            archived,
         )
         sys.exit(1)
     _log.info("Done: %d rows archived to %s and compacted.", compacted, out_path)

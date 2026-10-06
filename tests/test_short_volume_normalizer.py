@@ -11,6 +11,7 @@ Validates:
 - Driver label, description, explanation template, source weight
 - _MARKET_SIGNAL_TYPES registry
 """
+
 from __future__ import annotations
 
 import pytest
@@ -21,6 +22,7 @@ from pipeline.features.normalize import _ZSCORE_CONFIG, RollingZScorer
 # Helpers — build synthetic history with known mean and std
 # ---------------------------------------------------------------------------
 
+
 def _make_history(mean: float, std: float, n: int = 50) -> list[float]:
     """
     Build a synthetic history of `n` values with known mean and population std.
@@ -29,7 +31,7 @@ def _make_history(mean: float, std: float, n: int = 50) -> list[float]:
     Population std of this arrangement = std exactly.
     """
     half = n // 2
-    low  = mean - std
+    low = mean - std
     high = mean + std
     return [low] * half + [high] * (n - half)
 
@@ -43,8 +45,8 @@ def _scorer() -> RollingZScorer:
 # Config params match G-K2 / G-K3
 # ---------------------------------------------------------------------------
 
-class TestZScoreConfigParams:
 
+class TestZScoreConfigParams:
     def test_is_rolling_z_scorer(self):
         assert isinstance(_scorer(), RollingZScorer)
 
@@ -75,8 +77,8 @@ class TestZScoreConfigParams:
 # (a) Today is +2 std above mean → score < 50 (bearish)
 # ---------------------------------------------------------------------------
 
-class TestZScorePlusTwoSigma:
 
+class TestZScorePlusTwoSigma:
     def test_output_below_50(self):
         """z = +2, negate → score ≈ 16.67."""
         history = _make_history(mean=0.50, std=0.10, n=50)
@@ -100,8 +102,8 @@ class TestZScorePlusTwoSigma:
 # (b) Today is -2 std below mean → score > 50 (bullish)
 # ---------------------------------------------------------------------------
 
-class TestZScoreMinusTwoSigma:
 
+class TestZScoreMinusTwoSigma:
     def test_output_above_50(self):
         """z = -2, negate → score ≈ 83.33."""
         history = _make_history(mean=0.50, std=0.10, n=50)
@@ -124,8 +126,8 @@ class TestZScoreMinusTwoSigma:
 # (c) Today is at mean (z = 0) → score = 50 (neutral)
 # ---------------------------------------------------------------------------
 
-class TestZScoreAtMean:
 
+class TestZScoreAtMean:
     def test_output_is_50(self):
         history = _make_history(mean=0.50, std=0.10, n=50)
         result = _scorer().score_from_history(history, 0.50)
@@ -143,8 +145,8 @@ class TestZScoreAtMean:
 # (d) Insufficient history → returns None (effective_min_obs=45)
 # ---------------------------------------------------------------------------
 
-class TestInsufficientHistory:
 
+class TestInsufficientHistory:
     def test_44_points_returns_none(self):
         """window=90, fill_threshold=0.5 → effective_min=45. So 44 is insufficient."""
         history = _make_history(mean=0.50, std=0.10, n=44)
@@ -173,8 +175,8 @@ class TestInsufficientHistory:
 # (e) std = 0 (constant history) → returns None
 # ---------------------------------------------------------------------------
 
-class TestZeroVariance:
 
+class TestZeroVariance:
     def test_constant_history_returns_none(self):
         history = [0.45] * 50
         assert _scorer().score_from_history(history, 0.45) is None
@@ -188,8 +190,8 @@ class TestZeroVariance:
 # Clipping at ±3 sigma → output clamped to [0, 100]
 # ---------------------------------------------------------------------------
 
-class TestClipping:
 
+class TestClipping:
     def test_extreme_positive_z_clamped_to_0(self):
         """z > 3, negate → clamped to -3 → score = 0."""
         history = _make_history(mean=0.50, std=0.01, n=50)
@@ -219,20 +221,28 @@ class TestClipping:
 # _MARKET_SIGNAL_TYPES includes new types
 # ---------------------------------------------------------------------------
 
-class TestMarketSignalTypesRegistry:
 
+class TestMarketSignalTypesRegistry:
     def test_short_volume_types_registered(self):
         from pipeline.orchestrator import _MARKET_SIGNAL_TYPES
+
         assert "short_volume_otc" in _MARKET_SIGNAL_TYPES
         assert "short_volume_total_otc" in _MARKET_SIGNAL_TYPES
         assert "short_volume_ratio_otc" in _MARKET_SIGNAL_TYPES
 
     def test_existing_types_still_present(self):
         from pipeline.orchestrator import _MARKET_SIGNAL_TYPES
+
         for expected in [
-            "rsi_14", "return_1d", "return_5d", "return_20d",
-            "volume_ratio", "order_flow_imbalance", "buy_pressure",
-            "sell_pressure", "bid_ask_spread_bps",
+            "rsi_14",
+            "return_1d",
+            "return_5d",
+            "return_20d",
+            "volume_ratio",
+            "order_flow_imbalance",
+            "buy_pressure",
+            "sell_pressure",
+            "bid_ask_spread_bps",
         ]:
             assert expected in _MARKET_SIGNAL_TYPES, f"Missing: {expected}"
 
@@ -240,6 +250,7 @@ class TestMarketSignalTypesRegistry:
 # ---------------------------------------------------------------------------
 # Score conversion: RollingZScorer [0, 100] consistency
 # ---------------------------------------------------------------------------
+
 
 class TestScoreConversion:
     """Verify that scores align with pipeline convention (50 = neutral)."""
@@ -270,15 +281,17 @@ class TestScoreConversion:
 # Driver label and description
 # ---------------------------------------------------------------------------
 
-class TestDriverMetadata:
 
+class TestDriverMetadata:
     def test_signal_label_exists(self):
         from pipeline.scoring.drivers import _SIGNAL_LABELS
+
         assert "short_volume_ratio_otc" in _SIGNAL_LABELS
         assert _SIGNAL_LABELS["short_volume_ratio_otc"] == "Short volume ratio"
 
     def test_description_handler(self):
         from pipeline.scoring.drivers import _describe
+
         desc = _describe("short_volume_ratio_otc", 0.60, ticker="AAPL")
         assert "60.0%" in desc
         assert "elevated" in desc
@@ -286,11 +299,13 @@ class TestDriverMetadata:
 
     def test_description_normal_level(self):
         from pipeline.scoring.drivers import _describe
+
         desc = _describe("short_volume_ratio_otc", 0.45, ticker="MSFT")
         assert "normal" in desc
 
     def test_description_low_level(self):
         from pipeline.scoring.drivers import _describe
+
         desc = _describe("short_volume_ratio_otc", 0.30, ticker="GOOG")
         assert "low" in desc
 
@@ -299,10 +314,11 @@ class TestDriverMetadata:
 # Explanation template
 # ---------------------------------------------------------------------------
 
-class TestExplanationTemplate:
 
+class TestExplanationTemplate:
     def test_phrase_exists(self):
         from pipeline.explanation.templates import _PHRASES
+
         assert "Short volume ratio" in _PHRASES
         phrases = _PHRASES["Short volume ratio"]
         assert "bullish" in phrases
@@ -311,6 +327,7 @@ class TestExplanationTemplate:
 
     def test_source_weight_registered(self):
         from pipeline.features.normalize import _SOURCE_WEIGHTS
+
         assert "finra_regsho" in _SOURCE_WEIGHTS
         assert _SOURCE_WEIGHTS["finra_regsho"] == 0.9
 
@@ -319,8 +336,8 @@ class TestExplanationTemplate:
 # Regression: legacy _normalize_short_volume_z removed
 # ---------------------------------------------------------------------------
 
-class TestLegacyRemoved:
 
+class TestLegacyRemoved:
     def test_legacy_function_not_importable(self):
         """_normalize_short_volume_z was replaced by RollingZScorer."""
         with pytest.raises(ImportError):

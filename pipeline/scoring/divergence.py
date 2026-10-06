@@ -21,6 +21,7 @@ bearish signal contradicts an otherwise bullish picture.
 Fewer than two available layers: spread is 0, flag is "aligned",
 no cap is applied.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -28,9 +29,9 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class DivergenceResult:
-    spread: float            # max − min across available sub-indices
-    flag: str                # "high_divergence" | "moderate_divergence" | "aligned"
-    cap_applied: bool        # True when composite was capped at 75
+    spread: float  # max − min across available sub-indices
+    flag: str  # "high_divergence" | "moderate_divergence" | "aligned"
+    cap_applied: bool  # True when composite was capped at 75
 
 
 def compute_divergence(
@@ -66,7 +67,7 @@ def compute_divergence(
         flag = "aligned"
 
     cap_applied = any(v > 85 for v in values) and any(v < 30 for v in values)
-    effective   = min(composite, 75.0) if cap_applied else composite
+    effective = min(composite, 75.0) if cap_applied else composite
 
     return (
         DivergenceResult(spread=round(spread, 4), flag=flag, cap_applied=cap_applied),

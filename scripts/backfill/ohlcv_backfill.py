@@ -19,6 +19,7 @@ skipped automatically.
 Usage:
   python backfill/ohlcv_backfill.py
 """
+
 import asyncio
 import os
 import sys
@@ -36,12 +37,13 @@ load_dotenv(override=False)
 
 AV_BASE = "https://www.alphavantage.co/query"
 LOOKBACK_DAYS = 730
-INTER_REQUEST_DELAY = 0.8   # seconds between requests (~62 req/min)
+INTER_REQUEST_DELAY = 0.8  # seconds between requests (~62 req/min)
 
 
 # --------------------------------------------------------------------------- #
 # Alpha Vantage helpers                                                         #
 # --------------------------------------------------------------------------- #
+
 
 async def _fetch_time_series(
     client: httpx.AsyncClient,
@@ -56,10 +58,10 @@ async def _fetch_time_series(
         resp = await client.get(
             AV_BASE,
             params={
-                "function":   "TIME_SERIES_DAILY_ADJUSTED",
-                "symbol":     ticker,
+                "function": "TIME_SERIES_DAILY_ADJUSTED",
+                "symbol": ticker,
                 "outputsize": "full",
-                "apikey":     api_key,
+                "apikey": api_key,
             },
         )
         resp.raise_for_status()
@@ -85,6 +87,7 @@ async def _fetch_time_series(
 # Row builder                                                                   #
 # --------------------------------------------------------------------------- #
 
+
 def _build_rows(
     ticker: str,
     time_series: dict[str, dict],
@@ -102,22 +105,28 @@ def _build_rows(
 
         try:
             signals = [
-                ("ohlcv_open",           float(ohlcv["1. open"])),
-                ("ohlcv_high",           float(ohlcv["2. high"])),
-                ("ohlcv_low",            float(ohlcv["3. low"])),
-                ("ohlcv_close",          float(ohlcv["4. close"])),
+                ("ohlcv_open", float(ohlcv["1. open"])),
+                ("ohlcv_high", float(ohlcv["2. high"])),
+                ("ohlcv_low", float(ohlcv["3. low"])),
+                ("ohlcv_close", float(ohlcv["4. close"])),
                 ("ohlcv_adjusted_close", float(ohlcv["5. adjusted close"])),
-                ("ohlcv_volume",         float(ohlcv["6. volume"])),
+                ("ohlcv_volume", float(ohlcv["6. volume"])),
             ]
         except (KeyError, ValueError) as exc:
             print(f"    [!] Parse error on {date_str}: {exc}")
             continue
 
         for signal_type, value in signals:
-            rows.append((
-                ticker, signal_type, value,
-                "alpha_vantage", "manual_backfill", ts,
-            ))
+            rows.append(
+                (
+                    ticker,
+                    signal_type,
+                    value,
+                    "alpha_vantage",
+                    "manual_backfill",
+                    ts,
+                )
+            )
 
     return rows
 
@@ -125,6 +134,7 @@ def _build_rows(
 # --------------------------------------------------------------------------- #
 # DB helpers                                                                    #
 # --------------------------------------------------------------------------- #
+
 
 async def _already_backfilled(ticker: str) -> bool:
     pool = await get_pool()
@@ -164,6 +174,7 @@ async def _insert_rows(rows: list[tuple]) -> None:
 # Main                                                                          #
 # --------------------------------------------------------------------------- #
 
+
 async def main() -> None:
     api_key = os.environ.get("ALPHA_VANTAGE_KEY", "")
     if not api_key:
@@ -176,8 +187,7 @@ async def main() -> None:
         tickers: list[str] = [
             r["ticker"]
             for r in await conn.fetch(
-                "SELECT ticker FROM ticker_universe"
-                " WHERE tier = 'tier1_supported' ORDER BY ticker"
+                "SELECT ticker FROM ticker_universe WHERE tier = 'tier1_supported' ORDER BY ticker"
             )
         ]
 

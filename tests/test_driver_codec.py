@@ -4,6 +4,7 @@ The compact encoding is what compact_drivers_before() produces in SQL and
 what db_exports re-expands; the Python codec must mirror the SQL field order
 exactly.
 """
+
 from __future__ import annotations
 
 from pipeline.scoring.driver_codec import (

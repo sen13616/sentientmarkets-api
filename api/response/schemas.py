@@ -14,6 +14,7 @@ Models
     TickersResponse    — /v1/tickers
     StatusResponse     — /v1/status
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -25,9 +26,10 @@ from pydantic import BaseModel
 # Market hours
 # ---------------------------------------------------------------------------
 
+
 class MarketHours(BaseModel):
-    is_open:    bool
-    next_open:  datetime
+    is_open: bool
+    next_open: datetime
     last_close: datetime
 
 
@@ -35,84 +37,87 @@ class MarketHours(BaseModel):
 # Sentiment — free tier
 # ---------------------------------------------------------------------------
 
+
 class FreeTierResponse(BaseModel):
-    ticker:              str
-    score:               int                      # EMA-smoothed (display-stable; lags by design)
-    score_raw:           Optional[int] = None     # Unsmoothed composite — the responsive number
-    score_change_1d:     Optional[float] = None   # vs most recent tick 24-48h old; null across gaps
+    ticker: str
+    score: int  # EMA-smoothed (display-stable; lags by design)
+    score_raw: Optional[int] = None  # Unsmoothed composite — the responsive number
+    score_change_1d: Optional[float] = None  # vs most recent tick 24-48h old; null across gaps
     score_change_1d_pct: Optional[float] = None
-    label:               str
-    confidence:          int
-    timestamp:           datetime
-    cache_age_seconds:   int
-    market_hours:        MarketHours
+    label: str
+    confidence: int
+    timestamp: datetime
+    cache_age_seconds: int
+    market_hours: MarketHours
 
 
 # ---------------------------------------------------------------------------
 # Sentiment — pro tier
 # ---------------------------------------------------------------------------
 
+
 class SubIndices(BaseModel):
-    market:     Optional[float] = None
-    narrative:  Optional[float] = None
+    market: Optional[float] = None
+    narrative: Optional[float] = None
     influencer: Optional[float] = None
-    macro:      Optional[float] = None
+    macro: Optional[float] = None
 
 
 class Driver(BaseModel):
-    signal:       str
-    description:  str
-    direction:    str
-    magnitude:    float
+    signal: str
+    description: str
+    direction: str
+    magnitude: float
     source_layer: str
 
 
 class Freshness(BaseModel):
-    market_as_of:     Optional[datetime] = None
-    narrative_as_of:  Optional[datetime] = None
+    market_as_of: Optional[datetime] = None
+    narrative_as_of: Optional[datetime] = None
     influencer_as_of: Optional[datetime] = None
-    macro_as_of:      Optional[datetime] = None
+    macro_as_of: Optional[datetime] = None
 
 
 class ProTierResponse(BaseModel):
-    ticker:            str
-    score:             int              # EMA-smoothed composite (with raw fallback)
-    score_raw:         Optional[int]    = None   # Unsmoothed composite
-    score_change_1d:     Optional[float] = None  # vs most recent tick 24-48h old; null across gaps
+    ticker: str
+    score: int  # EMA-smoothed composite (with raw fallback)
+    score_raw: Optional[int] = None  # Unsmoothed composite
+    score_change_1d: Optional[float] = None  # vs most recent tick 24-48h old; null across gaps
     score_change_1d_pct: Optional[float] = None
     universe_percentile: Optional[float] = None  # percentile within latest tick; null if not in it
     # Cross-sectional stats on the RAW score, computed per tick over tickers
     # scored in that tick (nowcasting plan, Phase 2); null when not in it.
-    score_raw_z:          Optional[float] = None  # (raw − μ)/σ over the universe; unclamped
+    score_raw_z: Optional[float] = None  # (raw − μ)/σ over the universe; unclamped
     score_raw_percentile: Optional[float] = None  # percentile of raw score in universe
-    sector_percentile:    Optional[float] = None  # percentile of raw score within GICS sector
+    sector_percentile: Optional[float] = None  # percentile of raw score within GICS sector
     # Exogenous sentiment-only composite (nowcasting plan, Phase 3): narrative/
     # influencer/macro with the price-derived market layer excluded. Raw
     # (never smoothed); null when all three exo layers were missing.
-    score_exo:            Optional[float] = None
+    score_exo: Optional[float] = None
     score_exo_percentile: Optional[float] = None  # percentile of score_exo in latest tick
-    ema_obs_count:     Optional[int]    = None   # Monotonic EMA update counter
-    label:             str
-    confidence:        int
-    sub_indices:       SubIndices
-    missing_layers:    list[str]         = []
-    divergence:        Optional[str]     = None
-    top_drivers:       list[Driver]      = []
-    explanation:       str               = ""
-    freshness:         Freshness
-    confidence_flags:  list[str]         = []
-    timestamp:         datetime
+    ema_obs_count: Optional[int] = None  # Monotonic EMA update counter
+    label: str
+    confidence: int
+    sub_indices: SubIndices
+    missing_layers: list[str] = []
+    divergence: Optional[str] = None
+    top_drivers: list[Driver] = []
+    explanation: str = ""
+    freshness: Freshness
+    confidence_flags: list[str] = []
+    timestamp: datetime
     cache_age_seconds: int
-    market_hours:      MarketHours
+    market_hours: MarketHours
 
 
 # ---------------------------------------------------------------------------
 # No-data / out-of-universe
 # ---------------------------------------------------------------------------
 
+
 class NoDataResponse(BaseModel):
-    ticker:  str
-    status:  str    # insufficient_data | unsupported_ticker | temporarily_unavailable | delisted
+    ticker: str
+    status: str  # insufficient_data | unsupported_ticker | temporarily_unavailable | delisted
     message: str
 
 
@@ -120,8 +125,9 @@ class NoDataResponse(BaseModel):
 # Error
 # ---------------------------------------------------------------------------
 
+
 class ErrorResponse(BaseModel):
-    error:   str
+    error: str
     message: str
 
 
@@ -129,10 +135,11 @@ class ErrorResponse(BaseModel):
 # Demo key (/v1/demo-key)
 # ---------------------------------------------------------------------------
 
+
 class DemoKeyResponse(BaseModel):
-    api_key:            str        # plaintext — sandbox credential, returned once
-    tier:               str
-    expires_at:         datetime
+    api_key: str  # plaintext — sandbox credential, returned once
+    tier: str
+    expires_at: datetime
     rate_limit_per_min: int
 
 
@@ -140,26 +147,27 @@ class DemoKeyResponse(BaseModel):
 # History endpoint
 # ---------------------------------------------------------------------------
 
+
 class HistorySubIndices(BaseModel):
-    market:     Optional[float] = None
-    narrative:  Optional[float] = None
+    market: Optional[float] = None
+    narrative: Optional[float] = None
     influencer: Optional[float] = None
-    macro:      Optional[float] = None
+    macro: Optional[float] = None
 
 
 class HistoryEntry(BaseModel):
-    timestamp:      datetime
-    score:          int                       # Smoothed (with raw fallback for pre-EMA rows)
-    score_raw:      Optional[int]    = None   # Unsmoothed composite
-    score_exo:      Optional[float]  = None   # Sentiment-only composite (no market layer)
-    label:          str
-    confidence:     int
-    sub_indices:    HistorySubIndices
+    timestamp: datetime
+    score: int  # Smoothed (with raw fallback for pre-EMA rows)
+    score_raw: Optional[int] = None  # Unsmoothed composite
+    score_exo: Optional[float] = None  # Sentiment-only composite (no market layer)
+    label: str
+    confidence: int
+    sub_indices: HistorySubIndices
     missing_layers: list[str] = []
 
 
 class HistoryResponse(BaseModel):
-    ticker:  str
+    ticker: str
     history: list[HistoryEntry]
 
 
@@ -167,64 +175,67 @@ class HistoryResponse(BaseModel):
 # Tickers endpoint
 # ---------------------------------------------------------------------------
 
+
 class TickerItem(BaseModel):
     ticker: str
-    name:   Optional[str] = None
-    sector: Optional[str] = None   # GICS sector (P4.1); None if not yet seeded
+    name: Optional[str] = None
+    sector: Optional[str] = None  # GICS sector (P4.1); None if not yet seeded
     in_sp500: Optional[bool] = None  # current S&P 500 member (migration 015 snapshot)
 
 
 class TickersResponse(BaseModel):
     universe_size: int
-    tickers:       list[TickerItem]
+    tickers: list[TickerItem]
 
 
 # ---------------------------------------------------------------------------
 # Market overview endpoint (pro tier)
 # ---------------------------------------------------------------------------
 
+
 class Mover(BaseModel):
-    ticker:              str
-    score:               float
-    score_change_1d:     Optional[float] = None
+    ticker: str
+    score: float
+    score_change_1d: Optional[float] = None
     score_change_1d_pct: Optional[float] = None
 
 
 class SectorTickerRank(BaseModel):
     ticker: str
-    score:  float
-    rank:   int               # 1 = highest score within the sector
+    score: float
+    rank: int  # 1 = highest score within the sector
 
 
 class SectorOverview(BaseModel):
-    sector:        str
+    sector: str
     average_score: float
-    size:          int        # tickers scored in this sector this tick
-    tickers:       list[SectorTickerRank]
+    size: int  # tickers scored in this sector this tick
+    tickers: list[SectorTickerRank]
 
 
 class MarketOverviewResponse(BaseModel):
-    timestamp:             datetime            # scoring tick the blob was computed at
-    universe_scored:       int
-    average_score:         Optional[float] = None
-    breadth_above_50_pct:  Optional[float] = None
-    breadth_improving_pct: Optional[float] = None   # null when no ticker has a 1d baseline
-    top_movers:            list[Mover] = []
-    bottom_movers:         list[Mover] = []
-    sectors:               list[SectorOverview] = []
-    summary:               str = ""            # human-readable market sentiment narrative
+    timestamp: datetime  # scoring tick the blob was computed at
+    universe_scored: int
+    average_score: Optional[float] = None
+    breadth_above_50_pct: Optional[float] = None
+    breadth_improving_pct: Optional[float] = None  # null when no ticker has a 1d baseline
+    top_movers: list[Mover] = []
+    bottom_movers: list[Mover] = []
+    sectors: list[SectorOverview] = []
+    summary: str = ""  # human-readable market sentiment narrative
 
 
 # ---------------------------------------------------------------------------
 # Status endpoint
 # ---------------------------------------------------------------------------
 
+
 class StatusResponse(BaseModel):
-    status:               str
-    market_is_open:       bool
-    last_market_run:      Optional[datetime] = None
-    last_narrative_run:   Optional[datetime] = None
-    last_influencer_run:  Optional[datetime] = None
-    last_macro_run:       Optional[datetime] = None
-    last_eod_run:           Optional[datetime] = None
-    last_scoring_tick_run:  Optional[datetime] = None
+    status: str
+    market_is_open: bool
+    last_market_run: Optional[datetime] = None
+    last_narrative_run: Optional[datetime] = None
+    last_influencer_run: Optional[datetime] = None
+    last_macro_run: Optional[datetime] = None
+    last_eod_run: Optional[datetime] = None
+    last_scoring_tick_run: Optional[datetime] = None

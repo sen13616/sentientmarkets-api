@@ -15,6 +15,7 @@ Idempotent — re-runs only touch rows whose `sector` value actually changes
 
 Requires DATABASE_URL in .env (or the environment).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -55,7 +56,8 @@ async def main() -> None:
                  WHERE ticker = $1
                    AND (sector IS DISTINCT FROM $2)
                 """,
-                ticker, sector,
+                ticker,
+                sector,
             )
             # asyncpg's execute returns "UPDATE 0" or "UPDATE 1"
             count = int(result.split()[-1]) if result.startswith("UPDATE") else 0
@@ -64,7 +66,8 @@ async def main() -> None:
             else:
                 # No row changed: either ticker not in universe, or value already correct.
                 exists = await conn.fetchval(
-                    "SELECT 1 FROM ticker_universe WHERE ticker = $1", ticker,
+                    "SELECT 1 FROM ticker_universe WHERE ticker = $1",
+                    ticker,
                 )
                 if exists:
                     unchanged += 1
@@ -80,8 +83,9 @@ async def main() -> None:
         )
 
         print(f"seed_sectors: updated={updated} unchanged={unchanged} missing={missing}")
-        print(f"  ticker_universe.sector populated: {total_with_sector} non-null, "
-              f"{total_null} null")
+        print(
+            f"  ticker_universe.sector populated: {total_with_sector} non-null, {total_null} null"
+        )
     finally:
         await conn.close()
 

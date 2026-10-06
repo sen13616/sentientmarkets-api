@@ -22,6 +22,7 @@ sector_etf_return_20d  (20-day return; needs ≥20 days of stored ETF closes)
 
 All written with upload_type='live', source as noted.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -49,25 +50,25 @@ _log = logging.getLogger(__name__)
 
 load_dotenv(override=False)
 
-_AV_KEY      = os.environ.get("ALPHA_VANTAGE_KEY", "")
+_AV_KEY = os.environ.get("ALPHA_VANTAGE_KEY", "")
 _FINNHUB_KEY = os.environ.get("FINNHUB_KEY", "")
 
-_AV_BASE      = "https://www.alphavantage.co/query"
+_AV_BASE = "https://www.alphavantage.co/query"
 _FINNHUB_BASE = "https://finnhub.io/api/v1"
 
 # GICS sector → ETF ticker mapping
 SECTOR_ETFS: dict[str, str] = {
-    "Communication Services":  "XLC",
-    "Consumer Discretionary":  "XLY",
-    "Consumer Staples":        "XLP",
-    "Energy":                  "XLE",
-    "Financials":              "XLF",
-    "Health Care":             "XLV",
-    "Industrials":             "XLI",
-    "Information Technology":  "XLK",
-    "Materials":               "XLB",
-    "Real Estate":             "XLRE",
-    "Utilities":               "XLU",
+    "Communication Services": "XLC",
+    "Consumer Discretionary": "XLY",
+    "Consumer Staples": "XLP",
+    "Energy": "XLE",
+    "Financials": "XLF",
+    "Health Care": "XLV",
+    "Industrials": "XLI",
+    "Information Technology": "XLK",
+    "Materials": "XLB",
+    "Real Estate": "XLRE",
+    "Utilities": "XLU",
 }
 
 
@@ -75,8 +76,10 @@ SECTOR_ETFS: dict[str, str] = {
 # VIX helpers
 # ---------------------------------------------------------------------------
 
+
 async def _vix_yfinance() -> tuple[float, str] | None:
     """Fetch current VIX via yfinance (no API key required)."""
+
     def _fetch():
         ticker = yf.Ticker("^VIX")
         hist = ticker.history(period="5d")
@@ -95,9 +98,12 @@ async def _vix_yfinance() -> tuple[float, str] | None:
 async def _vix_finnhub(client: httpx.AsyncClient) -> tuple[float, str] | None:
     """Finnhub /quote?symbol=^VIX → (vix_value, source) or None."""
     resp = await guarded_get(
-        client, f"{_FINNHUB_BASE}/quote",
+        client,
+        f"{_FINNHUB_BASE}/quote",
         params={"symbol": "^VIX", "token": _FINNHUB_KEY},
-        sem=FINNHUB_SEM, delay=FINNHUB_DELAY, label="Finnhub VIX",
+        sem=FINNHUB_SEM,
+        delay=FINNHUB_DELAY,
+        label="Finnhub VIX",
     )
     if resp is None or resp.status_code != 200:
         return None
@@ -113,13 +119,16 @@ async def _vix_finnhub(client: httpx.AsyncClient) -> tuple[float, str] | None:
 async def _vix_av(client: httpx.AsyncClient) -> tuple[float, str] | None:
     """Alpha Vantage GLOBAL_QUOTE?symbol=^VIX fallback → (vix_value, source) or None."""
     resp = await guarded_get(
-        client, _AV_BASE,
+        client,
+        _AV_BASE,
         params={
             "function": "GLOBAL_QUOTE",
-            "symbol":   "^VIX",
-            "apikey":   _AV_KEY,
+            "symbol": "^VIX",
+            "apikey": _AV_KEY,
         },
-        sem=AV_SEM, delay=AV_DELAY, label="AV VIX",
+        sem=AV_SEM,
+        delay=AV_DELAY,
+        label="AV VIX",
     )
     if resp is None:
         return None
@@ -148,16 +157,20 @@ async def _vix_av(client: httpx.AsyncClient) -> tuple[float, str] | None:
 # Sector ETF helpers
 # ---------------------------------------------------------------------------
 
+
 async def _etf_close_av(etf: str, client: httpx.AsyncClient) -> tuple[float, datetime] | None:
     """Alpha Vantage GLOBAL_QUOTE for a sector ETF → (close, timestamp)."""
     resp = await guarded_get(
-        client, _AV_BASE,
+        client,
+        _AV_BASE,
         params={
             "function": "GLOBAL_QUOTE",
-            "symbol":   etf,
-            "apikey":   _AV_KEY,
+            "symbol": etf,
+            "apikey": _AV_KEY,
         },
-        sem=AV_SEM, delay=AV_DELAY, label=f"AV ETF {etf}",
+        sem=AV_SEM,
+        delay=AV_DELAY,
+        label=f"AV ETF {etf}",
     )
     if resp is None:
         return None
@@ -173,7 +186,7 @@ async def _etf_close_av(etf: str, client: httpx.AsyncClient) -> tuple[float, dat
 
     q = body.get("Global Quote", {})
     price_str = q.get("05. price")
-    date_str  = q.get("07. latest trading day", "")
+    date_str = q.get("07. latest trading day", "")
 
     if not price_str:
         return None
@@ -211,9 +224,10 @@ def _compute_etf_return_20d(
 # Public entry point
 # ---------------------------------------------------------------------------
 
+
 async def _run_macro(client: httpx.AsyncClient) -> None:
     """Core implementation — requires a live client."""
-    now  = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
     rows: list[tuple] = []
 
     # --- VIX (primary: yfinance, fallback: Finnhub, fallback: AV) ---

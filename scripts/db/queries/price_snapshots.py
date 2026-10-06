@@ -6,6 +6,7 @@ All price_snapshots table operations.
 Functions accept an explicit asyncpg Connection so that callers can wrap
 multiple inserts in a single transaction (see pipeline/persistence/pg_writer.py).
 """
+
 from __future__ import annotations
 
 from datetime import datetime

@@ -10,6 +10,7 @@ copied into the asyncio tasks it spawns, so concurrent per-ticker scoring sees
 the same cutoff. When set, the scoring-path queries add an upper bound so no
 row timestamped after t can leak into a score for t.
 """
+
 from __future__ import annotations
 
 from collections.abc import Iterator

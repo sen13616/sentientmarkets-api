@@ -21,6 +21,7 @@ The caller is responsible for determining which penalties apply (see
 staleness.py for stale-source detection and divergence.py for the
 divergence flag).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -28,16 +29,16 @@ from dataclasses import dataclass, field
 LOW_VOLUME_THRESHOLD = 5
 
 PENALTIES: dict[str, int] = {
-    "missing_layer":    15,
-    "stale_source":     10,
+    "missing_layer": 15,
+    "stale_source": 10,
     "low_signal_volume": 20,
-    "high_divergence":  15,
+    "high_divergence": 15,
 }
 
 
 @dataclass(frozen=True)
 class ConfidenceResult:
-    score: int              # 0–100 integer, clipped
+    score: int  # 0–100 integer, clipped
     flags: list[str] = field(default_factory=list, compare=False)
 
 
@@ -63,7 +64,7 @@ def compute_confidence(
         score : clipped integer in [0, 100]
         flags : list of active penalty strings for transparency
     """
-    raw   = 100
+    raw = 100
     flags: list[str] = []
 
     # --- Missing layers: −15 each ---

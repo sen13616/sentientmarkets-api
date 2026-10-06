@@ -26,6 +26,7 @@ COMPACT_FIELDS. The two formats are distinguished by the type of the first
 element (dict → verbose, list → compact); empty/None values are unchanged by
 compaction.
 """
+
 from __future__ import annotations
 
 COMPACT_FIELDS: tuple[str, ...] = (
@@ -44,10 +45,7 @@ def compact_drivers(drivers: list[dict]) -> list[list]:
 
 def expand_drivers(drivers: list[list]) -> list[dict]:
     """Decode compact arrays back into driver dicts (description=None)."""
-    return [
-        {**dict(zip(COMPACT_FIELDS, d)), "description": None}
-        for d in drivers
-    ]
+    return [{**dict(zip(COMPACT_FIELDS, d)), "description": None} for d in drivers]
 
 
 def is_compact(drivers: list | None) -> bool:

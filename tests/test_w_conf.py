@@ -8,6 +8,7 @@ Paper examples:
     (0.92, 0.05, 0.03) → w_conf ≈ 0.74
     (0.40, 0.35, 0.25) → w_conf ≈ 0.08
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -23,8 +24,8 @@ def _make_ts():
 # _compute_w_conf unit tests
 # ===========================================================================
 
-class TestComputeWConf:
 
+class TestComputeWConf:
     def test_paper_example_high_confidence(self):
         """Paper example: (0.92, 0.05, 0.03) → w_conf ≈ 0.70.
         (Paper states ~0.74 as approximation; exact value is ~0.698.)"""
@@ -50,7 +51,7 @@ class TestComputeWConf:
 
     def test_uniform_distribution_gives_zero(self):
         """Uniform (1/3, 1/3, 1/3) → maximum entropy → w_conf = 0."""
-        w = _compute_w_conf(1/3, 1/3, 1/3)
+        w = _compute_w_conf(1 / 3, 1 / 3, 1 / 3)
         assert abs(w) < 1e-6, f"Expected ~0 for uniform, got {w}"
 
     def test_degenerate_single_class(self):
@@ -101,6 +102,7 @@ class TestComputeWConf:
 # w_conf integration in score_narrative_signals
 # ===========================================================================
 
+
 class TestWConfInNarrativeScoring:
     """Verify that w_conf affects the weight in score_narrative_signals."""
 
@@ -118,7 +120,7 @@ class TestWConfInNarrativeScoring:
     def test_high_confidence_higher_weight(self):
         """Article with high confidence should have higher weight than low confidence."""
         art_high = self._art(0.5, 0.92, 0.05, 0.03)  # w_conf ≈ 0.74
-        art_low = self._art(0.5, 0.40, 0.35, 0.25)   # w_conf ≈ 0.02
+        art_low = self._art(0.5, 0.40, 0.35, 0.25)  # w_conf ≈ 0.02
 
         res_high = score_narrative_signals("TEST", [art_high], _make_ts())
         res_low = score_narrative_signals("TEST", [art_low], _make_ts())

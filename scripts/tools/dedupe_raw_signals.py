@@ -16,6 +16,7 @@ Usage:
 The delete is aborted unless the archived row count exactly matches the
 duplicate count found in the database.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -122,7 +123,11 @@ async def dedupe(batch_size: int, out_path: str, dry_run: bool) -> None:
             _log.info("  deleted %d/%d", deleted, total)
 
         if deleted != archived:
-            _log.error("Deleted %d rows but archived %d — investigate before re-running.", deleted, archived)
+            _log.error(
+                "Deleted %d rows but archived %d — investigate before re-running.",
+                deleted,
+                archived,
+            )
             sys.exit(1)
         _log.info("Done: %d duplicate rows archived to %s and deleted.", deleted, out_path)
     finally:

@@ -24,6 +24,7 @@ Routes enforce the quota through the `rate_limited` dependency, which
 chains authentication and keys the bucket off the same parsed bearer
 token that authentication used.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -39,7 +40,7 @@ _log = logging.getLogger(__name__)
 
 _LIMITS: dict[str, int] = {
     "free": 10,
-    "pro":  600,
+    "pro": 600,
 }
 
 _bearer = HTTPBearer(auto_error=False)
@@ -82,7 +83,7 @@ async def check_rate_limit(raw_token: str, tier: str) -> None:
         raise HTTPException(
             status_code=429,
             detail={
-                "error":   "rate_limit_exceeded",
+                "error": "rate_limit_exceeded",
                 "message": "Too many requests for your tier",
             },
         )

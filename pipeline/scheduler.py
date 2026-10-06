@@ -31,6 +31,7 @@ Usage
     scheduler.start()   # call from FastAPI lifespan
     scheduler.shutdown()
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -139,6 +140,7 @@ async def _record_run(job_id: str) -> None:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 async def _fetch_all_tickers(
     fetcher,
     tickers: list[str],
@@ -216,8 +218,9 @@ async def _score_all(
     try:
         baselines = await get_baseline_scores()
     except Exception as exc:
-        _log.warning("%s: get_baseline_scores failed: %s — 1d changes null this tick",
-                     job_name, exc)
+        _log.warning(
+            "%s: get_baseline_scores failed: %s — 1d changes null this tick", job_name, exc
+        )
         baselines = {}
 
     results: dict[str, ScoreResult] = {}
@@ -246,12 +249,12 @@ async def _score_all(
             except TimeoutError:
                 _log.error(
                     "%s: scoring timed out for %s after %ds — skipped this tick",
-                    job_name, ticker, SCORE_TICKER_TIMEOUT_S,
+                    job_name,
+                    ticker,
+                    SCORE_TICKER_TIMEOUT_S,
                 )
             except Exception as exc:
-                _log.warning(
-                    "%s: scoring failed for %s: %s", job_name, ticker, exc, exc_info=True
-                )
+                _log.warning("%s: scoring failed for %s: %s", job_name, ticker, exc, exc_info=True)
             finally:
                 pbar.update(1)
                 avg = total_layers / fetched if fetched else 0
@@ -281,14 +284,14 @@ async def _publish_universe_stats(
     if not results:
         return
     now = datetime.now(timezone.utc)
-    scores      = {t: r.smoothed_score for t, r in results.items()}
-    changes     = {t: r.score_change_1d for t, r in results.items()}
+    scores = {t: r.smoothed_score for t, r in results.items()}
+    changes = {t: r.score_change_1d for t, r in results.items()}
     change_pcts = {t: r.score_change_1d_pct for t, r in results.items()}
-    raw_scores  = {t: r.raw_score for t, r in results.items() if r.raw_score is not None}
-    exo_scores  = {t: r.exo_score for t, r in results.items() if r.exo_score is not None}
+    raw_scores = {t: r.raw_score for t, r in results.items() if r.raw_score is not None}
+    exo_scores = {t: r.exo_score for t, r in results.items() if r.exo_score is not None}
 
-    pct_map  = compute_percentiles(scores)
-    xs_map   = compute_cross_sectional(raw_scores, sector_map, exo_scores)
+    pct_map = compute_percentiles(scores)
+    xs_map = compute_cross_sectional(raw_scores, sector_map, exo_scores)
     overview = build_overview(scores, changes, change_pcts, sector_map, now)
 
     try:
@@ -304,7 +307,8 @@ async def _publish_universe_stats(
         await pipe.execute()
         _log.info(
             "universe stats published: %d percentiles, overview avg=%s",
-            len(pct_map), overview.get("average_score"),
+            len(pct_map),
+            overview.get("average_score"),
         )
     except Exception as exc:
         _log.warning("_publish_universe_stats: Redis write failed: %s", exc)
@@ -319,6 +323,7 @@ def _fmt_elapsed(seconds: float) -> str:
 # ---------------------------------------------------------------------------
 # yfinance batch OHLCV download
 # ---------------------------------------------------------------------------
+
 
 async def _yf_batch_download(tickers: list[str]) -> dict[str, dict]:
     """
@@ -379,13 +384,13 @@ async def _yf_batch_download(tickers: list[str]) -> dict[str, dict]:
                 ts = ts.replace(tzinfo=timezone.utc)
 
             result[ticker] = {
-                "open":      float(last["Open"]),
-                "high":      float(last["High"]),
-                "low":       float(last["Low"]),
-                "close":     float(last["Close"]),
-                "volume":    float(last["Volume"]),
+                "open": float(last["Open"]),
+                "high": float(last["High"]),
+                "low": float(last["Low"]),
+                "close": float(last["Close"]),
+                "volume": float(last["Volume"]),
                 "timestamp": ts,
-                "source":    "yfinance",
+                "source": "yfinance",
             }
         except Exception as exc:
             _log.warning("yfinance parse error for %s: %s", ticker, exc)
@@ -397,6 +402,7 @@ async def _yf_batch_download(tickers: list[str]) -> dict[str, dict]:
 # ---------------------------------------------------------------------------
 # Job functions
 # ---------------------------------------------------------------------------
+
 
 async def market_job() -> None:
     """
@@ -427,7 +433,10 @@ async def market_job() -> None:
     elapsed = time.monotonic() - t_start
     _log.info(
         "market_job complete: %d tickers fetched in %.1fs, %d rate-limit skips, %d net-error skips",
-        n, elapsed, job_counters.rate_limit_skips, job_counters.net_error_skips,
+        n,
+        elapsed,
+        job_counters.rate_limit_skips,
+        job_counters.net_error_skips,
     )
 
 
@@ -460,7 +469,10 @@ async def market_eod_job() -> None:
     elapsed = time.monotonic() - t_start
     _log.info(
         "market_eod_job complete: %d tickers fetched in %.1fs, %d rate-limit skips, %d net-error skips",
-        n, elapsed, job_counters.rate_limit_skips, job_counters.net_error_skips,
+        n,
+        elapsed,
+        job_counters.rate_limit_skips,
+        job_counters.net_error_skips,
     )
 
 
@@ -536,16 +548,12 @@ async def narrative_job() -> None:
     try:
         unscored = await get_unscored_articles(since_hours=48.0, language="en", limit=500)
         if unscored:
-            texts = [
-                (a["title"] or "") + " " + (a["summary"] or "")
-                for a in unscored
-            ]
+            texts = [(a["title"] or "") + " " + (a["summary"] or "") for a in unscored]
             # Sync torch inference (up to 500 articles) — run off the event
             # loop so the in-process FastAPI keeps serving requests.
             scores = await asyncio.to_thread(finbert_score_batch, texts)
             rows = [
-                (a["id"], s["finbert_score"], s["finbert_pos"],
-                 s["finbert_neg"], s["finbert_neu"])
+                (a["id"], s["finbert_score"], s["finbert_pos"], s["finbert_neg"], s["finbert_neu"])
                 for a, s in zip(unscored, scores)
             ]
             await update_finbert_scores(rows)
@@ -556,7 +564,8 @@ async def narrative_job() -> None:
     finbert_elapsed = time.monotonic() - t_finbert_start
     _log.info(
         "narrative_job finbert: scored=%d elapsed_seconds=%.1f",
-        n_scored, finbert_elapsed,
+        n_scored,
+        finbert_elapsed,
     )
 
     await _record_run("narrative")
@@ -565,8 +574,15 @@ async def narrative_job() -> None:
     _log.info(
         "narrative_job complete in %.1fs: %d tickers fetched in %.1fs, %d rate-limit skips, "
         "%d net-error skips, %d clusters in %.1fs, %d finbert-scored in %.1fs",
-        elapsed, n, fetch_elapsed, job_counters.rate_limit_skips, job_counters.net_error_skips,
-        total_clusters, cluster_elapsed, n_scored, finbert_elapsed,
+        elapsed,
+        n,
+        fetch_elapsed,
+        job_counters.rate_limit_skips,
+        job_counters.net_error_skips,
+        total_clusters,
+        cluster_elapsed,
+        n_scored,
+        finbert_elapsed,
     )
 
 
@@ -592,7 +608,10 @@ async def influencer_job() -> None:
     elapsed = time.monotonic() - t_start
     _log.info(
         "influencer_job complete: %d tickers fetched in %.1fs, %d rate-limit skips, %d net-error skips",
-        n, elapsed, job_counters.rate_limit_skips, job_counters.net_error_skips,
+        n,
+        elapsed,
+        job_counters.rate_limit_skips,
+        job_counters.net_error_skips,
     )
 
 
@@ -698,12 +717,18 @@ async def options_job() -> None:
         _log.warning(
             "options_job LOW COVERAGE: %d/%d tickers (%.0f%%) in %.1fs — "
             "wrote what it got; investigate yfinance availability",
-            succeeded, attempted, 100 * coverage, elapsed,
+            succeeded,
+            attempted,
+            100 * coverage,
+            elapsed,
         )
     else:
         _log.info(
             "options_job complete: %d/%d tickers (%.0f%%) in %.1fs",
-            succeeded, attempted, 100 * coverage, elapsed,
+            succeeded,
+            attempted,
+            100 * coverage,
+            elapsed,
         )
 
 
@@ -728,7 +753,8 @@ async def scoring_tick_job() -> None:
         sector_map = await get_ticker_sector_map()
         _log.info(
             "scoring_tick_job: loaded sector map for %d/%d tickers",
-            len(sector_map), n,
+            len(sector_map),
+            n,
         )
     except Exception as exc:
         _log.warning(
@@ -745,12 +771,13 @@ async def scoring_tick_job() -> None:
     avg = total_layers / fetched if fetched else 0
     _log.info(
         "scoring_tick_job complete: %d/%d scored, avg %.1f/4 layers in %.1fs",
-        fetched, n, avg, elapsed,
+        fetched,
+        n,
+        avg,
+        elapsed,
     )
     if elapsed > 300:
-        _log.warning(
-            "scoring_tick_job exceeded 5-minute threshold: %.1fs elapsed", elapsed
-        )
+        _log.warning("scoring_tick_job exceeded 5-minute threshold: %.1fs elapsed", elapsed)
 
 
 OHLCV_RETENTION_DAYS = 365
@@ -795,10 +822,10 @@ async def retention_job() -> None:
     """
     t_start = time.monotonic()
     now = datetime.now(timezone.utc)
-    ohlcv_cutoff   = now - timedelta(days=OHLCV_RETENTION_DAYS)
-    signal_cutoff  = now - timedelta(days=SIGNAL_RETENTION_DAYS)
+    ohlcv_cutoff = now - timedelta(days=OHLCV_RETENTION_DAYS)
+    signal_cutoff = now - timedelta(days=SIGNAL_RETENTION_DAYS)
     derived_cutoff = now - timedelta(days=DERIVED_RETENTION_DAYS)
-    quote_cutoff   = now - timedelta(days=QUOTE_RETENTION_DAYS)
+    quote_cutoff = now - timedelta(days=QUOTE_RETENTION_DAYS)
     article_cutoff = now - timedelta(days=ARTICLE_RETENTION_DAYS)
     article_text_cutoff = now - timedelta(days=ARTICLE_TEXT_COMPACT_DAYS)
     compact_cutoff = now - timedelta(days=DRIVER_COMPACT_DAYS)
@@ -814,7 +841,8 @@ async def retention_job() -> None:
 
     try:
         n_derived = await purge_signals_before(
-            derived_cutoff, DERIVED_INTRADAY_SIGNAL_TYPES,
+            derived_cutoff,
+            DERIVED_INTRADAY_SIGNAL_TYPES,
         )
     except Exception as exc:
         _log.warning("retention_job: derived-intraday purge failed: %s", exc, exc_info=True)
@@ -827,8 +855,10 @@ async def retention_job() -> None:
     try:
         n_signals = await purge_signals_before(
             signal_cutoff,
-            OHLCV_SIGNAL_TYPES + DERIVED_INTRADAY_SIGNAL_TYPES
-            + QUOTE_SIGNAL_TYPES + RESEARCH_RETAIN_SIGNAL_TYPES,
+            OHLCV_SIGNAL_TYPES
+            + DERIVED_INTRADAY_SIGNAL_TYPES
+            + QUOTE_SIGNAL_TYPES
+            + RESEARCH_RETAIN_SIGNAL_TYPES,
             exclude=True,
         )
     except Exception as exc:
@@ -856,13 +886,20 @@ async def retention_job() -> None:
         "retention_job complete: ohlcv=%d (>%dd), derived=%d (>%dd), "
         "quotes=%d (>%dd), other_signals=%d (>%dd), articles=%d (>%dd), "
         "article_text_stripped=%d (>%dd), drivers_compacted=%d (>%dd) in %.1fs",
-        n_ohlcv, OHLCV_RETENTION_DAYS,
-        n_derived, DERIVED_RETENTION_DAYS,
-        n_quotes, QUOTE_RETENTION_DAYS,
-        n_signals, SIGNAL_RETENTION_DAYS,
-        n_articles, ARTICLE_RETENTION_DAYS,
-        n_text_stripped, ARTICLE_TEXT_COMPACT_DAYS,
-        n_compacted, DRIVER_COMPACT_DAYS,
+        n_ohlcv,
+        OHLCV_RETENTION_DAYS,
+        n_derived,
+        DERIVED_RETENTION_DAYS,
+        n_quotes,
+        QUOTE_RETENTION_DAYS,
+        n_signals,
+        SIGNAL_RETENTION_DAYS,
+        n_articles,
+        ARTICLE_RETENTION_DAYS,
+        n_text_stripped,
+        ARTICLE_TEXT_COMPACT_DAYS,
+        n_compacted,
+        DRIVER_COMPACT_DAYS,
         elapsed,
     )
 
@@ -883,7 +920,8 @@ async def demo_key_cleanup_job() -> None:
     await _record_run("demo_key_cleanup")
     _log.info(
         "demo_key_cleanup_job complete: %d expired demo keys deleted in %.1fs",
-        n, time.monotonic() - t_start,
+        n,
+        time.monotonic() - t_start,
     )
 
 
@@ -897,16 +935,16 @@ async def demo_key_cleanup_job() -> None:
 # sits well above the job's normal runtime (noted alongside) and below the
 # point where a stuck run would cost more than a cycle or two.
 JOB_TIMEOUTS_S: dict[str, int] = {
-    "market":           600,    # ~1.5-2 min, every 15 min
-    "market_eod":       900,    # ~40 s
-    "narrative":        3000,   # Finnhub Sem(1) alone ~18 min + dedup + FinBERT
-    "influencer":       7200,   # ~37 min, every 6 h
-    "macro_daily":      900,
-    "macro_intraday":   900,    # ~2 min
-    "short_volume":     1200,
-    "options":          1800,
-    "scoring_tick":     1500,   # ~10-12 min; per-ticker timeout bounds it too
-    "retention":        3600,   # <1 min
+    "market": 600,  # ~1.5-2 min, every 15 min
+    "market_eod": 900,  # ~40 s
+    "narrative": 3000,  # Finnhub Sem(1) alone ~18 min + dedup + FinBERT
+    "influencer": 7200,  # ~37 min, every 6 h
+    "macro_daily": 900,
+    "macro_intraday": 900,  # ~2 min
+    "short_volume": 1200,
+    "options": 1800,
+    "scoring_tick": 1500,  # ~10-12 min; per-ticker timeout bounds it too
+    "retention": 3600,  # <1 min
     "demo_key_cleanup": 300,
 }
 
@@ -922,7 +960,8 @@ def _with_timeout(job_id: str, fn):
         except TimeoutError:
             _log.error(
                 "%s job exceeded %ds timeout — cancelled so the next run can start",
-                job_id, timeout,
+                job_id,
+                timeout,
             )
 
     return _run
@@ -1021,14 +1060,16 @@ scheduler.add_job(
 
 scheduler.add_job(
     _with_timeout("scoring_tick", scoring_tick_job),
-    trigger=OrTrigger([
-        # Base cadence: every 30 minutes around the clock (:00 and :30).
-        CronTrigger(minute="0,30"),
-        # Market-hours fills (mon-fri 14:30-21:00 UTC): add :15 and :45 marks
-        # so the effective cadence is 15 min while markets are open.
-        CronTrigger(day_of_week="mon-fri", hour=14, minute=45),
-        CronTrigger(day_of_week="mon-fri", hour="15-20", minute="15,45"),
-    ]),
+    trigger=OrTrigger(
+        [
+            # Base cadence: every 30 minutes around the clock (:00 and :30).
+            CronTrigger(minute="0,30"),
+            # Market-hours fills (mon-fri 14:30-21:00 UTC): add :15 and :45 marks
+            # so the effective cadence is 15 min while markets are open.
+            CronTrigger(day_of_week="mon-fri", hour=14, minute=45),
+            CronTrigger(day_of_week="mon-fri", hour="15-20", minute="15,45"),
+        ]
+    ),
     id="scoring_tick",
     name="Global scoring tick (15 min market hours, 30 min off-hours)",
     max_instances=1,

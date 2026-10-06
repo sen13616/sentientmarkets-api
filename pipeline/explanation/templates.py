@@ -22,6 +22,7 @@ Assembly strategy
 3. Build a lead sentence from the top 1–2 same-direction drivers.
 4. If a notable counter signal exists (magnitude ≥ 0.3), append a second sentence.
 """
+
 from __future__ import annotations
 
 from pipeline.scoring.drivers import DriverRecord
@@ -123,16 +124,17 @@ _DEFAULT_PHRASE: dict[str, str] = {
 
 # Layer-specific framing for counter-signal sentences: (subject, verb)
 _LAYER_CONTEXT: dict[str, tuple[str, str]] = {
-    "market":     ("Near-term technical conditions", "show"),
-    "narrative":  ("Market commentary",              "shows"),
-    "influencer": ("Insider and analyst activity",   "shows"),
-    "macro":      ("The macro environment",          "shows"),
+    "market": ("Near-term technical conditions", "show"),
+    "narrative": ("Market commentary", "shows"),
+    "influencer": ("Insider and analyst activity", "shows"),
+    "macro": ("The macro environment", "shows"),
 }
 
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _phrase(driver: DriverRecord) -> str:
     """Return the template phrase fragment for this driver."""
@@ -171,6 +173,7 @@ def _counter_sentence(driver: DriverRecord) -> str:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def generate_explanation(drivers: list[DriverRecord]) -> str:
     """

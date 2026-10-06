@@ -36,7 +36,9 @@ async def init_pool(command_timeout: float | None = None, max_size: int = 10) ->
     if _pool is not None:
         return
     _pool = await asyncpg.create_pool(
-        dsn=_dsn(), command_timeout=command_timeout, max_size=max_size,
+        dsn=_dsn(),
+        command_timeout=command_timeout,
+        max_size=max_size,
     )
 
 

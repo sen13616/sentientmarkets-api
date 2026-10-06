@@ -18,6 +18,7 @@ Public API
     export_sentiment_snapshot() — option 7: current scores for entire universe
     show_export_menu(...)       — interactive sub-menu (for db_viewer.py)
 """
+
 from __future__ import annotations
 
 import csv
@@ -45,11 +46,11 @@ EXPORTS_DIR = os.path.join(os.path.dirname(__file__), "exports")
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+
 def _dsn() -> str:
     url = os.environ["DATABASE_URL"]
-    return (
-        url.replace("postgresql+asyncpg://", "postgresql://")
-           .replace("postgres+asyncpg://", "postgres://")
+    return url.replace("postgresql+asyncpg://", "postgresql://").replace(
+        "postgres+asyncpg://", "postgres://"
     )
 
 
@@ -82,8 +83,7 @@ def _write_csv(filepath: str, rows: list[dict], fieldnames: list[str] | None = N
         writer = csv.writer(f)
         writer.writerow(headers)
         for row in rows:
-            writer.writerow([_v(row.get(h) if isinstance(row, dict) else row[h])
-                              for h in headers])
+            writer.writerow([_v(row.get(h) if isinstance(row, dict) else row[h]) for h in headers])
     return len(rows)
 
 
@@ -127,11 +127,12 @@ def _score_to_label(score: float | None) -> str:
 # Option 1 — current viewer screen
 # ---------------------------------------------------------------------------
 
+
 async def export_screen(screen_name: str, rows: list[dict]) -> tuple[str, int]:
     """Export the viewer's cached rows for one screen. Returns (filepath, n)."""
-    slug     = screen_name.lower().replace(" ", "_")
+    slug = screen_name.lower().replace(" ", "_")
     filepath = os.path.join(EXPORTS_DIR, f"{slug}_{_ts()}.csv")
-    n        = _write_csv(filepath, rows)
+    n = _write_csv(filepath, rows)
     return filepath, n
 
 
@@ -141,30 +142,73 @@ async def export_screen(screen_name: str, rows: list[dict]) -> tuple[str, int]:
 
 _FULL_TABLES: dict[str, list[str]] = {
     "sentiment_history": [
-        "id", "ticker", "composite_score", "market_index", "narrative_index",
-        "influencer_index", "macro_index", "confidence_score",
-        "confidence_flags", "top_drivers", "divergence",
-        "market_as_of", "narrative_as_of", "influencer_as_of", "macro_as_of",
-        "timestamp", "created_at",
+        "id",
+        "ticker",
+        "composite_score",
+        "market_index",
+        "narrative_index",
+        "influencer_index",
+        "macro_index",
+        "confidence_score",
+        "confidence_flags",
+        "top_drivers",
+        "divergence",
+        "market_as_of",
+        "narrative_as_of",
+        "influencer_as_of",
+        "macro_as_of",
+        "timestamp",
+        "created_at",
     ],
     "raw_signals": [
-        "id", "ticker", "signal_type", "value", "source",
-        "upload_type", "timestamp", "created_at",
+        "id",
+        "ticker",
+        "signal_type",
+        "value",
+        "source",
+        "upload_type",
+        "timestamp",
+        "created_at",
     ],
     "raw_articles": [
-        "id", "ticker", "title", "summary", "source", "source_url",
-        "published_at", "provider_sentiment", "relevance_score",
-        "content_hash", "event_cluster_id", "finbert_score", "created_at",
+        "id",
+        "ticker",
+        "title",
+        "summary",
+        "source",
+        "source_url",
+        "published_at",
+        "provider_sentiment",
+        "relevance_score",
+        "content_hash",
+        "event_cluster_id",
+        "finbert_score",
+        "created_at",
     ],
     "price_snapshots": [
-        "id", "ticker", "close", "volume", "timestamp", "created_at",
+        "id",
+        "ticker",
+        "close",
+        "volume",
+        "timestamp",
+        "created_at",
     ],
     "backtest_results": [
-        "id", "ticker", "score_timestamp", "composite_score",
-        "forward_return_1d", "forward_return_5d", "forward_return_20d", "created_at",
+        "id",
+        "ticker",
+        "score_timestamp",
+        "composite_score",
+        "forward_return_1d",
+        "forward_return_5d",
+        "forward_return_20d",
+        "created_at",
     ],
     "ticker_universe": [
-        "id", "ticker", "tier", "added_at", "last_requested_at",
+        "id",
+        "ticker",
+        "tier",
+        "added_at",
+        "last_requested_at",
     ],
 }
 # api_keys exported without key_hash for security
@@ -184,19 +228,19 @@ async def export_full_database(
     os.makedirs(folder, exist_ok=True)
 
     db = await _conn()
-    total_rows   = 0
+    total_rows = 0
     table_counts: dict[str, int] = {}
 
     try:
         for table, cols in _FULL_TABLES.items():
             col_sql = ", ".join(cols)
             rows = await db.fetch(f"SELECT {col_sql} FROM {table}")
-            fp   = os.path.join(folder, f"{table}.csv")
+            fp = os.path.join(folder, f"{table}.csv")
             dicts = [dict(r) for r in rows]
             if table == "sentiment_history":
                 for d in dicts:
                     d["top_drivers"] = _normalize_drivers(d.get("top_drivers"))
-            n    = _write_csv(fp, dicts, fieldnames=cols)
+            n = _write_csv(fp, dicts, fieldnames=cols)
             table_counts[table] = n
             total_rows += n
             if progress_cb:
@@ -205,8 +249,8 @@ async def export_full_database(
         # api_keys — omit key_hash
         col_sql = ", ".join(_API_KEYS_COLS)
         rows = await db.fetch(f"SELECT {col_sql} FROM api_keys")
-        fp   = os.path.join(folder, "api_keys.csv")
-        n    = _write_csv(fp, [dict(r) for r in rows], fieldnames=_API_KEYS_COLS)
+        fp = os.path.join(folder, "api_keys.csv")
+        n = _write_csv(fp, [dict(r) for r in rows], fieldnames=_API_KEYS_COLS)
         table_counts["api_keys"] = n
         total_rows += n
         if progress_cb:
@@ -217,9 +261,7 @@ async def export_full_database(
 
     # ---- summary.txt ----
     csv_size = sum(
-        os.path.getsize(os.path.join(folder, f))
-        for f in os.listdir(folder)
-        if f.endswith(".csv")
+        os.path.getsize(os.path.join(folder, f)) for f in os.listdir(folder) if f.endswith(".csv")
     )
     lines = [
         "SentimentAPI Full Database Export",
@@ -245,6 +287,7 @@ async def export_full_database(
 # Option 3 — sentiment history with computed columns
 # ---------------------------------------------------------------------------
 
+
 async def export_sentiment_history() -> tuple[str, int]:
     """Export all sentiment_history rows with derived analysis columns."""
     db = await _conn()
@@ -263,42 +306,43 @@ async def export_sentiment_history() -> tuple[str, int]:
     finally:
         await db.close()
 
-    now    = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
     output = []
     for r in rows:
         ts = r["timestamp"]
         if ts.tzinfo is None:
             ts = ts.replace(tzinfo=timezone.utc)
-        score  = r["composite_score"]
-        layers = [r["market_index"], r["narrative_index"],
-                  r["influencer_index"], r["macro_index"]]
-        output.append({
-            "id":               r["id"],
-            "ticker":           r["ticker"],
-            "composite_score":  score,
-            "label":            _score_to_label(score),
-            "score_band":       _score_to_label(score),
-            "market_index":     r["market_index"],
-            "narrative_index":  r["narrative_index"],
-            "influencer_index": r["influencer_index"],
-            "macro_index":      r["macro_index"],
-            "confidence_score": r["confidence_score"],
-            "confidence_flags": r["confidence_flags"],
-            "top_drivers":      _normalize_drivers(r["top_drivers"]),
-            "divergence":       r["divergence"],
-            "market_as_of":     r["market_as_of"],
-            "narrative_as_of":  r["narrative_as_of"],
-            "influencer_as_of": r["influencer_as_of"],
-            "macro_as_of":      r["macro_as_of"],
-            "timestamp":        r["timestamp"],
-            "created_at":       r["created_at"],
-            "days_ago":         int((now - ts).total_seconds() / 86400),
-            "has_market":       r["market_index"]     is not None,
-            "has_narrative":    r["narrative_index"]  is not None,
-            "has_influencer":   r["influencer_index"] is not None,
-            "has_macro":        r["macro_index"]      is not None,
-            "layers_present":   sum(1 for x in layers if x is not None),
-        })
+        score = r["composite_score"]
+        layers = [r["market_index"], r["narrative_index"], r["influencer_index"], r["macro_index"]]
+        output.append(
+            {
+                "id": r["id"],
+                "ticker": r["ticker"],
+                "composite_score": score,
+                "label": _score_to_label(score),
+                "score_band": _score_to_label(score),
+                "market_index": r["market_index"],
+                "narrative_index": r["narrative_index"],
+                "influencer_index": r["influencer_index"],
+                "macro_index": r["macro_index"],
+                "confidence_score": r["confidence_score"],
+                "confidence_flags": r["confidence_flags"],
+                "top_drivers": _normalize_drivers(r["top_drivers"]),
+                "divergence": r["divergence"],
+                "market_as_of": r["market_as_of"],
+                "narrative_as_of": r["narrative_as_of"],
+                "influencer_as_of": r["influencer_as_of"],
+                "macro_as_of": r["macro_as_of"],
+                "timestamp": r["timestamp"],
+                "created_at": r["created_at"],
+                "days_ago": int((now - ts).total_seconds() / 86400),
+                "has_market": r["market_index"] is not None,
+                "has_narrative": r["narrative_index"] is not None,
+                "has_influencer": r["influencer_index"] is not None,
+                "has_macro": r["macro_index"] is not None,
+                "layers_present": sum(1 for x in layers if x is not None),
+            }
+        )
 
     filepath = os.path.join(EXPORTS_DIR, f"sentiment_history_{_ts()}.csv")
     n = _write_csv(filepath, output)
@@ -308,6 +352,7 @@ async def export_sentiment_history() -> tuple[str, int]:
 # ---------------------------------------------------------------------------
 # Option 4 — raw signals (last 30 days) + pivot summary
 # ---------------------------------------------------------------------------
+
 
 async def export_raw_signals() -> tuple[tuple[str, int], tuple[str, int]]:
     """
@@ -367,10 +412,27 @@ async def export_raw_signals() -> tuple[tuple[str, int], tuple[str, int]]:
         await db.close()
 
     ts = _ts()
-    raw_fields = ["id", "ticker", "signal_type", "value", "source",
-                  "upload_type", "timestamp", "created_at"]
-    sum_fields = ["ticker", "signal_type", "count", "min_value", "max_value",
-                  "avg_value", "latest_value", "latest_timestamp", "source"]
+    raw_fields = [
+        "id",
+        "ticker",
+        "signal_type",
+        "value",
+        "source",
+        "upload_type",
+        "timestamp",
+        "created_at",
+    ]
+    sum_fields = [
+        "ticker",
+        "signal_type",
+        "count",
+        "min_value",
+        "max_value",
+        "avg_value",
+        "latest_value",
+        "latest_timestamp",
+        "source",
+    ]
 
     raw_path = os.path.join(EXPORTS_DIR, f"raw_signals_{ts}.csv")
     sum_path = os.path.join(EXPORTS_DIR, f"raw_signals_summary_{ts}.csv")
@@ -384,6 +446,7 @@ async def export_raw_signals() -> tuple[tuple[str, int], tuple[str, int]]:
 # ---------------------------------------------------------------------------
 # Option 5 — articles
 # ---------------------------------------------------------------------------
+
 
 async def export_articles() -> tuple[str, int]:
     """Export all raw_articles rows."""
@@ -411,8 +474,16 @@ async def export_articles() -> tuple[str, int]:
 # ---------------------------------------------------------------------------
 
 _SCORE_COLS = [
-    "id", "ticker", "composite_score", "market_index", "narrative_index",
-    "influencer_index", "macro_index", "confidence_score", "divergence", "timestamp",
+    "id",
+    "ticker",
+    "composite_score",
+    "market_index",
+    "narrative_index",
+    "influencer_index",
+    "macro_index",
+    "confidence_score",
+    "divergence",
+    "timestamp",
 ]
 
 
@@ -442,17 +513,17 @@ async def export_top_bottom_scores() -> tuple[tuple, tuple, tuple]:
     all_dicts = [dict(r) for r in rows]
     ranked_desc = sorted(all_dicts, key=lambda r: r["composite_score"], reverse=True)
 
-    top50  = ranked_desc[:50]
-    bot50  = list(reversed(ranked_desc[-50:]))  # most bearish first
+    top50 = ranked_desc[:50]
+    bot50 = list(reversed(ranked_desc[-50:]))  # most bearish first
     ranked = [{"rank": i + 1, **r} for i, r in enumerate(ranked_desc)]
 
     ts = _ts()
-    top_path    = os.path.join(EXPORTS_DIR, f"top_scores_{ts}.csv")
-    bot_path    = os.path.join(EXPORTS_DIR, f"bottom_scores_{ts}.csv")
+    top_path = os.path.join(EXPORTS_DIR, f"top_scores_{ts}.csv")
+    bot_path = os.path.join(EXPORTS_DIR, f"bottom_scores_{ts}.csv")
     ranked_path = os.path.join(EXPORTS_DIR, f"scores_ranked_{ts}.csv")
 
-    n_top    = _write_csv(top_path,    top50,  fieldnames=_SCORE_COLS)
-    n_bot    = _write_csv(bot_path,    bot50,  fieldnames=_SCORE_COLS)
+    n_top = _write_csv(top_path, top50, fieldnames=_SCORE_COLS)
+    n_bot = _write_csv(bot_path, bot50, fieldnames=_SCORE_COLS)
     n_ranked = _write_csv(ranked_path, ranked, fieldnames=["rank"] + _SCORE_COLS)
 
     return (top_path, n_top), (bot_path, n_bot), (ranked_path, n_ranked)
@@ -461,6 +532,7 @@ async def export_top_bottom_scores() -> tuple[tuple, tuple, tuple]:
 # ---------------------------------------------------------------------------
 # Option 7 — sentiment snapshot (one row per ticker, latest score)
 # ---------------------------------------------------------------------------
+
 
 async def export_sentiment_snapshot() -> tuple[str, int]:
     """
@@ -498,36 +570,37 @@ async def export_sentiment_snapshot() -> tuple[str, int]:
     finally:
         await db.close()
 
-    now    = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
     output = []
     for r in rows:
-        score  = r["composite_score"]
-        layers = [r["market_index"], r["narrative_index"],
-                  r["influencer_index"], r["macro_index"]]
+        score = r["composite_score"]
+        layers = [r["market_index"], r["narrative_index"], r["influencer_index"], r["macro_index"]]
         ts = r["timestamp"]
         if ts is not None and ts.tzinfo is None:
             ts = ts.replace(tzinfo=timezone.utc)
-        output.append({
-            "ticker":           r["ticker"],
-            "company_name":     r["company_name"],
-            "composite_score":  score,
-            "label":            _score_to_label(score),
-            "market_index":     r["market_index"],
-            "narrative_index":  r["narrative_index"],
-            "influencer_index": r["influencer_index"],
-            "macro_index":      r["macro_index"],
-            "layers_present":   sum(1 for x in layers if x is not None),
-            "confidence_score": r["confidence_score"],
-            "confidence_flags": r["confidence_flags"],
-            "divergence":       r["divergence"],
-            "top_drivers":      r["top_drivers"],
-            "market_as_of":     r["market_as_of"],
-            "narrative_as_of":  r["narrative_as_of"],
-            "influencer_as_of": r["influencer_as_of"],
-            "macro_as_of":      r["macro_as_of"],
-            "timestamp":        r["timestamp"],
-            "minutes_ago":      int((now - ts).total_seconds() / 60) if ts else None,
-        })
+        output.append(
+            {
+                "ticker": r["ticker"],
+                "company_name": r["company_name"],
+                "composite_score": score,
+                "label": _score_to_label(score),
+                "market_index": r["market_index"],
+                "narrative_index": r["narrative_index"],
+                "influencer_index": r["influencer_index"],
+                "macro_index": r["macro_index"],
+                "layers_present": sum(1 for x in layers if x is not None),
+                "confidence_score": r["confidence_score"],
+                "confidence_flags": r["confidence_flags"],
+                "divergence": r["divergence"],
+                "top_drivers": r["top_drivers"],
+                "market_as_of": r["market_as_of"],
+                "narrative_as_of": r["narrative_as_of"],
+                "influencer_as_of": r["influencer_as_of"],
+                "macro_as_of": r["macro_as_of"],
+                "timestamp": r["timestamp"],
+                "minutes_ago": int((now - ts).total_seconds() / 60) if ts else None,
+            }
+        )
 
     # Sort by composite score descending (most bullish first)
     output.sort(key=lambda r: r["composite_score"] or 0, reverse=True)
@@ -540,6 +613,7 @@ async def export_sentiment_snapshot() -> tuple[str, int]:
 # ---------------------------------------------------------------------------
 # Interactive export sub-menu (called from db_viewer.py)
 # ---------------------------------------------------------------------------
+
 
 async def show_export_menu(
     current_key: str,
@@ -562,19 +636,21 @@ async def show_export_menu(
     from rich.panel import Panel
 
     console.print()
-    console.print(Panel(
-        "[bold]EXPORT OPTIONS[/bold]\n\n"
-        "  [cyan]1[/cyan]  Current screen only\n"
-        "  [cyan]2[/cyan]  Full database export (all tables → timestamped folder)\n"
-        "  [cyan]3[/cyan]  Sentiment history (all rows + computed columns)\n"
-        "  [cyan]4[/cyan]  Raw signals — last 30 days + pivot summary\n"
-        "  [cyan]5[/cyan]  Articles — all rows\n"
-        "  [cyan]6[/cyan]  Top / bottom 50 scores today\n"
-        "  [cyan]7[/cyan]  Sentiment snapshot (current scores, entire universe)\n"
-        "  [cyan]8[/cyan]  Cancel",
-        title="[bold yellow]Export[/bold yellow]",
-        expand=False,
-    ))
+    console.print(
+        Panel(
+            "[bold]EXPORT OPTIONS[/bold]\n\n"
+            "  [cyan]1[/cyan]  Current screen only\n"
+            "  [cyan]2[/cyan]  Full database export (all tables → timestamped folder)\n"
+            "  [cyan]3[/cyan]  Sentiment history (all rows + computed columns)\n"
+            "  [cyan]4[/cyan]  Raw signals — last 30 days + pivot summary\n"
+            "  [cyan]5[/cyan]  Articles — all rows\n"
+            "  [cyan]6[/cyan]  Top / bottom 50 scores today\n"
+            "  [cyan]7[/cyan]  Sentiment snapshot (current scores, entire universe)\n"
+            "  [cyan]8[/cyan]  Cancel",
+            title="[bold yellow]Export[/bold yellow]",
+            expand=False,
+        )
+    )
 
     key = read_key_fn()
     console.print()
@@ -596,8 +672,7 @@ async def show_export_menu(
 
         folder, total = await export_full_database(_cb)
         console.print(
-            f"\n  [bold green]Complete — {total:,} total rows →[/bold green] "
-            f"[cyan]{folder}[/cyan]"
+            f"\n  [bold green]Complete — {total:,} total rows →[/bold green] [cyan]{folder}[/cyan]"
         )
 
     elif key == "3":
@@ -608,8 +683,12 @@ async def show_export_menu(
     elif key == "4":
         console.print("  [dim]Exporting raw signals (last 30 days)…[/dim]")
         (raw_path, n_raw), (sum_path, n_sum) = await export_raw_signals()
-        console.print(f"  [bold green]Raw data: {n_raw:,} rows →[/bold green] [cyan]{raw_path}[/cyan]")
-        console.print(f"  [bold green]Summary:  {n_sum:,} rows →[/bold green] [cyan]{sum_path}[/cyan]")
+        console.print(
+            f"  [bold green]Raw data: {n_raw:,} rows →[/bold green] [cyan]{raw_path}[/cyan]"
+        )
+        console.print(
+            f"  [bold green]Summary:  {n_sum:,} rows →[/bold green] [cyan]{sum_path}[/cyan]"
+        )
 
     elif key == "5":
         console.print("  [dim]Exporting articles…[/dim]")

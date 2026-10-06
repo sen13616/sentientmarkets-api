@@ -49,6 +49,7 @@ PRIMARY = [("rf_short_vol_z", -1), ("rf_insider_net_z_lag2", +1)]
 
 # ------------------------------------------------------------- preflight --
 
+
 async def _pit_spot_check(s: pd.DataFrame, n_samples: int = 6) -> list[dict]:
     """Recompute stored short_vol_z values from raw signals with ts <= tick.
 
@@ -60,7 +61,9 @@ async def _pit_spot_check(s: pd.DataFrame, n_samples: int = 6) -> list[dict]:
     sample = (
         s.dropna(subset=["rf_short_vol_z"])
         .sort_values(["ticker", "date"])
-        .groupby("ticker").last().reset_index()
+        .groupby("ticker")
+        .last()
+        .reset_index()
         .head(n_samples)
     )
     results = []
@@ -75,47 +78,58 @@ async def _pit_spot_check(s: pd.DataFrame, n_samples: int = 6) -> list[dict]:
                    AND timestamp <= $2
                  ORDER BY timestamp
                 """,
-                r["ticker"], tick_ts,
+                r["ticker"],
+                tick_ts,
             )
-            series = [float(x["value"]) for x in rows][-(WINDOW + 1):]
+            series = [float(x["value"]) for x in rows][-(WINDOW + 1) :]
             recomputed = short_vol_z_from_series(series)
-            results.append({
-                "ticker": r["ticker"],
-                "tick": str(tick_ts),
-                "stored": float(r["rf_short_vol_z"]),
-                "recomputed": recomputed,
-                "match": recomputed is not None
-                and abs(recomputed - float(r["rf_short_vol_z"])) < 1e-6,
-            })
+            results.append(
+                {
+                    "ticker": r["ticker"],
+                    "tick": str(tick_ts),
+                    "stored": float(r["rf_short_vol_z"]),
+                    "recomputed": recomputed,
+                    "match": recomputed is not None
+                    and abs(recomputed - float(r["rf_short_vol_z"])) < 1e-6,
+                }
+            )
     return results
 
 
 def _coverage(s: pd.DataFrame) -> pd.DataFrame:
-    per_day = s.groupby("date").agg(
-        tickers=("ticker", "nunique"),
-        short_vol_z=("rf_short_vol_z", lambda x: int(x.notna().sum())),
-        insider_net_z=("rf_insider_net_z", lambda x: int(x.notna().sum())),
-    ).reset_index()
+    per_day = (
+        s.groupby("date")
+        .agg(
+            tickers=("ticker", "nunique"),
+            short_vol_z=("rf_short_vol_z", lambda x: int(x.notna().sum())),
+            insider_net_z=("rf_insider_net_z", lambda x: int(x.notna().sum())),
+        )
+        .reset_index()
+    )
     return per_day
 
 
 # ------------------------------------------------------------ evaluation --
 
+
 def _subperiod_ics(panel: pd.DataFrame, feat: str, h: int) -> list[dict]:
     """IC per third of the window's date range (sign-consistency input)."""
     dates = sorted(panel["date"].unique())
-    thirds = [dates[i * len(dates) // 3:(i + 1) * len(dates) // 3] for i in range(3)]
+    thirds = [dates[i * len(dates) // 3 : (i + 1) * len(dates) // 3] for i in range(3)]
     out = []
     for i, chunk in enumerate(thirds, 1):
         sub = panel[panel["date"].isin(chunk)]
-        ic = analyze.ic_table(sub, feats=[feat], horizons=[h],
-                              min_rows=60, min_days=3)
+        ic = analyze.ic_table(sub, feats=[feat], horizons=[h], min_rows=60, min_days=3)
         cell = ic[(ic.target == "mktneutral")] if not ic.empty else ic
-        out.append({
-            "feature": feat, "horizon_d": h, "subperiod": i,
-            "mean_IC": None if cell.empty else float(cell.iloc[0]["mean_IC"]),
-            "n_days": 0 if cell.empty else int(cell.iloc[0]["n_days"]),
-        })
+        out.append(
+            {
+                "feature": feat,
+                "horizon_d": h,
+                "subperiod": i,
+                "mean_IC": None if cell.empty else float(cell.iloc[0]["mean_IC"]),
+                "n_days": 0 if cell.empty else int(cell.iloc[0]["n_days"]),
+            }
+        )
     return out
 
 
@@ -136,7 +150,9 @@ async def _run() -> int:
         "days_with_short_vol_z": int((cov["short_vol_z"] > 0).sum()),
         "days_with_insider_net_z": int((cov["insider_net_z"] > 0).sum()),
         "median_daily_short_vol_z": float(cov.loc[cov.short_vol_z > 0, "short_vol_z"].median()),
-        "median_daily_insider_net_z": float(cov.loc[cov.insider_net_z > 0, "insider_net_z"].median()),
+        "median_daily_insider_net_z": float(
+            cov.loc[cov.insider_net_z > 0, "insider_net_z"].median()
+        ),
     }
     print("coverage:", cov_days)
 
@@ -228,9 +244,17 @@ async def _run() -> int:
     print(pd.DataFrame(subperiods).to_string(index=False))
     print("\n=== SIGN-ALIGNED QUINTILE L/S (gross vs net) ===")
     if ls_rows:
-        cols = ["feature", "horizon_d", "mean_LS_per_period", "t",
-                "mean_LS_net_per_period", "t_net", "ann_sharpe_net",
-                "avg_leg_turnover", "n_days"]
+        cols = [
+            "feature",
+            "horizon_d",
+            "mean_LS_per_period",
+            "t",
+            "mean_LS_net_per_period",
+            "t_net",
+            "ann_sharpe_net",
+            "avg_leg_turnover",
+            "n_days",
+        ]
         print(pd.DataFrame(ls_rows)[cols].to_string(index=False))
     print("\n=== LEAD-LAG MASS ===")
     for feat, d in leadlag.items():
@@ -245,6 +269,7 @@ def main() -> int:
             return await _run()
         finally:
             await close_pool()
+
     try:
         return asyncio.run(_main())
     except KeyboardInterrupt:

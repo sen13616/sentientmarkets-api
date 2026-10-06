@@ -9,6 +9,7 @@ Unit tests for the new sector accessors on `db/queries/universe.py`:
 Uses a mocked asyncpg pool (same shape as `tests/test_pg_writer_zero.py`)
 so the tests don't depend on a live Postgres connection.
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -19,10 +20,11 @@ import pytest
 # Mock-pool helpers (mirrors test_pg_writer_zero.py)
 # ---------------------------------------------------------------------------
 
+
 def _mock_pool_with(conn):
     ctx = MagicMock()
     ctx.__aenter__ = AsyncMock(return_value=conn)
-    ctx.__aexit__  = AsyncMock(return_value=False)
+    ctx.__aexit__ = AsyncMock(return_value=False)
     pool = MagicMock()
     pool.acquire.return_value = ctx
     return pool
@@ -32,6 +34,7 @@ def _mock_pool_with(conn):
 # get_ticker_sector
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_get_ticker_sector_returns_seeded_value():
     conn = MagicMock()
@@ -40,6 +43,7 @@ async def test_get_ticker_sector_returns_seeded_value():
 
     with patch("scripts.db.queries.universe.get_pool", new=AsyncMock(return_value=pool)):
         from scripts.db.queries.universe import get_ticker_sector
+
         sector = await get_ticker_sector("AAPL")
 
     assert sector == "Information Technology"
@@ -58,6 +62,7 @@ async def test_get_ticker_sector_returns_none_for_unseeded():
 
     with patch("scripts.db.queries.universe.get_pool", new=AsyncMock(return_value=pool)):
         from scripts.db.queries.universe import get_ticker_sector
+
         sector = await get_ticker_sector("XYZ")
 
     assert sector is None
@@ -72,6 +77,7 @@ async def test_get_ticker_sector_returns_none_for_missing_ticker():
 
     with patch("scripts.db.queries.universe.get_pool", new=AsyncMock(return_value=pool)):
         from scripts.db.queries.universe import get_ticker_sector
+
         sector = await get_ticker_sector("NOT_A_TICKER")
 
     assert sector is None
@@ -86,6 +92,7 @@ async def test_get_ticker_sector_uppercases_input():
 
     with patch("scripts.db.queries.universe.get_pool", new=AsyncMock(return_value=pool)):
         from scripts.db.queries.universe import get_ticker_sector
+
         await get_ticker_sector("aapl")
 
     args = conn.fetchval.await_args.args
@@ -96,12 +103,13 @@ async def test_get_ticker_sector_uppercases_input():
 # get_ticker_sector_map
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_get_ticker_sector_map_returns_dict():
     rows = [
         {"ticker": "AAPL", "sector": "Information Technology"},
-        {"ticker": "XOM",  "sector": "Energy"},
-        {"ticker": "JNJ",  "sector": "Health Care"},
+        {"ticker": "XOM", "sector": "Energy"},
+        {"ticker": "JNJ", "sector": "Health Care"},
     ]
     conn = MagicMock()
     conn.fetch = AsyncMock(return_value=rows)
@@ -109,12 +117,13 @@ async def test_get_ticker_sector_map_returns_dict():
 
     with patch("scripts.db.queries.universe.get_pool", new=AsyncMock(return_value=pool)):
         from scripts.db.queries.universe import get_ticker_sector_map
+
         result = await get_ticker_sector_map()
 
     assert result == {
         "AAPL": "Information Technology",
-        "XOM":  "Energy",
-        "JNJ":  "Health Care",
+        "XOM": "Energy",
+        "JNJ": "Health Care",
     }
 
 
@@ -127,6 +136,7 @@ async def test_get_ticker_sector_map_empty_when_no_rows():
 
     with patch("scripts.db.queries.universe.get_pool", new=AsyncMock(return_value=pool)):
         from scripts.db.queries.universe import get_ticker_sector_map
+
         result = await get_ticker_sector_map()
 
     assert result == {}
@@ -141,6 +151,7 @@ async def test_get_ticker_sector_map_filters_nulls_at_sql_level():
 
     with patch("scripts.db.queries.universe.get_pool", new=AsyncMock(return_value=pool)):
         from scripts.db.queries.universe import get_ticker_sector_map
+
         await get_ticker_sector_map()
 
     sql = conn.fetch.await_args.args[0]
@@ -151,11 +162,17 @@ async def test_get_ticker_sector_map_filters_nulls_at_sql_level():
 # get_all_tickers — additive schema change
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_get_all_tickers_includes_sector_field():
     rows = [
-        {"ticker": "AAPL", "company_name": "Apple Inc.",   "sector": "Information Technology", "in_sp500": True},
-        {"ticker": "XOM",  "company_name": "Exxon Mobil",  "sector": "Energy", "in_sp500": True},
+        {
+            "ticker": "AAPL",
+            "company_name": "Apple Inc.",
+            "sector": "Information Technology",
+            "in_sp500": True,
+        },
+        {"ticker": "XOM", "company_name": "Exxon Mobil", "sector": "Energy", "in_sp500": True},
     ]
     conn = MagicMock()
     conn.fetch = AsyncMock(return_value=rows)
@@ -163,6 +180,7 @@ async def test_get_all_tickers_includes_sector_field():
 
     with patch("scripts.db.queries.universe.get_pool", new=AsyncMock(return_value=pool)):
         from scripts.db.queries.universe import get_all_tickers
+
         items = await get_all_tickers()
 
     assert len(items) == 2
@@ -187,6 +205,7 @@ async def test_get_all_tickers_sector_can_be_null():
 
     with patch("scripts.db.queries.universe.get_pool", new=AsyncMock(return_value=pool)):
         from scripts.db.queries.universe import get_all_tickers
+
         items = await get_all_tickers()
 
     assert items[0]["sector"] is None
@@ -196,10 +215,12 @@ async def test_get_all_tickers_sector_can_be_null():
 # Static sector_map.py validation (no DB / network)
 # ---------------------------------------------------------------------------
 
+
 def test_sector_map_only_uses_canonical_gics_strings():
     """Every value in TICKER_SECTORS must be a key in SECTOR_ETFS."""
     from pipeline.sources.macro import SECTOR_ETFS
     from scripts.tools.sector_map import TICKER_SECTORS
+
     valid = set(SECTOR_ETFS.keys())
     invalid = {t: s for t, s in TICKER_SECTORS.items() if s not in valid}
     assert not invalid, f"sector_map contains non-GICS sectors: {invalid}"
@@ -209,6 +230,7 @@ def test_sector_map_covers_full_universe():
     """All 502 active tickers from tools/company_names.py must have a sector."""
     from scripts.tools.company_names import COMPANY_NAMES
     from scripts.tools.sector_map import TICKER_SECTORS
+
     missing = set(COMPANY_NAMES) - set(TICKER_SECTORS)
     # P4.1 sprint gate: ≥497 of 502 (plan tolerance for renamed/stale tickers).
     assert len(missing) <= 5, f"sector_map missing {len(missing)} tickers: {sorted(missing)[:10]}"

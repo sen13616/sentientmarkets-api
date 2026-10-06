@@ -4,6 +4,7 @@ Covers the pure z-score math, the point-in-time backfill computation, the
 flag gate, the insert_row JSONB pass-through, and — critically — that
 research_features can NEVER leak into an API response.
 """
+
 from __future__ import annotations
 
 import json
@@ -34,10 +35,10 @@ class TestTrailingZscore:
 class TestShortVolZ:
     def test_uses_trailing_window_only(self):
         # 40 values; only the last WINDOW+1 should matter
-        noise = [99.0] * 19          # would wreck the z if included
+        noise = [99.0] * 19  # would wreck the z if included
         series = noise + [0.5] * positioning.WINDOW + [0.6]
         z_full = positioning.short_vol_z_from_series(series)
-        z_trim = positioning.short_vol_z_from_series(series[-(positioning.WINDOW + 1):])
+        z_trim = positioning.short_vol_z_from_series(series[-(positioning.WINDOW + 1) :])
         assert z_full == z_trim
 
     def test_none_on_short_series(self):
@@ -84,10 +85,17 @@ class TestFlagGate:
         monkeypatch.delenv("ENABLE_POSITIONING_FEATURES", raising=False)
         assert positioning.enabled() is False
 
-    @pytest.mark.parametrize("val,expected", [
-        ("1", True), ("true", True), ("yes", True),
-        ("0", False), ("false", False), ("", False),
-    ])
+    @pytest.mark.parametrize(
+        "val,expected",
+        [
+            ("1", True),
+            ("true", True),
+            ("yes", True),
+            ("0", False),
+            ("false", False),
+            ("", False),
+        ],
+    )
     def test_flag_values(self, monkeypatch, val, expected):
         monkeypatch.setenv("ENABLE_POSITIONING_FEATURES", val)
         assert positioning.enabled() is expected
@@ -140,17 +148,28 @@ async def test_insert_row_serializes_research_features():
     conn = FakeConn()
     await insert_row(
         conn,
-        ticker="AAPL", composite_score=55.0,
-        market_index=None, narrative_index=None, influencer_index=None,
-        macro_index=None, confidence_score=80, confidence_flags=[],
-        top_drivers=[], divergence=None, market_as_of=None,
-        narrative_as_of=None, influencer_as_of=None, macro_as_of=None,
+        ticker="AAPL",
+        composite_score=55.0,
+        market_index=None,
+        narrative_index=None,
+        influencer_index=None,
+        macro_index=None,
+        confidence_score=80,
+        confidence_flags=[],
+        top_drivers=[],
+        divergence=None,
+        market_as_of=None,
+        narrative_as_of=None,
+        influencer_as_of=None,
+        macro_as_of=None,
         timestamp=datetime(2026, 7, 22, tzinfo=timezone.utc),
         research_features={"short_vol_z": 1.23},
     )
     sql, args = conn.calls[0]
     assert "research_features" in sql
-    assert json.loads(args[19]) == {"short_vol_z": 1.23}  # $20 research_features ($21 is replay_run)
+    assert json.loads(args[19]) == {
+        "short_vol_z": 1.23
+    }  # $20 research_features ($21 is replay_run)
 
 
 async def test_insert_row_null_research_features_by_default():
@@ -159,11 +178,20 @@ async def test_insert_row_null_research_features_by_default():
     conn = FakeConn()
     await insert_row(
         conn,
-        ticker="AAPL", composite_score=55.0,
-        market_index=None, narrative_index=None, influencer_index=None,
-        macro_index=None, confidence_score=80, confidence_flags=[],
-        top_drivers=[], divergence=None, market_as_of=None,
-        narrative_as_of=None, influencer_as_of=None, macro_as_of=None,
+        ticker="AAPL",
+        composite_score=55.0,
+        market_index=None,
+        narrative_index=None,
+        influencer_index=None,
+        macro_index=None,
+        confidence_score=80,
+        confidence_flags=[],
+        top_drivers=[],
+        divergence=None,
+        market_as_of=None,
+        narrative_as_of=None,
+        influencer_as_of=None,
+        macro_as_of=None,
         timestamp=datetime(2026, 7, 22, tzinfo=timezone.utc),
     )
     _, args = conn.calls[0]
@@ -181,8 +209,12 @@ class TestResearchFeaturesNeverServed:
         "composite_score_raw": 56.0,
         "score_exo": 57.0,
         "confidence": {"score": 80, "flags": []},
-        "sub_indices": {"market": {"value": 50.0}, "narrative": None,
-                        "influencer": None, "macro": None},
+        "sub_indices": {
+            "market": {"value": 50.0},
+            "narrative": None,
+            "influencer": None,
+            "macro": None,
+        },
         "top_drivers": [],
         "explanation": "",
         "freshness": {},

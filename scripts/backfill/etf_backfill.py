@@ -21,6 +21,7 @@ Rate limiting:
 Usage:
   python backfill/etf_backfill.py
 """
+
 import asyncio
 import os
 import sys
@@ -36,28 +37,29 @@ from scripts.db.connection import close_pool, get_pool, init_pool
 
 load_dotenv(override=False)
 
-AV_BASE            = "https://www.alphavantage.co/query"
-LOOKBACK_DAYS      = 30
-INTER_REQUEST_DELAY = 0.8   # seconds between AV requests
+AV_BASE = "https://www.alphavantage.co/query"
+LOOKBACK_DAYS = 30
+INTER_REQUEST_DELAY = 0.8  # seconds between AV requests
 
 SECTOR_ETFS = [
-    "XLC",   # Communication Services
-    "XLY",   # Consumer Discretionary
-    "XLP",   # Consumer Staples
-    "XLE",   # Energy
-    "XLF",   # Financials
-    "XLV",   # Health Care
-    "XLI",   # Industrials
-    "XLK",   # Information Technology
-    "XLB",   # Materials
+    "XLC",  # Communication Services
+    "XLY",  # Consumer Discretionary
+    "XLP",  # Consumer Staples
+    "XLE",  # Energy
+    "XLF",  # Financials
+    "XLV",  # Health Care
+    "XLI",  # Industrials
+    "XLK",  # Information Technology
+    "XLB",  # Materials
     "XLRE",  # Real Estate
-    "XLU",   # Utilities
+    "XLU",  # Utilities
 ]
 
 
 # ---------------------------------------------------------------------------
 # DB helpers
 # ---------------------------------------------------------------------------
+
 
 async def _already_backfilled(etf: str) -> bool:
     """Return True if any ohlcv_close backfill rows exist for this ETF."""
@@ -98,6 +100,7 @@ async def _insert_rows(rows: list[tuple]) -> None:
 # Alpha Vantage helpers
 # ---------------------------------------------------------------------------
 
+
 async def _fetch_daily(
     client: httpx.AsyncClient,
     etf: str,
@@ -111,10 +114,10 @@ async def _fetch_daily(
         resp = await client.get(
             AV_BASE,
             params={
-                "function":   "TIME_SERIES_DAILY",
-                "symbol":     etf,
+                "function": "TIME_SERIES_DAILY",
+                "symbol": etf,
                 "outputsize": "compact",
-                "apikey":     api_key,
+                "apikey": api_key,
             },
         )
         resp.raise_for_status()
@@ -156,14 +159,16 @@ def _build_rows(
             continue
 
         try:
-            rows.append((
-                etf,
-                "ohlcv_close",
-                float(ohlcv["4. close"]),
-                "alpha_vantage",
-                "manual_backfill",
-                ts,
-            ))
+            rows.append(
+                (
+                    etf,
+                    "ohlcv_close",
+                    float(ohlcv["4. close"]),
+                    "alpha_vantage",
+                    "manual_backfill",
+                    ts,
+                )
+            )
         except (KeyError, ValueError) as exc:
             print(f"    [!] Parse error on {date_str} for {etf}: {exc}")
             continue
@@ -175,6 +180,7 @@ def _build_rows(
 # Main
 # ---------------------------------------------------------------------------
 
+
 async def main() -> None:
     api_key = os.environ.get("ALPHA_VANTAGE_KEY", "")
     if not api_key:
@@ -182,12 +188,12 @@ async def main() -> None:
 
     await init_pool()
     cutoff = datetime.now(timezone.utc) - timedelta(days=LOOKBACK_DAYS)
-    total  = len(SECTOR_ETFS)
+    total = len(SECTOR_ETFS)
 
     print(f"ETF backfill — {total} sector ETFs, last {LOOKBACK_DAYS} days.\n")
 
     processed = 0
-    skipped   = 0
+    skipped = 0
 
     async with httpx.AsyncClient(timeout=30) as client:
         for idx, etf in enumerate(SECTOR_ETFS, 1):
@@ -217,9 +223,7 @@ async def main() -> None:
                 await asyncio.sleep(INTER_REQUEST_DELAY)
 
     await close_pool()
-    print(
-        f"\nDone.  Processed: {processed}  |  Skipped (already done): {skipped}"
-    )
+    print(f"\nDone.  Processed: {processed}  |  Skipped (already done): {skipped}")
 
 
 if __name__ == "__main__":

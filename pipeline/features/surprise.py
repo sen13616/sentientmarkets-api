@@ -88,9 +88,7 @@ async def compute_narrative_surprise(ticker: str, now: datetime) -> float | None
     if _weighted_mean(current_rows) is None:
         return None
 
-    baseline_rows = await get_article_scores_between(
-        ticker, baseline_start, current_start
-    )
+    baseline_rows = await get_article_scores_between(ticker, baseline_start, current_start)
     return surprise_from_rows(current_rows, baseline_rows)
 
 
