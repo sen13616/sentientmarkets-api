@@ -1,8 +1,9 @@
 """
-db/queries/raw_articles.py
+scripts/db/queries/raw_articles.py
 
 All raw_articles table operations. No raw SQL anywhere else in the codebase.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -365,6 +366,7 @@ async def get_article_scores_between(
 # News backfill (scripts/backfill/news_backfill.py)
 # ---------------------------------------------------------------------------
 
+
 async def existing_articles(ticker: str, hashes: list[str]) -> dict[str, dict]:
     """
     Stored rows for ``ticker`` among ``hashes`` (one query), keyed by
@@ -387,8 +389,10 @@ async def existing_articles(ticker: str, hashes: list[str]) -> dict[str, dict]:
             ticker,
             hashes,
         )
-    return {r["content_hash"]: {"id": r["id"], "scored": r["scored"],
-                                "clustered": r["clustered"]} for r in rows}
+    return {
+        r["content_hash"]: {"id": r["id"], "scored": r["scored"], "clustered": r["clustered"]}
+        for r in rows
+    }
 
 
 async def get_unclustered_articles_between(
@@ -449,12 +453,21 @@ async def insert_scored_articles(rows: list[dict]) -> None:
             """,
             [
                 (
-                    r["ticker"], r["title"], r["summary"], r["source"],
-                    r["source_url"], r["published_at"], r["provider_sentiment"],
-                    r["relevance_score"], r["content_hash"], r.get("language"),
+                    r["ticker"],
+                    r["title"],
+                    r["summary"],
+                    r["source"],
+                    r["source_url"],
+                    r["published_at"],
+                    r["provider_sentiment"],
+                    r["relevance_score"],
+                    r["content_hash"],
+                    r.get("language"),
                     r.get("event_cluster_id"),
-                    r.get("finbert_score"), r.get("finbert_pos"),
-                    r.get("finbert_neg"), r.get("finbert_neu"),
+                    r.get("finbert_score"),
+                    r.get("finbert_pos"),
+                    r.get("finbert_neg"),
+                    r.get("finbert_neu"),
                     r.get("ingest_run"),
                 )
                 for r in rows

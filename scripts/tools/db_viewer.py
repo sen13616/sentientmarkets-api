@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-tools/db_viewer.py
+scripts/tools/db_viewer.py
 
 Terminal UI database viewer for the SentimentAPI pipeline (v2).
 
 Run with:
-    python3 tools/db_viewer.py
+    python3 scripts/tools/db_viewer.py
 
 Navigation:
     1      OVERVIEW — table counts, scheduler status
@@ -20,6 +20,7 @@ Navigation:
     R      refresh current screen
     Q      quit
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -35,6 +36,21 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import asyncpg
 import redis.asyncio as aioredis
+from db_charts import ascii_line_chart, export_chart_png  # noqa: E402
+
+# db_exports loads dotenv itself; importing it here also initialises EXPORTS_DIR
+from db_exports import EXPORTS_DIR, show_export_menu  # noqa: E402
+from db_health import (  # noqa: E402
+    query_article_volume_24h,
+    query_confidence_flag_breakdown_24h,
+    query_divergence_distribution_24h,
+    query_missing_layer_breakdown_24h,
+    query_null_rate_audit_24h,
+    query_scoring_activity_24h,
+    query_signal_freshness,
+    query_stale_tickers,
+    query_ticker_coverage,
+)
 from dotenv import load_dotenv
 from rich import box
 from rich.columns import Columns
@@ -43,21 +59,6 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.table import Table
 from rich.text import Text
-
-# db_exports loads dotenv itself; importing it here also initialises EXPORTS_DIR
-from db_exports import EXPORTS_DIR, show_export_menu  # noqa: E402
-from db_charts import ascii_line_chart, export_chart_png  # noqa: E402
-from db_health import (  # noqa: E402
-    query_scoring_activity_24h,
-    query_confidence_flag_breakdown_24h,
-    query_divergence_distribution_24h,
-    query_missing_layer_breakdown_24h,
-    query_ticker_coverage,
-    query_stale_tickers,
-    query_signal_freshness,
-    query_null_rate_audit_24h,
-    query_article_volume_24h,
-)
 
 _ENV_FILE = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
 load_dotenv(_ENV_FILE, override=True)  # belt-and-suspenders for the viewer
@@ -68,12 +69,12 @@ console = Console()
 # Auto-refresh + export state
 # ---------------------------------------------------------------------------
 
-_auto_refresh     = False
+_auto_refresh = False
 AUTO_REFRESH_SECS = 30
 
 # Last fetched data per screen key ("1"–"6"), stored as plain dicts for CSV.
 _last_data: dict[str, list[dict]] = {}
-_last_ticker = ""   # most recent ticker entered by the user
+_last_ticker = ""  # most recent ticker entered by the user
 
 # Tracks the display name of the last-viewed EXPLORE sub-screen (for export).
 _explore_screen_name: str = "EXPLORE"
@@ -82,11 +83,11 @@ _explore_screen_name: str = "EXPLORE"
 # DB / Redis helpers
 # ---------------------------------------------------------------------------
 
+
 def _dsn() -> str:
     url = os.environ["DATABASE_URL"]
-    return (
-        url.replace("postgresql+asyncpg://", "postgresql://")
-           .replace("postgres+asyncpg://", "postgres://")
+    return url.replace("postgresql+asyncpg://", "postgresql://").replace(
+        "postgres+asyncpg://", "postgres://"
     )
 
 
@@ -102,6 +103,7 @@ def _redis_client() -> aioredis.Redis:
 # ---------------------------------------------------------------------------
 # Formatting helpers
 # ---------------------------------------------------------------------------
+
 
 def _score_style(score: float | None) -> str:
     if score is None:
@@ -149,31 +151,35 @@ def _ago(ts) -> str:
 # Screen 1 — OVERVIEW
 # ---------------------------------------------------------------------------
 
+
 async def screen_overview() -> None:
     """Dashboard overview: table counts, tickers scored, scheduler timestamps."""
     global _last_data
-    conn  = await _get_conn()
+    conn = await _get_conn()
     try:
         tables = [
-            "raw_signals", "raw_articles", "sentiment_history",
-            "price_snapshots", "backtest_results",
+            "raw_signals",
+            "raw_articles",
+            "sentiment_history",
+            "price_snapshots",
+            "backtest_results",
         ]
         counts: dict[str, int] = {}
         for t in tables:
             counts[t] = await conn.fetchval(f"SELECT COUNT(*) FROM {t}")
 
-        scored    = await conn.fetchval("SELECT COUNT(DISTINCT ticker) FROM sentiment_history")
+        scored = await conn.fetchval("SELECT COUNT(DISTINCT ticker) FROM sentiment_history")
         latest_ts = await conn.fetchval("SELECT MAX(timestamp) FROM sentiment_history")
     finally:
         await conn.close()
 
     # Redis scheduler timestamps — graceful degradation if unreachable
     scheduler_keys = {
-        "market":       "pipeline:last_run:market",
-        "market_eod":   "pipeline:last_run:market_eod",
-        "narrative":    "pipeline:last_run:narrative",
-        "influencer":   "pipeline:last_run:influencer",
-        "macro_daily":    "pipeline:last_run:macro_daily",
+        "market": "pipeline:last_run:market",
+        "market_eod": "pipeline:last_run:market_eod",
+        "narrative": "pipeline:last_run:narrative",
+        "influencer": "pipeline:last_run:influencer",
+        "macro_daily": "pipeline:last_run:macro_daily",
         "macro_intraday": "pipeline:last_run:macro_intraday",
         "short_volume": "pipeline:last_run:short_volume",
     }
@@ -193,7 +199,7 @@ async def screen_overview() -> None:
 
     # Store for export
     export_rows: list[dict] = [{"metric": t, "value": counts[t]} for t in tables]
-    export_rows.append({"metric": "tickers_scored",  "value": scored})
+    export_rows.append({"metric": "tickers_scored", "value": scored})
     export_rows.append({"metric": "latest_score_ts", "value": str(latest_ts)})
     for layer, raw in scheduler_ts.items():
         export_rows.append({"metric": f"scheduler_{layer}", "value": raw or "never"})
@@ -205,7 +211,7 @@ async def screen_overview() -> None:
 
     t = Table(title="Table Row Counts", box=box.SIMPLE_HEAD, show_edge=False)
     t.add_column("Table", style="cyan")
-    t.add_column("Rows",  justify="right", style="yellow")
+    t.add_column("Rows", justify="right", style="yellow")
     for name in tables:
         t.add_row(name, f"{counts[name]:,}")
     console.print(t)
@@ -218,20 +224,22 @@ async def screen_overview() -> None:
     console.print()
 
     if redis_error:
-        console.print(f"  [yellow]Redis unavailable ({redis_error}) \u2014 scheduler timestamps skipped.[/yellow]")
+        console.print(
+            f"  [yellow]Redis unavailable ({redis_error}) \u2014 scheduler timestamps skipped.[/yellow]"
+        )
     else:
         st = Table(title="Scheduler Last Run (Redis)", box=box.SIMPLE_HEAD, show_edge=False)
-        st.add_column("Layer",    style="cyan", width=15)
+        st.add_column("Layer", style="cyan", width=15)
         st.add_column("Last Run", style="white")
-        st.add_column("Age",      style="yellow")
+        st.add_column("Age", style="yellow")
         for layer, raw in scheduler_ts.items():
             if raw:
-                ts_obj  = datetime.fromisoformat(raw)
+                ts_obj = datetime.fromisoformat(raw)
                 display = ts_obj.strftime("%Y-%m-%d %H:%M UTC")
-                age     = _ago(ts_obj)
+                age = _ago(ts_obj)
             else:
                 display = "never"
-                age     = "\u2014"
+                age = "\u2014"
             st.add_row(layer, display, age)
         console.print(st)
 
@@ -239,6 +247,7 @@ async def screen_overview() -> None:
 # ---------------------------------------------------------------------------
 # Screen 2 — EXPLORE (sub-menu dispatcher)
 # ---------------------------------------------------------------------------
+
 
 async def _explore_sentiment_scores() -> None:
     """Show the 20 most recently scored tickers."""
@@ -263,16 +272,16 @@ async def _explore_sentiment_scores() -> None:
 
     _last_data["2"] = [
         {
-            "ticker":           r["ticker"],
-            "composite_score":  r["composite_score"],
-            "label":            _label(r["composite_score"]),
-            "market_index":     r["market_index"],
-            "narrative_index":  r["narrative_index"],
+            "ticker": r["ticker"],
+            "composite_score": r["composite_score"],
+            "label": _label(r["composite_score"]),
+            "market_index": r["market_index"],
+            "narrative_index": r["narrative_index"],
             "influencer_index": r["influencer_index"],
-            "macro_index":      r["macro_index"],
+            "macro_index": r["macro_index"],
             "confidence_score": r["confidence_score"],
-            "divergence":       r["divergence"],
-            "timestamp":        r["timestamp"].isoformat(),
+            "divergence": r["divergence"],
+            "timestamp": r["timestamp"].isoformat(),
         }
         for r in rows
     ]
@@ -281,16 +290,16 @@ async def _explore_sentiment_scores() -> None:
     console.rule("[bold cyan]SENTIMENT SCORES \u2014 20 most recently scored tickers[/bold cyan]")
 
     t = Table(box=box.SIMPLE_HEAD, show_edge=False)
-    t.add_column("Ticker",     style="bold white", width=7)
-    t.add_column("Score",      justify="right",    width=7)
-    t.add_column("Label",      width=9)
-    t.add_column("Market",     justify="right",    width=8)
-    t.add_column("Narrative",  justify="right",    width=10)
-    t.add_column("Influencer", justify="right",    width=11)
-    t.add_column("Macro",      justify="right",    width=7)
-    t.add_column("Conf",       justify="right",    width=6)
+    t.add_column("Ticker", style="bold white", width=7)
+    t.add_column("Score", justify="right", width=7)
+    t.add_column("Label", width=9)
+    t.add_column("Market", justify="right", width=8)
+    t.add_column("Narrative", justify="right", width=10)
+    t.add_column("Influencer", justify="right", width=11)
+    t.add_column("Macro", justify="right", width=7)
+    t.add_column("Conf", justify="right", width=6)
     t.add_column("Divergence", width=18)
-    t.add_column("Scored",     width=12)
+    t.add_column("Scored", width=12)
 
     for r in rows:
         score = r["composite_score"]
@@ -340,12 +349,12 @@ async def _explore_signal_data() -> None:
 
     _last_data["2"] = [
         {
-            "ticker":      ticker,
+            "ticker": ticker,
             "signal_type": r["signal_type"],
-            "value":       r["value"],
-            "source":      r["source"],
+            "value": r["value"],
+            "source": r["source"],
             "upload_type": r["upload_type"],
-            "timestamp":   r["timestamp"].isoformat(),
+            "timestamp": r["timestamp"].isoformat(),
         }
         for r in rows
     ]
@@ -357,11 +366,11 @@ async def _explore_signal_data() -> None:
         return
 
     t = Table(box=box.SIMPLE_HEAD, show_edge=False)
-    t.add_column("Signal Type", style="cyan",    width=30)
-    t.add_column("Value",       justify="right", width=14)
-    t.add_column("Source",      width=16)
+    t.add_column("Signal Type", style="cyan", width=30)
+    t.add_column("Value", justify="right", width=14)
+    t.add_column("Source", width=16)
     t.add_column("Upload Type", width=16)
-    t.add_column("Timestamp",   width=22)
+    t.add_column("Timestamp", width=22)
 
     for r in rows:
         t.add_row(
@@ -394,11 +403,11 @@ async def _explore_articles() -> None:
 
     _last_data["2"] = [
         {
-            "ticker":             r["ticker"],
-            "title":              r["title"],
-            "source":             r["source"],
+            "ticker": r["ticker"],
+            "title": r["title"],
+            "source": r["source"],
             "provider_sentiment": r["provider_sentiment"],
-            "published_at":       r["published_at"].isoformat(),
+            "published_at": r["published_at"].isoformat(),
         }
         for r in rows
     ]
@@ -407,18 +416,18 @@ async def _explore_articles() -> None:
     console.rule("[bold cyan]ARTICLES \u2014 20 most recent[/bold cyan]")
 
     t = Table(box=box.SIMPLE_HEAD, show_edge=False)
-    t.add_column("Ticker",    style="bold white", width=7)
-    t.add_column("Title",     width=62)
-    t.add_column("Source",    width=16)
-    t.add_column("Sentiment", justify="right",    width=10)
+    t.add_column("Ticker", style="bold white", width=7)
+    t.add_column("Title", width=62)
+    t.add_column("Source", width=16)
+    t.add_column("Sentiment", justify="right", width=10)
     t.add_column("Published", width=22)
 
     for r in rows:
         title = (r["title"] or "")[:60] + ("\u2026" if len(r["title"] or "") > 60 else "")
-        sent  = r["provider_sentiment"]
+        sent = r["provider_sentiment"]
         if sent is not None:
             sent_style = "green" if sent > 0.1 else ("red" if sent < -0.1 else "white")
-            sent_text  = Text(f"{sent:+.2f}", style=sent_style)
+            sent_text = Text(f"{sent:+.2f}", style=sent_style)
         else:
             sent_text = Text("\u2014")
         t.add_row(
@@ -452,15 +461,25 @@ async def _explore_top_scores() -> None:
     bullish = sorted(all_rows, key=lambda r: r["composite_score"], reverse=True)[:10]
     bearish = sorted(all_rows, key=lambda r: r["composite_score"])[:10]
 
-    _last_data["2"] = (
-        [{"category": "bullish", "ticker": r["ticker"],
-          "composite_score": r["composite_score"], "confidence_score": r["confidence_score"],
-          "timestamp": r["timestamp"].isoformat()} for r in bullish]
-        +
-        [{"category": "bearish", "ticker": r["ticker"],
-          "composite_score": r["composite_score"], "confidence_score": r["confidence_score"],
-          "timestamp": r["timestamp"].isoformat()} for r in bearish]
-    )
+    _last_data["2"] = [
+        {
+            "category": "bullish",
+            "ticker": r["ticker"],
+            "composite_score": r["composite_score"],
+            "confidence_score": r["confidence_score"],
+            "timestamp": r["timestamp"].isoformat(),
+        }
+        for r in bullish
+    ] + [
+        {
+            "category": "bearish",
+            "ticker": r["ticker"],
+            "composite_score": r["composite_score"],
+            "confidence_score": r["confidence_score"],
+            "timestamp": r["timestamp"].isoformat(),
+        }
+        for r in bearish
+    ]
 
     console.clear()
     console.rule("[bold cyan]TOP SCORES TODAY \u2014 last 24 hours[/bold cyan]")
@@ -468,8 +487,8 @@ async def _explore_top_scores() -> None:
     def _make_table(rows, title: str, score_style: str) -> Table:
         t = Table(title=title, box=box.SIMPLE_HEAD, show_edge=False, min_width=38)
         t.add_column("Ticker", style="bold white", width=7)
-        t.add_column("Score",  justify="right",    width=7)
-        t.add_column("Conf",   justify="right",    width=6)
+        t.add_column("Score", justify="right", width=7)
+        t.add_column("Conf", justify="right", width=6)
         t.add_column("Scored", width=12)
         for r in rows:
             t.add_row(
@@ -484,17 +503,17 @@ async def _explore_top_scores() -> None:
         console.print("  [yellow]No sentiment data in the last 24 hours.[/yellow]")
         return
 
-    left  = _make_table(bullish, "Most Bullish", "bold green")
+    left = _make_table(bullish, "Most Bullish", "bold green")
     right = _make_table(bearish, "Most Bearish", "bold red")
     console.print(Columns([left, right], equal=True, expand=False))
 
 
 # EXPLORE sub-screen registry
 _EXPLORE_SCREENS: dict[str, tuple[str, ...]] = {
-    "a": ("Sentiment scores (latest 20)",    _explore_sentiment_scores),  # type: ignore[dict-item]
-    "b": ("Signal data (per-ticker)",        _explore_signal_data),       # type: ignore[dict-item]
-    "c": ("Articles (latest 20)",            _explore_articles),          # type: ignore[dict-item]
-    "d": ("Top scores today (bull/bear)",    _explore_top_scores),        # type: ignore[dict-item]
+    "a": ("Sentiment scores (latest 20)", _explore_sentiment_scores),  # type: ignore[dict-item]
+    "b": ("Signal data (per-ticker)", _explore_signal_data),  # type: ignore[dict-item]
+    "c": ("Articles (latest 20)", _explore_articles),  # type: ignore[dict-item]
+    "d": ("Top scores today (bull/bear)", _explore_top_scores),  # type: ignore[dict-item]
 }
 
 
@@ -502,16 +521,18 @@ async def screen_explore() -> None:
     """Display the EXPLORE sub-menu and dispatch to the chosen sub-screen."""
     console.clear()
     console.rule("[bold cyan]EXPLORE[/bold cyan]")
-    console.print(Panel(
-        "[bold]Choose a view:[/bold]\n\n"
-        "  [cyan]a[/cyan]  Sentiment scores (latest 20)\n"
-        "  [cyan]b[/cyan]  Signal data (per-ticker)\n"
-        "  [cyan]c[/cyan]  Articles (latest 20)\n"
-        "  [cyan]d[/cyan]  Top scores today (bullish/bearish)\n\n"
-        "  [dim]Any other key \u2192 back to nav[/dim]",
-        title="[bold yellow]EXPLORE[/bold yellow]",
-        expand=False,
-    ))
+    console.print(
+        Panel(
+            "[bold]Choose a view:[/bold]\n\n"
+            "  [cyan]a[/cyan]  Sentiment scores (latest 20)\n"
+            "  [cyan]b[/cyan]  Signal data (per-ticker)\n"
+            "  [cyan]c[/cyan]  Articles (latest 20)\n"
+            "  [cyan]d[/cyan]  Top scores today (bullish/bearish)\n\n"
+            "  [dim]Any other key \u2192 back to nav[/dim]",
+            title="[bold yellow]EXPLORE[/bold yellow]",
+            expand=False,
+        )
+    )
 
     key = _read_key().lower()
     if key in _EXPLORE_SCREENS:
@@ -522,6 +543,7 @@ async def screen_explore() -> None:
 # ---------------------------------------------------------------------------
 # Screen 3 — TICKER DEEP-DIVE
 # ---------------------------------------------------------------------------
+
 
 async def screen_ticker_deep_dive() -> None:
     """Full deep-dive for a single ticker: history, charts, divergence, export."""
@@ -543,9 +565,9 @@ async def screen_ticker_deep_dive() -> None:
     period_key = _read_key().lower()
     interval_map = {
         "1": ("24 hours", timedelta(hours=24)),
-        "2": ("7 days",   timedelta(days=7)),
-        "3": ("30 days",  timedelta(days=30)),
-        "4": ("90 days",  timedelta(days=90)),
+        "2": ("7 days", timedelta(days=7)),
+        "3": ("30 days", timedelta(days=30)),
+        "4": ("90 days", timedelta(days=90)),
     }
     interval_label, interval_td = interval_map.get(period_key, ("7 days", timedelta(days=7)))
     cutoff = datetime.now(tz=timezone.utc) - interval_td
@@ -570,15 +592,15 @@ async def screen_ticker_deep_dive() -> None:
     # Cache for CSV export
     _last_data["3"] = [
         {
-            "ticker":           ticker,
-            "timestamp":        r["timestamp"].isoformat(),
-            "composite_score":  r["composite_score"],
-            "market_index":     r["market_index"],
-            "narrative_index":  r["narrative_index"],
+            "ticker": ticker,
+            "timestamp": r["timestamp"].isoformat(),
+            "composite_score": r["composite_score"],
+            "market_index": r["market_index"],
+            "narrative_index": r["narrative_index"],
             "influencer_index": r["influencer_index"],
-            "macro_index":      r["macro_index"],
+            "macro_index": r["macro_index"],
             "confidence_score": r["confidence_score"],
-            "divergence":       r["divergence"],
+            "divergence": r["divergence"],
         }
         for r in rows
     ]
@@ -595,25 +617,25 @@ async def screen_ticker_deep_dive() -> None:
     score = latest["composite_score"]
     style = _score_style(score)
     conf = latest["confidence_score"]
-    console.print(Panel(
-        f"[{style}]{ticker} \u2014 {_label(score)} ({score:.1f})[/{style}]   "
-        f"confidence: [yellow]{conf}[/yellow]   "
-        f"last scored: [dim]{_ago(latest['timestamp'])}[/dim]",
-        expand=False,
-    ))
+    console.print(
+        Panel(
+            f"[{style}]{ticker} \u2014 {_label(score)} ({score:.1f})[/{style}]   "
+            f"confidence: [yellow]{conf}[/yellow]   "
+            f"last scored: [dim]{_ago(latest['timestamp'])}[/dim]",
+            expand=False,
+        )
+    )
 
     # --- 4b. Latest sub-indices table ---
-    idx_table = Table(
-        title="Latest Sub-Indices", box=box.SIMPLE_HEAD, show_edge=False
-    )
+    idx_table = Table(title="Latest Sub-Indices", box=box.SIMPLE_HEAD, show_edge=False)
     idx_table.add_column("Layer", style="cyan", width=14)
     idx_table.add_column("Value", justify="right", width=8)
     idx_table.add_column("Label", width=10)
     for layer_name, field in [
-        ("Market",     "market_index"),
-        ("Narrative",  "narrative_index"),
+        ("Market", "market_index"),
+        ("Narrative", "narrative_index"),
         ("Influencer", "influencer_index"),
-        ("Macro",      "macro_index"),
+        ("Macro", "macro_index"),
     ]:
         v = latest[field]
         idx_table.add_row(
@@ -628,10 +650,10 @@ async def screen_ticker_deep_dive() -> None:
         "composite": [(r["timestamp"], r["composite_score"]) for r in rows],
     }
     sub_index_series = {
-        "market":     [(r["timestamp"], r["market_index"])     for r in rows],
-        "narrative":  [(r["timestamp"], r["narrative_index"])  for r in rows],
+        "market": [(r["timestamp"], r["market_index"]) for r in rows],
+        "narrative": [(r["timestamp"], r["narrative_index"]) for r in rows],
         "influencer": [(r["timestamp"], r["influencer_index"]) for r in rows],
-        "macro":      [(r["timestamp"], r["macro_index"])      for r in rows],
+        "macro": [(r["timestamp"], r["macro_index"]) for r in rows],
     }
     confidence_series = {
         "confidence": [(r["timestamp"], r["confidence_score"]) for r in rows],
@@ -669,9 +691,7 @@ async def screen_ticker_deep_dive() -> None:
         d = r["divergence"] or "none"
         div_counts[d] = div_counts.get(d, 0) + 1
 
-    div_table = Table(
-        title="Divergence Distribution", box=box.SIMPLE_HEAD, show_edge=False
-    )
+    div_table = Table(title="Divergence Distribution", box=box.SIMPLE_HEAD, show_edge=False)
     div_table.add_column("Divergence", style="cyan", width=22)
     div_table.add_column("Count", justify="right", width=8)
     div_table.add_column("Pct", justify="right", width=8)
@@ -717,11 +737,11 @@ async def screen_ticker_deep_dive() -> None:
 
         console.print(f"\n  [bold green]PNGs exported \u2192[/bold green] [cyan]{folder}/[/cyan]")
         if p1:
-            console.print(f"    composite.png")
+            console.print("    composite.png")
         if p2:
-            console.print(f"    sub_indices.png")
+            console.print("    sub_indices.png")
         if p3:
-            console.print(f"    confidence.png")
+            console.print("    confidence.png")
 
     elif action == "e":
         # CSV export via the standard path
@@ -732,6 +752,7 @@ async def screen_ticker_deep_dive() -> None:
 # Screen 4 — PIPELINE HEALTH
 # ---------------------------------------------------------------------------
 
+
 async def screen_pipeline_health() -> None:
     """Pipeline health dashboard: scheduler, scoring activity, flags, divergence."""
     global _last_data
@@ -740,11 +761,11 @@ async def screen_pipeline_health() -> None:
 
     # --- 1. Scheduler last runs (Redis) ---
     scheduler_keys = {
-        "market":       "pipeline:last_run:market",
-        "market_eod":   "pipeline:last_run:market_eod",
-        "narrative":    "pipeline:last_run:narrative",
-        "influencer":   "pipeline:last_run:influencer",
-        "macro_daily":    "pipeline:last_run:macro_daily",
+        "market": "pipeline:last_run:market",
+        "market_eod": "pipeline:last_run:market_eod",
+        "narrative": "pipeline:last_run:narrative",
+        "influencer": "pipeline:last_run:influencer",
+        "macro_daily": "pipeline:last_run:macro_daily",
         "macro_intraday": "pipeline:last_run:macro_intraday",
         "short_volume": "pipeline:last_run:short_volume",
     }
@@ -759,13 +780,13 @@ async def screen_pipeline_health() -> None:
     #   check (would false-alarm over weekends when the job doesn't run)
     # short_volume: TODO — confirm threshold with Aayudh
     _STALENESS_SECS = {
-        "market":         90 * 60,
-        "market_eod":     25 * 3600,
-        "narrative":      6 * 3600,
-        "influencer":     3 * 86400,
-        "macro_daily":    25 * 3600,
+        "market": 90 * 60,
+        "market_eod": 25 * 3600,
+        "narrative": 6 * 3600,
+        "influencer": 3 * 86400,
+        "macro_daily": 25 * 3600,
         "macro_intraday": None,
-        "short_volume":   None,
+        "short_volume": None,
     }
 
     scheduler_ts: dict[str, str | None] = {}
@@ -789,12 +810,13 @@ async def screen_pipeline_health() -> None:
     market_hour = now.hour
     market_minute = now.minute
     in_market_hours = is_weekday and (
-        (market_hour == 14 and market_minute >= 30) or
-        (15 <= market_hour < 21)
+        (market_hour == 14 and market_minute >= 30) or (15 <= market_hour < 21)
     )
 
     if redis_error:
-        console.print(f"  [yellow]Redis unavailable ({redis_error}) \u2014 scheduler timestamps skipped.[/yellow]")
+        console.print(
+            f"  [yellow]Redis unavailable ({redis_error}) \u2014 scheduler timestamps skipped.[/yellow]"
+        )
     else:
         st = Table(title="Scheduler Last Runs", box=box.SIMPLE_HEAD, show_edge=False)
         st.add_column("Layer", style="cyan", width=15)
@@ -915,9 +937,13 @@ async def screen_pipeline_health() -> None:
         for k, v in activity.items():
             export_rows.append({"section": "scoring_activity", "key": k, "value": str(v)})
     for f in flags:
-        export_rows.append({"section": "confidence_flags", "key": f["flag"], "value": str(f["cnt"])})
+        export_rows.append(
+            {"section": "confidence_flags", "key": f["flag"], "value": str(f["cnt"])}
+        )
     for d in divergence:
-        export_rows.append({"section": "divergence", "key": d["divergence"], "value": str(d["cnt"])})
+        export_rows.append(
+            {"section": "divergence", "key": d["divergence"], "value": str(d["cnt"])}
+        )
     if missing:
         for k, v in missing.items():
             export_rows.append({"section": "missing_layers", "key": k, "value": str(v)})
@@ -927,6 +953,7 @@ async def screen_pipeline_health() -> None:
 # ---------------------------------------------------------------------------
 # Screen 5 — DATA QUALITY
 # ---------------------------------------------------------------------------
+
 
 async def screen_data_quality() -> None:
     """Data quality dashboard: coverage, gaps, freshness, null rates, articles."""
@@ -1053,40 +1080,49 @@ async def screen_data_quality() -> None:
         for k, v in coverage.items():
             export_rows.append({"section": "coverage", "key": k, "value": str(v)})
     for t in stale_tickers:
-        export_rows.append({
-            "section": "stale_tickers",
-            "key": t["ticker"],
-            "value": t["last_scored"].isoformat() if t["last_scored"] else "never",
-            "company_name": t.get("company_name") or "",
-        })
+        export_rows.append(
+            {
+                "section": "stale_tickers",
+                "key": t["ticker"],
+                "value": t["last_scored"].isoformat() if t["last_scored"] else "never",
+                "company_name": t.get("company_name") or "",
+            }
+        )
     for s in signal_fresh:
-        export_rows.append({
-            "section": "signal_freshness",
-            "key": s["source"],
-            "value": s["latest"].isoformat() if s["latest"] else "never",
-            "n_signals_24h": str(s["n_signals_24h"]),
-        })
+        export_rows.append(
+            {
+                "section": "signal_freshness",
+                "key": s["source"],
+                "value": s["latest"].isoformat() if s["latest"] else "never",
+                "n_signals_24h": str(s["n_signals_24h"]),
+            }
+        )
     for n in null_audit:
-        export_rows.append({
-            "section": "null_audit",
-            "key": n["column"],
-            "value": f"{n['null_pct']:.1f}%",
-            "null_count": str(n["null_count"]),
-            "total": str(n["total"]),
-        })
+        export_rows.append(
+            {
+                "section": "null_audit",
+                "key": n["column"],
+                "value": f"{n['null_pct']:.1f}%",
+                "null_count": str(n["null_count"]),
+                "total": str(n["total"]),
+            }
+        )
     for a in article_vol:
-        export_rows.append({
-            "section": "article_volume",
-            "key": a["source"],
-            "value": str(a["n"]),
-            "n_tickers": str(a["n_tickers"]),
-        })
+        export_rows.append(
+            {
+                "section": "article_volume",
+                "key": a["source"],
+                "value": str(a["n"]),
+                "n_tickers": str(a["n_tickers"]),
+            }
+        )
     _last_data["5"] = export_rows
 
 
 # ---------------------------------------------------------------------------
 # Screen 6 — LIVE SCORE (Redis)
 # ---------------------------------------------------------------------------
+
 
 async def screen_live_score() -> None:
     """Look up the cached scored state for a ticker from Redis."""
@@ -1105,7 +1141,9 @@ async def screen_live_score() -> None:
         finally:
             await redis.close()
     except Exception as exc:  # noqa: BLE001
-        console.print(f"  [yellow]Redis unavailable ({exc}) \u2014 cannot fetch live score.[/yellow]")
+        console.print(
+            f"  [yellow]Redis unavailable ({exc}) \u2014 cannot fetch live score.[/yellow]"
+        )
         _last_data["6"] = []
         return
 
@@ -1117,34 +1155,38 @@ async def screen_live_score() -> None:
         return
 
     data = json.loads(raw)
-    sub  = data.get("sub_indices") or {}
+    sub = data.get("sub_indices") or {}
 
-    _last_data["6"] = [{
-        "ticker":           ticker,
-        "composite_score":  data.get("composite_score"),
-        "label":            _label(data.get("composite_score")),
-        "confidence":       (data.get("confidence") or {}).get("score"),
-        "divergence":       data.get("divergence"),
-        "timestamp":        data.get("timestamp"),
-        "market_index":     (sub.get("market")     or {}).get("value"),
-        "narrative_index":  (sub.get("narrative")  or {}).get("value"),
-        "influencer_index": (sub.get("influencer") or {}).get("value"),
-        "macro_index":      (sub.get("macro")      or {}).get("value"),
-        "explanation":      data.get("explanation"),
-    }]
+    _last_data["6"] = [
+        {
+            "ticker": ticker,
+            "composite_score": data.get("composite_score"),
+            "label": _label(data.get("composite_score")),
+            "confidence": (data.get("confidence") or {}).get("score"),
+            "divergence": data.get("divergence"),
+            "timestamp": data.get("timestamp"),
+            "market_index": (sub.get("market") or {}).get("value"),
+            "narrative_index": (sub.get("narrative") or {}).get("value"),
+            "influencer_index": (sub.get("influencer") or {}).get("value"),
+            "macro_index": (sub.get("macro") or {}).get("value"),
+            "explanation": data.get("explanation"),
+        }
+    ]
 
     score = data.get("composite_score")
     style = _score_style(score)
-    conf  = (data.get("confidence") or {}).get("score", "\u2014")
-    ts    = data.get("timestamp", "\u2014")
+    conf = (data.get("confidence") or {}).get("score", "\u2014")
+    ts = data.get("timestamp", "\u2014")
 
-    console.print(Panel(
-        f"[{style}]{_label(score)} \u2014 score {score:.1f}[/{style}]   "
-        f"confidence: [yellow]{conf}[/yellow]   "
-        f"scored: [dim]{_ago(ts)}[/dim] ({ts})",
-        title=f"[bold]{ticker}[/bold]",
-        expand=False,
-    ))
+    console.print(
+        Panel(
+            f"[{style}]{_label(score)} \u2014 score {score:.1f}[/{style}]   "
+            f"confidence: [yellow]{conf}[/yellow]   "
+            f"scored: [dim]{_ago(ts)}[/dim] ({ts})",
+            title=f"[bold]{ticker}[/bold]",
+            expand=False,
+        )
+    )
 
     if sub:
         st = Table(title="Sub-indices", box=box.SIMPLE_HEAD, show_edge=False)
@@ -1158,13 +1200,17 @@ async def screen_live_score() -> None:
     drivers = data.get("top_drivers") or []
     if drivers:
         dt = Table(title="Top Drivers", box=box.SIMPLE_HEAD, show_edge=False)
-        dt.add_column("Signal",    style="cyan", width=30)
+        dt.add_column("Signal", style="cyan", width=30)
         dt.add_column("Direction", width=10)
         dt.add_column("Magnitude", justify="right", width=10)
-        dt.add_column("Layer",     width=14)
+        dt.add_column("Layer", width=14)
         for d in drivers:
             direction = d.get("direction", "\u2014")
-            dir_style = "green" if direction == "bullish" else ("red" if direction == "bearish" else "white")
+            dir_style = (
+                "green"
+                if direction == "bullish"
+                else ("red" if direction == "bearish" else "white")
+            )
             dt.add_row(
                 d.get("signal", "\u2014"),
                 Text(direction, style=dir_style),
@@ -1186,11 +1232,13 @@ async def screen_live_score() -> None:
 # Key input — blocking and timeout variants
 # ---------------------------------------------------------------------------
 
+
 def _read_key() -> str:
     """Blocking: read one character from stdin without requiring Enter."""
     import termios
     import tty
-    fd  = sys.stdin.fileno()
+
+    fd = sys.stdin.fileno()
     old = termios.tcgetattr(fd)
     try:
         tty.setraw(fd)
@@ -1211,7 +1259,8 @@ async def _wait_for_key(timeout: float) -> str | None:
     def _blocking() -> str | None:
         import termios
         import tty
-        fd  = sys.stdin.fileno()
+
+        fd = sys.stdin.fileno()
         old = termios.tcgetattr(fd)
         try:
             tty.setraw(fd)
@@ -1226,6 +1275,7 @@ async def _wait_for_key(timeout: float) -> str | None:
 # ---------------------------------------------------------------------------
 # Export — delegates to db_exports.show_export_menu
 # ---------------------------------------------------------------------------
+
 
 async def _handle_export(key: str) -> None:
     """Open the export sub-menu for the current screen key."""
@@ -1242,12 +1292,12 @@ async def _handle_export(key: str) -> None:
 # ---------------------------------------------------------------------------
 
 SCREENS: dict[str, tuple[str, ...]] = {
-    "1": ("OVERVIEW",         screen_overview),          # type: ignore[dict-item]
-    "2": ("EXPLORE",          screen_explore),           # type: ignore[dict-item]
+    "1": ("OVERVIEW", screen_overview),  # type: ignore[dict-item]
+    "2": ("EXPLORE", screen_explore),  # type: ignore[dict-item]
     "3": ("TICKER DEEP-DIVE", screen_ticker_deep_dive),  # type: ignore[dict-item]
-    "4": ("PIPELINE HEALTH",  screen_pipeline_health),   # type: ignore[dict-item]
-    "5": ("DATA QUALITY",     screen_data_quality),      # type: ignore[dict-item]
-    "6": ("LIVE SCORE",       screen_live_score),        # type: ignore[dict-item]
+    "4": ("PIPELINE HEALTH", screen_pipeline_health),  # type: ignore[dict-item]
+    "5": ("DATA QUALITY", screen_data_quality),  # type: ignore[dict-item]
+    "6": ("LIVE SCORE", screen_live_score),  # type: ignore[dict-item]
 }
 
 
@@ -1260,8 +1310,7 @@ def _print_nav(current: str) -> None:
         else:
             parts.append(f"[dim] {key}:{name} [/dim]")
     auto_badge = (
-        "[bold yellow] A:auto ON [/bold yellow]" if _auto_refresh
-        else "[dim] A:auto [/dim]"
+        "[bold yellow] A:auto ON [/bold yellow]" if _auto_refresh else "[dim] A:auto [/dim]"
     )
     parts.append(auto_badge)
     parts.append("[dim] E:export  R:refresh  Q:quit [/dim]")
@@ -1288,6 +1337,7 @@ async def _run_screen(key: str) -> None:
 # Status-line helper (used by auto-refresh countdown)
 # ---------------------------------------------------------------------------
 
+
 def _write_status(text: str) -> None:
     """Overwrite the current terminal line in-place (no rich markup)."""
     sys.stdout.write(f"\r\033[K{text}")
@@ -1297,6 +1347,7 @@ def _write_status(text: str) -> None:
 # ---------------------------------------------------------------------------
 # Main loop
 # ---------------------------------------------------------------------------
+
 
 async def main() -> None:
     global _auto_refresh
@@ -1309,7 +1360,6 @@ async def main() -> None:
     await _run_screen(current)
 
     while True:
-
         if _auto_refresh:
             # ----------------------------------------------------------------
             # Auto-refresh countdown — 1-second ticks, overwrites status line

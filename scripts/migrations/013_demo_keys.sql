@@ -1,5 +1,5 @@
 -- ============================================================
--- Migration 013 — demo API keys (docs/APIACCESSPAGE.md, Session B)
+-- Migration 013 — demo API keys (for the website's /api-access page)
 --
 -- Adds key_type ('demo'|'standard') and expires_at so /v1/demo-key can
 -- mint self-expiring free-tier sandbox keys for the /api-access page.

@@ -30,23 +30,25 @@ analyst_eps_estimate_mean
 
 All written with upload_type='live'.
 """
+
 from __future__ import annotations
 
 import asyncio
-import os
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 
 import httpx
 import yfinance as yf
 from dotenv import load_dotenv
 
-from scripts.db.queries.raw_signals import insert_signals
 from pipeline.rate_limits import (
-    FINNHUB_SEM, FINNHUB_DELAY,
+    FINNHUB_DELAY,
+    FINNHUB_SEM,
     guarded_get,
 )
 from pipeline.sources.market import to_yahoo_symbol
+from scripts.db.queries.raw_signals import insert_signals
 
 _log = logging.getLogger(__name__)
 
@@ -54,7 +56,7 @@ load_dotenv(override=False)
 
 _FINNHUB_KEY = os.environ.get("FINNHUB_KEY", "")
 
-_FINNHUB_BASE    = "https://finnhub.io/api/v1"
+_FINNHUB_BASE = "https://finnhub.io/api/v1"
 
 _INSIDER_LOOKBACK_DAYS = 30
 
@@ -62,6 +64,7 @@ _INSIDER_LOOKBACK_DAYS = 30
 # ---------------------------------------------------------------------------
 # Finnhub insider transactions
 # ---------------------------------------------------------------------------
+
 
 async def _insider_finnhub(ticker: str, client: httpx.AsyncClient) -> list[tuple]:
     """
@@ -72,9 +75,12 @@ async def _insider_finnhub(ticker: str, client: httpx.AsyncClient) -> list[tuple
     rows: list[tuple] = []
 
     resp = await guarded_get(
-        client, f"{_FINNHUB_BASE}/stock/insider-transactions",
+        client,
+        f"{_FINNHUB_BASE}/stock/insider-transactions",
         params={"symbol": ticker, "from": str(from_date), "token": _FINNHUB_KEY},
-        sem=FINNHUB_SEM, delay=FINNHUB_DELAY, label=f"Finnhub insider-txn {ticker}",
+        sem=FINNHUB_SEM,
+        delay=FINNHUB_DELAY,
+        label=f"Finnhub insider-txn {ticker}",
     )
     if resp is None or resp.status_code != 200:
         # 403 expected on Finnhub free tier
@@ -103,6 +109,7 @@ async def _insider_finnhub(ticker: str, client: httpx.AsyncClient) -> list[tuple
 # Analyst signals (Finnhub)
 # ---------------------------------------------------------------------------
 
+
 async def _analyst_recommendations(
     ticker: str,
     client: httpx.AsyncClient,
@@ -113,9 +120,12 @@ async def _analyst_recommendations(
     Returns the most recent period's ratio (0–1), or None.
     """
     resp = await guarded_get(
-        client, f"{_FINNHUB_BASE}/stock/recommendation",
+        client,
+        f"{_FINNHUB_BASE}/stock/recommendation",
         params={"symbol": ticker, "token": _FINNHUB_KEY},
-        sem=FINNHUB_SEM, delay=FINNHUB_DELAY, label=f"Finnhub recommendation {ticker}",
+        sem=FINNHUB_SEM,
+        delay=FINNHUB_DELAY,
+        label=f"Finnhub recommendation {ticker}",
     )
     if resp is None or resp.status_code != 200:
         # 403 expected on Finnhub free tier
@@ -134,9 +144,9 @@ async def _analyst_recommendations(
     try:
         latest = data[0]  # most recent period
         strong_buy = int(latest.get("strongBuy") or 0)
-        buy        = int(latest.get("buy")        or 0)
-        hold       = int(latest.get("hold")       or 0)
-        sell       = int(latest.get("sell")       or 0)
+        buy = int(latest.get("buy") or 0)
+        hold = int(latest.get("hold") or 0)
+        sell = int(latest.get("sell") or 0)
         strong_sell = int(latest.get("strongSell") or 0)
         total = strong_buy + buy + hold + sell + strong_sell
         if total == 0:
@@ -152,6 +162,7 @@ async def _analyst_target_yf(ticker: str) -> float | None:
     Paper Data Collection table specifies yfinance for this signal. Wrapped in
     asyncio.to_thread because yfinance is synchronous (mirrors macro.py:75-89).
     """
+
     def _fetch() -> float | None:
         info = yf.Ticker(to_yahoo_symbol(ticker)).info
         target = info.get("targetMeanPrice")
@@ -179,6 +190,7 @@ async def _earnings_estimate_yf(ticker: str) -> float | None:
     raw at signal_type ``analyst_eps_estimate_mean``; scoring derives the
     period-over-period delta from history (Sprint P3.3).
     """
+
     def _fetch() -> float | None:
         est = yf.Ticker(to_yahoo_symbol(ticker)).get_earnings_estimate()
         if est is None:
@@ -214,9 +226,10 @@ async def _earnings_estimate_yf(ticker: str) -> float | None:
 # Public entry point
 # ---------------------------------------------------------------------------
 
+
 async def _run_influencer(ticker: str, client: httpx.AsyncClient) -> None:
     """Core implementation — requires a live client."""
-    now  = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
     rows: list[tuple] = []
 
     # --- Insider transactions (Finnhub per paper Data Collection table) ---

@@ -19,6 +19,7 @@ baseline (see get_baseline_scores) — a ticker with no baseline has
 change=None and is simply excluded from movers/breadth-improving. Nothing
 here interpolates across missing ticks.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -58,10 +59,7 @@ def compute_percentiles(scores: dict[str, float]) -> dict[str, float]:
     for i, v in enumerate(ordered):
         if v not in below:
             below[v] = i
-    return {
-        t: round(100.0 * below[v] / (n - 1), 1)
-        for t, v in scores.items()
-    }
+    return {t: round(100.0 * below[v] / (n - 1), 1) for t, v in scores.items()}
 
 
 def compute_cross_sectional(
@@ -96,7 +94,7 @@ def compute_cross_sectional(
     std = None
     if n > 1:
         var = sum((v - mean) ** 2 for v in raw_scores.values()) / (n - 1)
-        std = var ** 0.5
+        std = var**0.5
 
     by_sector: dict[str, dict[str, float]] = {}
     for t, v in raw_scores.items():
@@ -193,15 +191,17 @@ def build_overview(
     for sector in sorted(by_sector):
         members = sorted(by_sector[sector], key=lambda t: scores[t], reverse=True)
         size = len(members)
-        sectors.append({
-            "sector": sector,
-            "average_score": round(sum(scores[t] for t in members) / size, 2),
-            "size": size,
-            "tickers": [
-                {"ticker": t, "score": round(scores[t], 2), "rank": i + 1}
-                for i, t in enumerate(members)
-            ],
-        })
+        sectors.append(
+            {
+                "sector": sector,
+                "average_score": round(sum(scores[t] for t in members) / size, 2),
+                "size": size,
+                "tickers": [
+                    {"ticker": t, "score": round(scores[t], 2), "rank": i + 1}
+                    for i, t in enumerate(members)
+                ],
+            }
+        )
 
     blob = {
         "timestamp": timestamp.isoformat(),

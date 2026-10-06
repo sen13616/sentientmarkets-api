@@ -16,6 +16,7 @@ Produces a continuous score in [-1, +1] from the three-class softmax output.
 The model is loaded lazily on first call to avoid torch import at startup
 (same pattern as dedup.py for sentence-transformers).
 """
+
 from __future__ import annotations
 
 import logging
@@ -124,7 +125,7 @@ def score_batch(texts: list[str], batch_size: int = 32) -> list[dict]:
 
     results: list[dict] = []
     for start in range(0, len(texts), batch_size):
-        chunk = texts[start:start + batch_size]
+        chunk = texts[start : start + batch_size]
         inputs = tokenizer(
             chunk,
             return_tensors="pt",
@@ -143,10 +144,12 @@ def score_batch(texts: list[str], batch_size: int = 32) -> list[dict]:
             pos = probs[i][_POS_IDX].item()
             neg = probs[i][_NEG_IDX].item()
             neu = probs[i][_NEU_IDX].item()
-            results.append({
-                "finbert_score": pos - neg,
-                "finbert_pos": pos,
-                "finbert_neg": neg,
-                "finbert_neu": neu,
-            })
+            results.append(
+                {
+                    "finbert_score": pos - neg,
+                    "finbert_pos": pos,
+                    "finbert_neg": neg,
+                    "finbert_neu": neu,
+                }
+            )
     return results

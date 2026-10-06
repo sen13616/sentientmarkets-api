@@ -4,6 +4,7 @@ The narrative layer (30% weight) emits signal_type="finbert_sentiment". It must
 map to a real label + explanation phrase, not fall through to the generic
 default ("a positive signal").
 """
+
 from __future__ import annotations
 
 from pipeline.explanation.templates import _DEFAULT_PHRASE, generate_explanation

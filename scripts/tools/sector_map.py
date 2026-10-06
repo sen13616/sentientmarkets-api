@@ -1,16 +1,17 @@
 """
-tools/sector_map.py
+scripts/tools/sector_map.py
 
 Static GICS sector mapping for all tier-1-supported tickers in
 ticker_universe. Used by tools/seed_sectors.py to populate the
 sector column added in migrations/008_add_ticker_sector.sql.
 
 Generated 2026-05-15 via yfinance Ticker(t).info["sector"].
-Re-run tools/generate_sector_map.py to regenerate.
+Re-run tools/oneoff/generate_sector_map.py to regenerate.
 
 Values must match keys of pipeline.sources.macro.SECTOR_ETFS exactly
 (11-class GICS taxonomy). Validation is enforced at import time below.
 """
+
 from __future__ import annotations
 
 TICKER_SECTORS: dict[str, str] = {
@@ -520,6 +521,7 @@ TICKER_SECTORS: dict[str, str] = {
 
 # Validate against the canonical taxonomy at import time.
 from pipeline.sources.macro import SECTOR_ETFS as _SECTOR_ETFS
+
 _VALID = set(_SECTOR_ETFS.keys())
 _invalid = {t: s for t, s in TICKER_SECTORS.items() if s not in _VALID}
 assert not _invalid, f"sector_map.py contains non-GICS sectors: {_invalid}"

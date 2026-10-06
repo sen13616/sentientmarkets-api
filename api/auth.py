@@ -19,6 +19,7 @@ Unknown keys are cached too (as a miss marker), so repeated bad keys
 cannot hammer Postgres.  If Redis is unavailable, auth falls back to the
 direct DB lookup rather than failing.
 """
+
 from __future__ import annotations
 
 import hashlib

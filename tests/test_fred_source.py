@@ -9,6 +9,7 @@ Unit tests for `pipeline/sources/fred.py`:
   • `fetch_fred_signals` writes one row per series under '_MACRO_'
   • Series partial failure: one fails, other two still write
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -19,10 +20,10 @@ import pytest
 
 from pipeline.sources.fred import SERIES_MAP, _fetch_observation, fetch_fred_signals
 
-
 # ---------------------------------------------------------------------------
 # Shape / mapping invariants
 # ---------------------------------------------------------------------------
+
 
 def test_series_map_contains_three_signal_types():
     assert set(SERIES_MAP.keys()) == {
@@ -34,13 +35,14 @@ def test_series_map_contains_three_signal_types():
 
 def test_series_map_resolves_to_canonical_fred_ids():
     assert SERIES_MAP["treasury_yield_10y"] == "DGS10"
-    assert SERIES_MAP["treasury_yield_2y"]  == "DGS2"
-    assert SERIES_MAP["ted_spread"]         == "T10Y2Y"
+    assert SERIES_MAP["treasury_yield_2y"] == "DGS2"
+    assert SERIES_MAP["ted_spread"] == "T10Y2Y"
 
 
 # ---------------------------------------------------------------------------
 # _fetch_observation
 # ---------------------------------------------------------------------------
+
 
 def _mock_response(status: int, body: dict | None = None):
     resp = MagicMock(spec=httpx.Response)
@@ -50,7 +52,6 @@ def _mock_response(status: int, body: dict | None = None):
 
 
 class TestFetchObservation:
-
     @pytest.mark.asyncio
     async def test_parses_normal_response(self):
         body = {
@@ -61,8 +62,10 @@ class TestFetchObservation:
         }
         with (
             patch("pipeline.sources.fred._FRED_KEY", "test-key"),
-            patch("pipeline.sources.fred.guarded_get",
-                  new=AsyncMock(return_value=_mock_response(200, body))),
+            patch(
+                "pipeline.sources.fred.guarded_get",
+                new=AsyncMock(return_value=_mock_response(200, body)),
+            ),
         ):
             client = AsyncMock(spec=httpx.AsyncClient)
             result = await _fetch_observation(client, "DGS10")
@@ -83,8 +86,10 @@ class TestFetchObservation:
         }
         with (
             patch("pipeline.sources.fred._FRED_KEY", "test-key"),
-            patch("pipeline.sources.fred.guarded_get",
-                  new=AsyncMock(return_value=_mock_response(200, body))),
+            patch(
+                "pipeline.sources.fred.guarded_get",
+                new=AsyncMock(return_value=_mock_response(200, body)),
+            ),
         ):
             client = AsyncMock(spec=httpx.AsyncClient)
             result = await _fetch_observation(client, "DGS10")
@@ -97,8 +102,10 @@ class TestFetchObservation:
     async def test_returns_empty_on_non_200(self):
         with (
             patch("pipeline.sources.fred._FRED_KEY", "test-key"),
-            patch("pipeline.sources.fred.guarded_get",
-                  new=AsyncMock(return_value=_mock_response(500, {}))),
+            patch(
+                "pipeline.sources.fred.guarded_get",
+                new=AsyncMock(return_value=_mock_response(500, {})),
+            ),
         ):
             client = AsyncMock(spec=httpx.AsyncClient)
             assert await _fetch_observation(client, "DGS10") == []
@@ -110,8 +117,7 @@ class TestFetchObservation:
         broken.json = MagicMock(side_effect=ValueError("not JSON"))
         with (
             patch("pipeline.sources.fred._FRED_KEY", "test-key"),
-            patch("pipeline.sources.fred.guarded_get",
-                  new=AsyncMock(return_value=broken)),
+            patch("pipeline.sources.fred.guarded_get", new=AsyncMock(return_value=broken)),
         ):
             client = AsyncMock(spec=httpx.AsyncClient)
             assert await _fetch_observation(client, "DGS10") == []
@@ -127,8 +133,8 @@ class TestFetchObservation:
 # fetch_fred_signals — end-to-end
 # ---------------------------------------------------------------------------
 
-class TestFetchFredSignals:
 
+class TestFetchFredSignals:
     @pytest.mark.asyncio
     async def test_writes_three_rows_under_macro_ticker(self):
         captured: list = []
@@ -143,10 +149,11 @@ class TestFetchFredSignals:
         }
         with (
             patch("pipeline.sources.fred._FRED_KEY", "test-key"),
-            patch("pipeline.sources.fred.guarded_get",
-                  new=AsyncMock(return_value=_mock_response(200, body))),
-            patch("pipeline.sources.fred.insert_signals",
-                  new=AsyncMock(side_effect=_capture)),
+            patch(
+                "pipeline.sources.fred.guarded_get",
+                new=AsyncMock(return_value=_mock_response(200, body)),
+            ),
+            patch("pipeline.sources.fred.insert_signals", new=AsyncMock(side_effect=_capture)),
         ):
             client = AsyncMock(spec=httpx.AsyncClient)
             n = await fetch_fred_signals(client)
@@ -154,7 +161,7 @@ class TestFetchFredSignals:
         assert n == 3
         assert len(captured) == 3
         # All rows tagged _MACRO_ / source='fred'
-        for ticker, sig_type, value, source, upload_type, _ts in captured:
+        for ticker, sig_type, _value, source, upload_type, _ts in captured:
             assert ticker == "_MACRO_"
             assert source == "fred"
             assert upload_type == "live"
@@ -179,8 +186,7 @@ class TestFetchFredSignals:
         with (
             patch("pipeline.sources.fred._FRED_KEY", "test-key"),
             patch("pipeline.sources.fred.guarded_get", new=_selective_get),
-            patch("pipeline.sources.fred.insert_signals",
-                  new=AsyncMock(side_effect=_capture)),
+            patch("pipeline.sources.fred.insert_signals", new=AsyncMock(side_effect=_capture)),
         ):
             client = AsyncMock(spec=httpx.AsyncClient)
             n = await fetch_fred_signals(client)
@@ -188,5 +194,5 @@ class TestFetchFredSignals:
         assert n == 2
         written_types = {r[1] for r in captured}
         assert "treasury_yield_10y" not in written_types
-        assert "treasury_yield_2y"  in written_types
-        assert "ted_spread"         in written_types
+        assert "treasury_yield_2y" in written_types
+        assert "ted_spread" in written_types

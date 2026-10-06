@@ -29,6 +29,10 @@ Thumbs.db
 exports/
 *.log
 
+# Research snapshots and backtest outputs (regenerable; never committed)
+data/
+research/runs/
+
 # Build artifacts
 build/
 dist/

@@ -68,6 +68,7 @@ def enabled() -> bool:
 # Pure math — shared by the live tick path and scripts/eval/backfill_features.py
 # ---------------------------------------------------------------------------
 
+
 def trailing_zscore(
     current: float,
     prior: list[float],
@@ -80,7 +81,7 @@ def trailing_zscore(
     n = len(prior)
     mean = sum(prior) / n
     var = sum((x - mean) ** 2 for x in prior) / n
-    std = var ** 0.5
+    std = var**0.5
     if std < sigma_floor:
         return None
     return round((current - mean) / std, 4)
@@ -90,7 +91,7 @@ def short_vol_z_from_series(values_oldest_first: list[float]) -> float | None:
     """Latest short_volume_ratio_otc vs the up-to-WINDOW prior sessions."""
     if len(values_oldest_first) < 2:
         return None
-    *prior, current = values_oldest_first[-(WINDOW + 1):]
+    *prior, current = values_oldest_first[-(WINDOW + 1) :]
     return trailing_zscore(current, prior)
 
 
@@ -128,6 +129,7 @@ def insider_net_z_from_daily(
 # Live tick path (orchestrator, flag-gated)
 # ---------------------------------------------------------------------------
 
+
 async def compute_positioning_features(ticker: str, now: datetime) -> dict:
     """Return {feature_name: z} with only the features that computed.
 
@@ -139,9 +141,7 @@ async def compute_positioning_features(ticker: str, now: datetime) -> dict:
     features: dict[str, float] = {}
 
     try:
-        series = await get_signal_history(
-            ticker, "short_volume_ratio_otc", limit=WINDOW + 1
-        )
+        series = await get_signal_history(ticker, "short_volume_ratio_otc", limit=WINDOW + 1)
         z = short_vol_z_from_series(series)
         if z is not None:
             features["short_vol_z"] = z

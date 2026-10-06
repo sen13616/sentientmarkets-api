@@ -1,5 +1,5 @@
 """
-tools/backfill_finbert.py — One-off FinBERT backfill + Finnhub relevance fix.
+scripts/tools/oneoff/backfill_finbert.py — One-off FinBERT backfill + Finnhub relevance fix.
 
 Run this ONCE after deploying Sprint A and applying migration 007.
 
@@ -10,10 +10,11 @@ What it does:
     3. Scores English articles where finbert_score IS NULL with ProsusAI/finbert.
 
 Usage:
-    python3 tools/backfill_finbert.py [--batch-size 64] [--dry-run]
+    python3 scripts/tools/oneoff/backfill_finbert.py [--batch-size 64] [--dry-run]
 
 This script is idempotent — safe to re-run if interrupted.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -26,17 +27,21 @@ import time
 from dotenv import load_dotenv
 
 # Add project root to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(
+    0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+)
 
 load_dotenv(override=True)
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s"
+)
 _log = logging.getLogger(__name__)
 
 
 async def backfill(batch_size: int = 64, dry_run: bool = False) -> None:
     import asyncpg
-    from langdetect import detect, LangDetectException
+    from langdetect import LangDetectException, detect
 
     dsn = os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://")
     conn = await asyncpg.connect(dsn)
@@ -139,10 +144,15 @@ async def backfill(batch_size: int = 64, dry_run: bool = False) -> None:
             rate = total_scored / elapsed if elapsed > 0 else 0
             _log.info(
                 "Step 3 progress: %d/%d scored (%.1f articles/sec)",
-                total_scored, unscored_count, rate,
+                total_scored,
+                unscored_count,
+                rate,
             )
-        _log.info("Step 3 done: %d articles FinBERT-scored in %.1fs",
-                   total_scored, time.monotonic() - t_start)
+        _log.info(
+            "Step 3 done: %d articles FinBERT-scored in %.1fs",
+            total_scored,
+            time.monotonic() - t_start,
+        )
 
     await conn.close()
     _log.info("Backfill complete.")

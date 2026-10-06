@@ -10,6 +10,7 @@ Query parameters
 ----------------
 detail  : 'summary' (default) or 'full'.  Full is only available on Pro tier.
 """
+
 from __future__ import annotations
 
 import logging
@@ -22,7 +23,7 @@ from api.response.schemas import ErrorResponse, FreeTierResponse, NoDataResponse
 from scripts.db.queries.universe import get_ticker_status
 
 router = APIRouter()
-_log   = logging.getLogger(__name__)
+_log = logging.getLogger(__name__)
 
 
 @router.get(
@@ -35,25 +36,25 @@ _log   = logging.getLogger(__name__)
     },
 )
 async def get_sentiment(
-    ticker:  str,
-    detail:  str = Query(default="summary", pattern="^(summary|full)$"),
-    tier:    str = Depends(rate_limited),
+    ticker: str,
+    detail: str = Query(default="summary", pattern="^(summary|full)$"),
+    tier: str = Depends(rate_limited),
 ) -> FreeTierResponse | ProTierResponse | NoDataResponse:
     # ── Ticker validation ─────────────────────────────────────────────────────
     ticker = ticker.upper()
     status = await get_ticker_status(ticker)
     if status is None:
         return NoDataResponse(
-            ticker  = ticker,
-            status  = "ticker_not_found",
-            message = f"{ticker} is not in the supported universe",
+            ticker=ticker,
+            status="ticker_not_found",
+            message=f"{ticker} is not in the supported universe",
         )
     if status["delisted_at"] is not None:
         successor = status["successor_ticker"]
         return NoDataResponse(
-            ticker  = ticker,
-            status  = "delisted",
-            message = (
+            ticker=ticker,
+            status="delisted",
+            message=(
                 f"{ticker} stopped trading on {status['delisted_at']:%Y-%m-%d}"
                 + (f"; successor: {successor}" if successor else "")
                 + ". Its history remains available via /history."

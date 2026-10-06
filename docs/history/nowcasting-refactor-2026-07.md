@@ -1,7 +1,7 @@
 # CHANGES — Nowcasting-First Refactor (2026-07-21)
 
 Everything here responds to the predictive-value analysis in
-`docs/SUMMARYOFTESTING.md`, which tested whether the API's scores predict
+the July 2026 external backtest study (not included in this repository), which tested whether the API's scores predict
 forward returns. Its verdict: the scores are **coincident-to-lagging with
 price** (a mirror, not a headlight) but have real value as a
 **descriptive / nowcasting** product. The user-approved direction:

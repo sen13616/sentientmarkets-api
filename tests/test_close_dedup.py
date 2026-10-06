@@ -7,12 +7,11 @@ _compute_returns then divides today by today, collapsing return_1d to ~0.
 
 Note: _compute_returns uses log returns as of Sprint 1 (G-S4).
 """
+
 from __future__ import annotations
 
 import math
 from datetime import datetime, timezone
-
-import pytest
 
 from pipeline.sources.market import _compute_returns
 
@@ -60,10 +59,7 @@ def test_compute_returns_5d_20d():
     """5d and 20d returns use the correct lookback offsets."""
     current_close = 110.0
     # Build 25 days of history (one per day) from 80.0 to 104.0
-    history = [
-        (datetime(2026, 4, i + 6, 21, 0, tzinfo=timezone.utc), 80.0 + i)
-        for i in range(25)
-    ]
+    history = [(datetime(2026, 4, i + 6, 21, 0, tzinfo=timezone.utc), 80.0 + i) for i in range(25)]
 
     results = _compute_returns(current_close, history)
     result_dict = dict(results)

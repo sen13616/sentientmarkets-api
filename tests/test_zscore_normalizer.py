@@ -7,16 +7,15 @@ minimum observation gating, and sigma floor behavior.
 All tests are pure and synchronous — the async `score()` method that
 calls the DB is tested in integration tests only.
 """
+
 from __future__ import annotations
 
-import pytest
-
-from pipeline.features.normalize import RollingZScorer, _ZSCORE_CONFIG
-
+from pipeline.features.normalize import _ZSCORE_CONFIG, RollingZScorer
 
 # ---------------------------------------------------------------------------
 # Helpers — build synthetic history with known mean and std
 # ---------------------------------------------------------------------------
+
 
 def _make_history(mean: float, std: float, n: int = 50) -> list[float]:
     """
@@ -35,8 +34,8 @@ def _make_history(mean: float, std: float, n: int = 50) -> list[float]:
 # Basic z-score computation
 # ===========================================================================
 
-class TestBasicZScore:
 
+class TestBasicZScore:
     def test_at_mean_returns_50(self):
         """Value at the mean → z=0 → score=50."""
         scorer = RollingZScorer(window=100)
@@ -77,8 +76,8 @@ class TestBasicZScore:
 # Negation (bearish-when-high signals)
 # ===========================================================================
 
-class TestNegation:
 
+class TestNegation:
     def test_negate_flips_direction(self):
         """With negate=True, value above mean → score < 50 (bearish)."""
         scorer = RollingZScorer(window=100, negate=True)
@@ -108,8 +107,8 @@ class TestNegation:
 # Clamping at ±3σ
 # ===========================================================================
 
-class TestClamping:
 
+class TestClamping:
     def test_extreme_positive_clamped_to_100(self):
         """z > 3 → clamped to 3 → score = 100."""
         scorer = RollingZScorer(window=100)
@@ -156,6 +155,7 @@ class TestClamping:
 # Minimum observation gate
 # ===========================================================================
 
+
 class TestMinObsGate:
     """Tests for the min_obs gate in isolation (fill_threshold=0 to disable fill gate)."""
 
@@ -193,8 +193,8 @@ class TestMinObsGate:
 # Window fill threshold gate
 # ===========================================================================
 
-class TestFillThresholdGate:
 
+class TestFillThresholdGate:
     def test_effective_min_obs_default(self):
         """Default fill_threshold=0.5: effective_min = max(30, ceil(500*0.5)) = 250."""
         scorer = RollingZScorer(window=500)
@@ -279,8 +279,8 @@ class TestFillThresholdGate:
 # Sigma floor
 # ===========================================================================
 
-class TestSigmaFloor:
 
+class TestSigmaFloor:
     def test_zero_variance_returns_none(self):
         """Constant history (σ=0) → None."""
         scorer = RollingZScorer(window=100)
@@ -312,11 +312,18 @@ class TestSigmaFloor:
 # _ZSCORE_CONFIG registry
 # ===========================================================================
 
-class TestZScoreConfig:
 
+class TestZScoreConfig:
     def test_intraday_signals_have_window_500(self):
-        for sig in ("rsi_14", "return_1d", "return_5d", "return_20d",
-                     "volume_ratio", "order_flow_imbalance", "bid_ask_spread_bps"):
+        for sig in (
+            "rsi_14",
+            "return_1d",
+            "return_5d",
+            "return_20d",
+            "volume_ratio",
+            "order_flow_imbalance",
+            "bid_ask_spread_bps",
+        ):
             cfg = _ZSCORE_CONFIG.get(sig)
             assert cfg is not None, f"Missing z-score config for {sig}"
             assert cfg.window == 500, f"Wrong window for {sig}: {cfg.window}"
@@ -326,22 +333,26 @@ class TestZScoreConfig:
             assert cfg.effective_min_obs == 250, f"Wrong effective_min for {sig}"
 
     def test_daily_signals_have_window_90(self):
-        for sig in ("short_volume_ratio_otc", "insider_net_shares",
-                     "analyst_buy_pct", "vix"):
+        for sig in ("short_volume_ratio_otc", "insider_net_shares", "analyst_buy_pct", "vix"):
             cfg = _ZSCORE_CONFIG.get(sig)
             assert cfg is not None, f"Missing z-score config for {sig}"
             assert cfg.window == 90, f"Wrong window for {sig}: {cfg.window}"
             assert cfg.effective_min_obs == 45, f"Wrong effective_min for {sig}"
 
     def test_bearish_signals_are_negated(self):
-        for sig in ("rsi_14", "bid_ask_spread_bps",
-                     "short_volume_ratio_otc", "vix"):
+        for sig in ("rsi_14", "bid_ask_spread_bps", "short_volume_ratio_otc", "vix"):
             assert _ZSCORE_CONFIG[sig].negate is True, f"{sig} should be negated"
 
     def test_bullish_signals_are_not_negated(self):
-        for sig in ("return_1d", "return_5d", "return_20d",
-                     "volume_ratio", "order_flow_imbalance",
-                     "insider_net_shares", "analyst_buy_pct"):
+        for sig in (
+            "return_1d",
+            "return_5d",
+            "return_20d",
+            "volume_ratio",
+            "order_flow_imbalance",
+            "insider_net_shares",
+            "analyst_buy_pct",
+        ):
             assert _ZSCORE_CONFIG[sig].negate is False, f"{sig} should not be negated"
 
     def test_no_config_for_excluded_signals(self):

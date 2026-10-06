@@ -1,5 +1,5 @@
 """
-db/queries/as_of.py
+scripts/db/queries/as_of.py
 
 Point-in-time cutoff for scoring-path reads, used by offline replays
 (scripts/backfill/replay_scores.py) to score "as of" a past tick.
@@ -10,12 +10,13 @@ copied into the asyncio tasks it spawns, so concurrent per-ticker scoring sees
 the same cutoff. When set, the scoring-path queries add an upper bound so no
 row timestamped after t can leak into a score for t.
 """
+
 from __future__ import annotations
 
+from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime
-from typing import Iterator
 
 _AS_OF: ContextVar[datetime | None] = ContextVar("scoring_as_of", default=None)
 

@@ -30,6 +30,7 @@ short_volume_ratio_otc   — short_volume / total_volume (0.0–1.0)
 
 All written with source='finra_regsho', upload_type='live'.
 """
+
 from __future__ import annotations
 
 import logging
@@ -52,6 +53,7 @@ _TRF_MARKETS = ("FNYXshvol", "FNSQshvol", "FNQCshvol")
 # ---------------------------------------------------------------------------
 # Parsing
 # ---------------------------------------------------------------------------
+
 
 def _parse_short_volume(text: str) -> dict[str, dict[str, int]]:
     """
@@ -84,9 +86,9 @@ def _parse_short_volume(text: str) -> dict[str, dict[str, int]]:
 
         try:
             symbol = parts[1].strip()
-            short_vol = int(float(parts[2].strip()))   # FINRA switched to float format ~2026-02-24
+            short_vol = int(float(parts[2].strip()))  # FINRA switched to float format ~2026-02-24
             # parts[3] is ShortExemptVolume — skip
-            total_vol = int(float(parts[4].strip()))   # FINRA switched to float format ~2026-02-24
+            total_vol = int(float(parts[4].strip()))  # FINRA switched to float format ~2026-02-24
         except (ValueError, IndexError):
             continue
 
@@ -138,6 +140,7 @@ def _combine_trf_data(
 # Fetching
 # ---------------------------------------------------------------------------
 
+
 def _url_for(market_prefix: str, target_date: date) -> str:
     """Build the REGSHO URL for a given market and date."""
     return f"{_REGSHO_BASE}/{market_prefix}{target_date.strftime('%Y%m%d')}.txt"
@@ -170,13 +173,17 @@ async def fetch_short_volume_for_date(
             data = _parse_short_volume(resp.text)
             if data:
                 _log.info(
-                    "FINRA CNMS %s: %d tickers", target_date.isoformat(), len(data),
+                    "FINRA CNMS %s: %d tickers",
+                    target_date.isoformat(),
+                    len(data),
                 )
                 return data
             _log.warning("FINRA CNMS %s: parsed 0 tickers", target_date.isoformat())
         else:
             _log.debug(
-                "FINRA CNMS %s: HTTP %d", target_date.isoformat(), resp.status_code,
+                "FINRA CNMS %s: HTTP %d",
+                target_date.isoformat(),
+                resp.status_code,
             )
     except Exception as exc:
         _log.warning("FINRA CNMS %s fetch error: %s", target_date.isoformat(), exc)
@@ -192,10 +199,15 @@ async def fetch_short_volume_for_date(
                 parsed = _parse_short_volume(resp.text)
                 if parsed:
                     trf_datasets.append(parsed)
-                    _log.debug("FINRA %s %s: %d tickers", market, target_date.isoformat(), len(parsed))
+                    _log.debug(
+                        "FINRA %s %s: %d tickers", market, target_date.isoformat(), len(parsed)
+                    )
             else:
                 _log.debug(
-                    "FINRA %s %s: HTTP %d", market, target_date.isoformat(), resp.status_code,
+                    "FINRA %s %s: HTTP %d",
+                    market,
+                    target_date.isoformat(),
+                    resp.status_code,
                 )
         except Exception as exc:
             _log.warning("FINRA %s %s fetch error: %s", market, target_date.isoformat(), exc)
@@ -207,7 +219,9 @@ async def fetch_short_volume_for_date(
     combined = _combine_trf_data(trf_datasets)
     _log.info(
         "FINRA TRF combined %s: %d tickers from %d TRFs",
-        target_date.isoformat(), len(combined), len(trf_datasets),
+        target_date.isoformat(),
+        len(combined),
+        len(trf_datasets),
     )
     return combined
 
@@ -252,6 +266,7 @@ async def latest_short_volume(
 # Ingestion (called by scheduler)
 # ---------------------------------------------------------------------------
 
+
 async def ingest_short_volume(client: httpx.AsyncClient) -> int:
     """
     Fetch the latest FINRA short volume, filter to active universe, and
@@ -267,11 +282,15 @@ async def ingest_short_volume(client: httpx.AsyncClient) -> int:
     data, actual_date = result
     universe = set(await get_active_tickers())
 
-    now = datetime.now(timezone.utc)
     # Use end-of-day (21:00 UTC) of the actual data date as the signal timestamp
     ts = datetime(
-        actual_date.year, actual_date.month, actual_date.day,
-        21, 0, 0, tzinfo=timezone.utc,
+        actual_date.year,
+        actual_date.month,
+        actual_date.day,
+        21,
+        0,
+        0,
+        tzinfo=timezone.utc,
     )
 
     rows: list[tuple] = []
@@ -283,9 +302,11 @@ async def ingest_short_volume(client: httpx.AsyncClient) -> int:
         total_vol = vols["total_volume"]
         ratio = short_vol / total_vol if total_vol > 0 else 0.0
 
-        rows.append((ticker, "short_volume_otc",       float(short_vol), "finra_regsho", "live", ts))
-        rows.append((ticker, "short_volume_total_otc",  float(total_vol), "finra_regsho", "live", ts))
-        rows.append((ticker, "short_volume_ratio_otc",  ratio,            "finra_regsho", "live", ts))
+        rows.append((ticker, "short_volume_otc", float(short_vol), "finra_regsho", "live", ts))
+        rows.append(
+            (ticker, "short_volume_total_otc", float(total_vol), "finra_regsho", "live", ts)
+        )
+        rows.append((ticker, "short_volume_ratio_otc", ratio, "finra_regsho", "live", ts))
 
     if rows:
         await insert_signals(rows)
@@ -294,11 +315,14 @@ async def ingest_short_volume(client: httpx.AsyncClient) -> int:
     if n_tickers == 0:
         _log.warning(
             "ingest_short_volume: 0 tickers written for %s (parsed %d raw tickers, none in universe)",
-            actual_date.isoformat(), len(data),
+            actual_date.isoformat(),
+            len(data),
         )
     else:
         _log.info(
             "ingest_short_volume: %d tickers written for %s (from %d raw tickers)",
-            n_tickers, actual_date.isoformat(), len(data),
+            n_tickers,
+            actual_date.isoformat(),
+            len(data),
         )
     return n_tickers

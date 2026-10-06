@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
 """
-tools/export.py
+scripts/tools/export.py
 
 Standalone database export script for the SentimentAPI pipeline.
 
 Usage
 -----
-    python3 tools/export.py              # full database export (all tables)
-    python3 tools/export.py sentiment    # sentiment history + computed columns
-    python3 tools/export.py signals      # raw signals (last 30 days) + summary
-    python3 tools/export.py articles     # all raw_articles rows
-    python3 tools/export.py scores       # top/bottom 50 + ranked list
+    python3 scripts/tools/export.py              # full database export (all tables)
+    python3 scripts/tools/export.py sentiment    # sentiment history + computed columns
+    python3 scripts/tools/export.py signals      # raw signals (last 30 days) + summary
+    python3 scripts/tools/export.py articles     # all raw_articles rows
+    python3 scripts/tools/export.py scores       # top/bottom 50 + ranked list
 
 All output goes to tools/exports/.
 Progress and file paths are printed to stdout.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -32,7 +33,6 @@ from db_exports import (
     export_sentiment_history,
     export_top_bottom_scores,
 )
-
 from rich.console import Console
 
 console = Console()
@@ -41,6 +41,7 @@ console = Console()
 # ---------------------------------------------------------------------------
 # Command handlers
 # ---------------------------------------------------------------------------
+
 
 async def cmd_full() -> None:
     console.print("[bold yellow]Full database export[/bold yellow] — fetching all tables…\n")
@@ -60,8 +61,7 @@ async def cmd_sentiment() -> None:
     console.print("[bold yellow]Exporting sentiment history…[/bold yellow]")
     path, n = await export_sentiment_history()
     console.print(
-        f"[bold green]Done.[/bold green]  "
-        f"[yellow]{n:,}[/yellow] rows → [cyan]{path}[/cyan]"
+        f"[bold green]Done.[/bold green]  [yellow]{n:,}[/yellow] rows → [cyan]{path}[/cyan]"
     )
 
 
@@ -79,8 +79,7 @@ async def cmd_articles() -> None:
     console.print("[bold yellow]Exporting articles…[/bold yellow]")
     path, n = await export_articles()
     console.print(
-        f"[bold green]Done.[/bold green]  "
-        f"[yellow]{n:,}[/yellow] rows → [cyan]{path}[/cyan]"
+        f"[bold green]Done.[/bold green]  [yellow]{n:,}[/yellow] rows → [cyan]{path}[/cyan]"
     )
 
 
@@ -100,23 +99,22 @@ async def cmd_scores() -> None:
 # ---------------------------------------------------------------------------
 
 _COMMANDS: dict[str, tuple[str, object]] = {
-    "full":      ("Full database export (all tables)", cmd_full),
+    "full": ("Full database export (all tables)", cmd_full),
     "sentiment": ("Sentiment history + computed columns", cmd_sentiment),
-    "signals":   ("Raw signals — last 30 days + summary", cmd_signals),
-    "articles":  ("All articles", cmd_articles),
-    "scores":    ("Top / bottom 50 scores today", cmd_scores),
+    "signals": ("Raw signals — last 30 days + summary", cmd_signals),
+    "articles": ("All articles", cmd_articles),
+    "scores": ("Top / bottom 50 scores today", cmd_scores),
 }
 
 
 def _usage() -> None:
     console.print("\n[bold]Usage:[/bold]")
-    console.print("  python3 tools/export.py [command]\n")
+    console.print("  python3 scripts/tools/export.py [command]\n")
     console.print("[bold]Commands:[/bold]")
     for cmd, (desc, _) in _COMMANDS.items():
         console.print(f"  [cyan]{cmd:<12}[/cyan] {desc}")
     console.print(
-        "\n  (no command)   Full database export\n"
-        f"\nOutput directory: [cyan]{EXPORTS_DIR}[/cyan]\n"
+        f"\n  (no command)   Full database export\n\nOutput directory: [cyan]{EXPORTS_DIR}[/cyan]\n"
     )
 
 

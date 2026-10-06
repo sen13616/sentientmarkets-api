@@ -9,6 +9,7 @@ Unit tests for the six SentientMarkets integration requests:
 
 All external I/O is mocked — no live DB or Redis connections needed.
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
@@ -22,6 +23,7 @@ from main import app
 # ---------------------------------------------------------------------------
 # Shared fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def client():
@@ -47,41 +49,41 @@ def pro_client():
 # ---------------------------------------------------------------------------
 
 _MOCK_STATE_FULL_LAYERS: dict = {
-    "ticker":          "AAPL",
+    "ticker": "AAPL",
     "composite_score": 65.0,
-    "confidence":      {"score": 75, "flags": []},
-    "timestamp":       "2026-04-25T14:00:00+00:00",
+    "confidence": {"score": 75, "flags": []},
+    "timestamp": "2026-04-25T14:00:00+00:00",
     "sub_indices": {
-        "market":     {"value": 70.0},
-        "narrative":  {"value": 60.0},
+        "market": {"value": 70.0},
+        "narrative": {"value": 60.0},
         "influencer": {"value": 72.0},
-        "macro":      {"value": 58.0},
+        "macro": {"value": 58.0},
     },
-    "divergence":  None,
+    "divergence": None,
     "top_drivers": [],
     "explanation": "",
     "freshness": {
-        "market_as_of":     "2026-04-25T14:00:00+00:00",
-        "narrative_as_of":  "2026-04-25T13:00:00+00:00",
+        "market_as_of": "2026-04-25T14:00:00+00:00",
+        "narrative_as_of": "2026-04-25T13:00:00+00:00",
         "influencer_as_of": "2026-04-25T10:00:00+00:00",
-        "macro_as_of":      "2026-04-25T02:00:00+00:00",
+        "macro_as_of": "2026-04-25T02:00:00+00:00",
     },
 }
 
 _MOCK_STATE_MISSING_LAYERS: dict = {
     **_MOCK_STATE_FULL_LAYERS,
     "sub_indices": {
-        "market":     {"value": 70.0},
-        "narrative":  None,              # missing
-        "influencer": None,              # missing
-        "macro":      {"value": 58.0},
+        "market": {"value": 70.0},
+        "narrative": None,  # missing
+        "influencer": None,  # missing
+        "macro": {"value": 58.0},
     },
 }
 
 _MOCK_TICKER_ROWS = [
-    {"ticker": "AAPL", "company_name": "Apple Inc.",     "sector": "Information Technology"},
+    {"ticker": "AAPL", "company_name": "Apple Inc.", "sector": "Information Technology"},
     {"ticker": "MSFT", "company_name": "Microsoft Corp.", "sector": "Information Technology"},
-    {"ticker": "NVDA", "company_name": "NVIDIA Corp.",   "sector": "Information Technology"},
+    {"ticker": "NVDA", "company_name": "NVIDIA Corp.", "sector": "Information Technology"},
 ]
 
 
@@ -89,8 +91,8 @@ _MOCK_TICKER_ROWS = [
 # 1. CORS middleware
 # ===========================================================================
 
-class TestCORS:
 
+class TestCORS:
     def test_cors_header_present_for_allowed_origin(self, client):
         r = client.get(
             "/health",
@@ -102,8 +104,8 @@ class TestCORS:
         r = client.options(
             "/health",
             headers={
-                "Origin":                         "http://localhost:3000",
-                "Access-Control-Request-Method":  "GET",
+                "Origin": "http://localhost:3000",
+                "Access-Control-Request-Method": "GET",
                 "Access-Control-Request-Headers": "Authorization",
             },
         )
@@ -115,8 +117,8 @@ class TestCORS:
 # 3. /health endpoint
 # ===========================================================================
 
-class TestHealth:
 
+class TestHealth:
     def test_no_auth_returns_status_ok(self, client):
         r = client.get("/health")
         assert r.status_code == 200
@@ -172,12 +174,22 @@ class TestHealth:
 # 4. missing_layers in ProTierResponse
 # ===========================================================================
 
-class TestMissingLayers:
 
+class TestMissingLayers:
     def _pro_request(self, client, state):
         with (
             patch("api.rate_limit.check_rate_limit", AsyncMock()),
-            patch("api.routes.sentiment.get_ticker_status", AsyncMock(return_value={"ticker": "AAPL", "delisted_at": None, "successor_ticker": None, "delisted_reason": None})),
+            patch(
+                "api.routes.sentiment.get_ticker_status",
+                AsyncMock(
+                    return_value={
+                        "ticker": "AAPL",
+                        "delisted_at": None,
+                        "successor_ticker": None,
+                        "delisted_reason": None,
+                    }
+                ),
+            ),
             patch("api.response.assembler._load_from_redis", AsyncMock(return_value=state)),
         ):
             return client.get(
@@ -207,8 +219,8 @@ class TestMissingLayers:
 # 5. Company names in /v1/tickers
 # ===========================================================================
 
-class TestTickersCompanyNames:
 
+class TestTickersCompanyNames:
     def test_tickers_returns_list_of_objects(self, free_client):
         with (
             patch("api.rate_limit.check_rate_limit", AsyncMock()),

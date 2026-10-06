@@ -18,6 +18,7 @@ Gap safety: 1-day changes inside the blob are computed against a bounded
 24-48h-old baseline and are null across data gaps; movers and the
 improving-breadth figure exclude tickers with a null change.
 """
+
 from __future__ import annotations
 
 import json
@@ -27,11 +28,11 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from api.rate_limit import rate_limited
 from api.response.schemas import ErrorResponse, MarketOverviewResponse
-from scripts.db.redis import get_redis
 from pipeline.scoring.market_overview import OVERVIEW_KEY
+from scripts.db.redis import get_redis
 
 router = APIRouter()
-_log   = logging.getLogger(__name__)
+_log = logging.getLogger(__name__)
 
 
 @router.get(

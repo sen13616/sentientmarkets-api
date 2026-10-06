@@ -24,17 +24,17 @@ from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
+from api.response.labels import score_to_label  # noqa: E402
+from pipeline.scoring.ema import compute_ema  # noqa: E402
 from scripts.db.connection import close_pool  # noqa: E402
 from scripts.eval import analyze, data  # noqa: E402
-from scripts.eval.run import RESEARCH_END, RESEARCH_START, _utc  # noqa: E402
 from scripts.eval.replay import (  # noqa: E402
     PRODUCTION_CONFIG,
     apply_ema_series,
     replay_ticks,
     to_panel_input,
 )
-from api.response.labels import score_to_label  # noqa: E402
-from pipeline.scoring.ema import compute_ema  # noqa: E402
+from scripts.eval.run import RESEARCH_END, RESEARCH_START, _utc  # noqa: E402
 
 OUT = Path("exports/eval/E004")
 
@@ -42,8 +42,8 @@ PRIMARY = [("2h", 2.0), ("1h", 1.0)]
 INCUMBENT = ("4h_incumbent", 4.0)
 EXPLORATORY = [("0.5h", 0.5), ("adaptive", "adaptive")]
 
-FLIP_LIMIT = 1.5    # × incumbent
-STD_LIMIT = 1.75    # × incumbent
+FLIP_LIMIT = 1.5  # × incumbent
+STD_LIMIT = 1.75  # × incumbent
 GUARD_DELTA = 0.01  # candidate IC may not drop more than this below incumbent
 
 
@@ -99,8 +99,7 @@ def metrics_for(frame: pd.DataFrame, smoothed: pd.Series) -> dict:
     f["label"] = f["s"].round().astype(int).map(score_to_label)
     flips = int((f["label"] != g["label"].shift()).sum() - f["ticker"].nunique())
     span_weeks = (
-        (g["timestamp"].max() - g["timestamp"].min()).dt.total_seconds()
-        / (7 * 86400)
+        (g["timestamp"].max() - g["timestamp"].min()).dt.total_seconds() / (7 * 86400)
     ).sum()
     flips_per_ticker_week = float(flips / span_weeks)
 
@@ -115,8 +114,9 @@ def metrics_for(frame: pd.DataFrame, smoothed: pd.Series) -> dict:
     }
 
 
-def guard_ic(raw_ticks: pd.DataFrame, replayed_base: pd.DataFrame,
-             smoothed: pd.Series, closes: pd.DataFrame) -> dict:
+def guard_ic(
+    raw_ticks: pd.DataFrame, replayed_base: pd.DataFrame, smoothed: pd.Series, closes: pd.DataFrame
+) -> dict:
     """Research-window-only forward IC of the smoothed level (holdout guard)."""
     rep = replayed_base.copy()
     rep["replay_smoothed"] = smoothed.values
@@ -135,11 +135,13 @@ def guard_ic(raw_ticks: pd.DataFrame, replayed_base: pd.DataFrame,
 async def _run() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     from datetime import datetime, timedelta, timezone
+
     load_end = (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%d")
 
     print(f"loading full tick history {RESEARCH_START}..{load_end} ...")
     raw_ticks = await data.load_sentiment_panel(
-        _utc(RESEARCH_START), _utc(load_end), granularity="raw")
+        _utc(RESEARCH_START), _utc(load_end), granularity="raw"
+    )
     closes = await data.load_close_panel(_utc(RESEARCH_START), _utc(RESEARCH_END))
     raw_ticks["timestamp"] = pd.to_datetime(raw_ticks["timestamp"], utc=True)
 
@@ -152,7 +154,7 @@ async def _run() -> int:
     frame = base.rename(columns={"replay_raw": "raw"})[["ticker", "timestamp", "raw"]]
     groups: list[tuple[str, list[float], list[float]]] = []
     for tk, gr in frame.groupby("ticker", sort=False):
-        dt_h = (gr["timestamp"].diff().dt.total_seconds().fillna(0.0) / 3600.0)
+        dt_h = gr["timestamp"].diff().dt.total_seconds().fillna(0.0) / 3600.0
         groups.append((tk, list(dt_h), list(gr["raw"])))
 
     rows = []
@@ -160,12 +162,24 @@ async def _run() -> int:
         print(f"candidate {name} ...")
         smoothed = smooth_all(groups, cand)
         m = metrics_for(frame, smoothed)
-        m.update(guard_ic(raw_ticks, base[["ticker", "timestamp", "replay_raw"]]
-                          .rename(columns={"replay_raw": "replay_raw"}), smoothed, closes))
+        m.update(
+            guard_ic(
+                raw_ticks,
+                base[["ticker", "timestamp", "replay_raw"]].rename(
+                    columns={"replay_raw": "replay_raw"}
+                ),
+                smoothed,
+                closes,
+            )
+        )
         m["candidate"] = name
-        m["tier"] = ("incumbent" if name == INCUMBENT[0]
-                     else "primary" if name in [n for n, _ in PRIMARY]
-                     else "exploratory")
+        m["tier"] = (
+            "incumbent"
+            if name == INCUMBENT[0]
+            else "primary"
+            if name in [n for n, _ in PRIMARY]
+            else "exploratory"
+        )
         rows.append(m)
 
     df = pd.DataFrame(rows).set_index("candidate")
@@ -174,7 +188,8 @@ async def _run() -> int:
     # decision rule (§E004): shortest primary with flips ≤1.5×, std ≤1.75×, guard ok
     def qualifies(r) -> bool:
         guard_ok = all(
-            r[f"ic_h{h}"] is not None and inc[f"ic_h{h}"] is not None
+            r[f"ic_h{h}"] is not None
+            and inc[f"ic_h{h}"] is not None
             and r[f"ic_h{h}"] >= inc[f"ic_h{h}"] - GUARD_DELTA
             for h in (1, 3)
         )
@@ -188,18 +203,37 @@ async def _run() -> int:
     recommendation = qualifying[0] if qualifying else INCUMBENT[0]
 
     df.to_csv(OUT / "metrics.csv")
-    json.dump({"metrics": rows, "recommendation": recommendation,
-               "rule": {"flip_limit_x": FLIP_LIMIT, "std_limit_x": STD_LIMIT,
-                        "guard_delta": GUARD_DELTA}},
-              open(OUT / "summary.json", "w"), indent=2, default=str)
+    json.dump(
+        {
+            "metrics": rows,
+            "recommendation": recommendation,
+            "rule": {
+                "flip_limit_x": FLIP_LIMIT,
+                "std_limit_x": STD_LIMIT,
+                "guard_delta": GUARD_DELTA,
+            },
+        },
+        open(OUT / "summary.json", "w"),
+        indent=2,
+        default=str,
+    )
 
-    cols = ["tier", "tracking_lag_ticks", "mean_abs_gap_vs_raw",
-            "label_flips_per_ticker_week", "tick_std", "ic_h1", "ic_h3"]
+    cols = [
+        "tier",
+        "tracking_lag_ticks",
+        "mean_abs_gap_vs_raw",
+        "label_flips_per_ticker_week",
+        "tick_std",
+        "ic_h1",
+        "ic_h3",
+    ]
     print("\n=== E004 METRICS (full clean history; IC guard research-window only) ===")
     print(df[cols].to_string())
-    print(f"\nincumbent flip baseline ×1.5 = "
-          f"{1.5 * inc['label_flips_per_ticker_week']:.4f}; "
-          f"std baseline ×1.75 = {1.75 * inc['tick_std']:.4f}")
+    print(
+        f"\nincumbent flip baseline ×1.5 = "
+        f"{1.5 * inc['label_flips_per_ticker_week']:.4f}; "
+        f"std baseline ×1.75 = {1.75 * inc['tick_std']:.4f}"
+    )
     print(f"\nRULE-DERIVED RECOMMENDATION: {recommendation}")
     return 0
 
@@ -210,6 +244,7 @@ def main() -> int:
             return await _run()
         finally:
             await close_pool()
+
     try:
         return asyncio.run(_wrapped())
     except KeyboardInterrupt:

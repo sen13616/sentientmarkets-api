@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tools/seed_company_names.py
+scripts/tools/seed_company_names.py
 
 Populate the company_name column in ticker_universe from the hardcoded
 COMPANY_NAMES dict in tools/company_names.py.
@@ -8,10 +8,11 @@ COMPANY_NAMES dict in tools/company_names.py.
 Run after applying migrations/005_add_company_name.sql:
 
     psql $DATABASE_URL < migrations/005_add_company_name.sql
-    python3 tools/seed_company_names.py
+    python3 scripts/tools/seed_company_names.py
 
 Requires DATABASE_URL in .env (or the environment).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -26,7 +27,6 @@ _ENV_FILE = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
 load_dotenv(_ENV_FILE, override=True)
 
 import asyncpg
-
 from company_names import COMPANY_NAMES
 
 

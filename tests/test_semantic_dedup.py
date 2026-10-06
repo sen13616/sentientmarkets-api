@@ -9,18 +9,23 @@ Covers:
   - narrative_job() clustering integration (pipeline/scheduler.py)
   - Dedup telemetry
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock, patch  # noqa: F401 — MagicMock used in TestClusterArticles
+from unittest.mock import (  # noqa: F401 — MagicMock used in TestClusterArticles
+    AsyncMock,
+    MagicMock,
+    patch,
+)
 
 import numpy as np
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_article(
     id: int,
@@ -46,6 +51,7 @@ _NOW = datetime(2026, 5, 10, 12, 0, 0, tzinfo=timezone.utc)
 # A. Unit tests for cluster_articles()
 # ---------------------------------------------------------------------------
 
+
 class TestClusterArticles:
     """Tests for pipeline.nlp.dedup.cluster_articles()."""
 
@@ -55,6 +61,7 @@ class TestClusterArticles:
         # We use a real SentenceTransformer-like mock that produces
         # deterministic embeddings based on title content.
         import pipeline.nlp.dedup as dedup_mod
+
         self._orig_model = dedup_mod._model
         yield
         dedup_mod._model = self._orig_model
@@ -95,7 +102,12 @@ class TestClusterArticles:
         """Two articles about the same event within 4h should cluster."""
         articles = [
             _make_article(1, "Apple reports record earnings in Q2", _NOW, source="alpha_vantage"),
-            _make_article(2, "Apple reports earnings beat expectations", _NOW + timedelta(hours=1), source="finnhub"),
+            _make_article(
+                2,
+                "Apple reports earnings beat expectations",
+                _NOW + timedelta(hours=1),
+                source="finnhub",
+            ),
         ]
         mock_model = self._patch_model()
         set_ids_calls: list = []
@@ -104,11 +116,16 @@ class TestClusterArticles:
             set_ids_calls.append((ids, cid))
 
         with (
-            patch("pipeline.nlp.dedup.get_unclustered_articles", new_callable=AsyncMock, return_value=articles),
+            patch(
+                "pipeline.nlp.dedup.get_unclustered_articles",
+                new_callable=AsyncMock,
+                return_value=articles,
+            ),
             patch("pipeline.nlp.dedup.set_cluster_ids", side_effect=_mock_set),
             patch("pipeline.nlp.dedup._get_model", return_value=mock_model),
         ):
             from pipeline.nlp.dedup import cluster_articles
+
             n_clusters = await cluster_articles("AAPL")
 
         assert n_clusters == 1
@@ -124,11 +141,16 @@ class TestClusterArticles:
         mock_model = self._patch_model()
 
         with (
-            patch("pipeline.nlp.dedup.get_unclustered_articles", new_callable=AsyncMock, return_value=articles),
+            patch(
+                "pipeline.nlp.dedup.get_unclustered_articles",
+                new_callable=AsyncMock,
+                return_value=articles,
+            ),
             patch("pipeline.nlp.dedup.set_cluster_ids", new_callable=AsyncMock) as mock_set,
             patch("pipeline.nlp.dedup._get_model", return_value=mock_model),
         ):
             from pipeline.nlp.dedup import cluster_articles
+
             n_clusters = await cluster_articles("AAPL")
 
         assert n_clusters == 0
@@ -143,11 +165,16 @@ class TestClusterArticles:
         mock_model = self._patch_model()
 
         with (
-            patch("pipeline.nlp.dedup.get_unclustered_articles", new_callable=AsyncMock, return_value=articles),
+            patch(
+                "pipeline.nlp.dedup.get_unclustered_articles",
+                new_callable=AsyncMock,
+                return_value=articles,
+            ),
             patch("pipeline.nlp.dedup.set_cluster_ids", new_callable=AsyncMock) as mock_set,
             patch("pipeline.nlp.dedup._get_model", return_value=mock_model),
         ):
             from pipeline.nlp.dedup import cluster_articles
+
             n_clusters = await cluster_articles("AAPL")
 
         assert n_clusters == 0
@@ -158,10 +185,15 @@ class TestClusterArticles:
         articles = [_make_article(1, "Lone article", _NOW)]
 
         with (
-            patch("pipeline.nlp.dedup.get_unclustered_articles", new_callable=AsyncMock, return_value=articles),
+            patch(
+                "pipeline.nlp.dedup.get_unclustered_articles",
+                new_callable=AsyncMock,
+                return_value=articles,
+            ),
             patch("pipeline.nlp.dedup.set_cluster_ids", new_callable=AsyncMock) as mock_set,
         ):
             from pipeline.nlp.dedup import cluster_articles
+
             n_clusters = await cluster_articles("AAPL")
 
         assert n_clusters == 0
@@ -170,10 +202,15 @@ class TestClusterArticles:
     async def test_empty_articles_skip(self):
         """Zero articles returns 0 clusters."""
         with (
-            patch("pipeline.nlp.dedup.get_unclustered_articles", new_callable=AsyncMock, return_value=[]),
+            patch(
+                "pipeline.nlp.dedup.get_unclustered_articles",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
             patch("pipeline.nlp.dedup.set_cluster_ids", new_callable=AsyncMock) as mock_set,
         ):
             from pipeline.nlp.dedup import cluster_articles
+
             n_clusters = await cluster_articles("AAPL")
 
         assert n_clusters == 0
@@ -192,17 +229,26 @@ class TestClusterArticles:
         mock_model = self._patch_model()
 
         with (
-            patch("pipeline.nlp.dedup.get_unclustered_articles", new_callable=AsyncMock, return_value=articles),
+            patch(
+                "pipeline.nlp.dedup.get_unclustered_articles",
+                new_callable=AsyncMock,
+                return_value=articles,
+            ),
             patch("pipeline.nlp.dedup.set_cluster_ids", new_callable=AsyncMock),
             patch("pipeline.nlp.dedup._get_model", return_value=mock_model),
         ):
             from pipeline.nlp.dedup import cluster_articles
+
             n1 = await cluster_articles("AAPL")
         assert n1 == 1
 
         # Second call: get_unclustered_articles returns empty (all already clustered)
         with (
-            patch("pipeline.nlp.dedup.get_unclustered_articles", new_callable=AsyncMock, return_value=[]),
+            patch(
+                "pipeline.nlp.dedup.get_unclustered_articles",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
             patch("pipeline.nlp.dedup.set_cluster_ids", new_callable=AsyncMock) as mock_set,
         ):
             n2 = await cluster_articles("AAPL")
@@ -226,11 +272,16 @@ class TestClusterArticles:
             set_ids_calls.append((sorted(ids), cid))
 
         with (
-            patch("pipeline.nlp.dedup.get_unclustered_articles", new_callable=AsyncMock, return_value=articles),
+            patch(
+                "pipeline.nlp.dedup.get_unclustered_articles",
+                new_callable=AsyncMock,
+                return_value=articles,
+            ),
             patch("pipeline.nlp.dedup.set_cluster_ids", side_effect=_mock_set),
             patch("pipeline.nlp.dedup._get_model", return_value=mock_model),
         ):
             from pipeline.nlp.dedup import cluster_articles
+
             n_clusters = await cluster_articles("AAPL")
 
         assert n_clusters == 3
@@ -246,7 +297,12 @@ class TestClusterArticles:
         """
         articles = [
             _make_article(1, "Apple reports record earnings in Q2", _NOW, source="alpha_vantage"),
-            _make_article(2, "Apple reports earnings beat expectations", _NOW + timedelta(hours=1), source="finnhub"),
+            _make_article(
+                2,
+                "Apple reports earnings beat expectations",
+                _NOW + timedelta(hours=1),
+                source="finnhub",
+            ),
         ]
         mock_model = self._patch_model()
         set_ids_calls: list = []
@@ -255,11 +311,16 @@ class TestClusterArticles:
             set_ids_calls.append((ids, cid))
 
         with (
-            patch("pipeline.nlp.dedup.get_unclustered_articles", new_callable=AsyncMock, return_value=articles),
+            patch(
+                "pipeline.nlp.dedup.get_unclustered_articles",
+                new_callable=AsyncMock,
+                return_value=articles,
+            ),
             patch("pipeline.nlp.dedup.set_cluster_ids", side_effect=_mock_set),
             patch("pipeline.nlp.dedup._get_model", return_value=mock_model),
         ):
             from pipeline.nlp.dedup import cluster_articles
+
             n_clusters = await cluster_articles("AAPL")
 
         assert n_clusters == 1
@@ -269,6 +330,7 @@ class TestClusterArticles:
 # ---------------------------------------------------------------------------
 # B. Integration tests for get_articles_since() DISTINCT ON filtering
 # ---------------------------------------------------------------------------
+
 
 class TestGetArticlesSinceDedup:
     """
@@ -284,14 +346,14 @@ class TestGetArticlesSinceDedup:
         unclustered articles (NULL cluster ID) are each treated as unique
         rows. Verify the SQL contains this expression.
         """
-        from scripts.db.queries.raw_articles import get_articles_since
         import inspect
+
+        from scripts.db.queries.raw_articles import get_articles_since
+
         source = inspect.getsource(get_articles_since)
 
         # COALESCE with id::text ensures NULL cluster IDs become unique per-row
-        assert "id::text" in source, (
-            "COALESCE must fall back to id::text for unclustered articles"
-        )
+        assert "id::text" in source, "COALESCE must fall back to id::text for unclustered articles"
 
     async def test_clustered_articles_highest_relevance_selected(self):
         """
@@ -301,12 +363,16 @@ class TestGetArticlesSinceDedup:
         This test verifies the SQL logic at the query layer level by checking
         that the SQL string contains the DISTINCT ON clause.
         """
-        from scripts.db.queries.raw_articles import get_articles_since
         import inspect
+
+        from scripts.db.queries.raw_articles import get_articles_since
+
         source = inspect.getsource(get_articles_since)
         assert "DISTINCT ON" in source, "get_articles_since must use DISTINCT ON for cluster dedup"
         assert "COALESCE(event_cluster_id" in source, "must use COALESCE for NULL cluster IDs"
-        assert "relevance_score DESC" in source, "must order by relevance_score DESC to pick highest"
+        assert "relevance_score DESC" in source, (
+            "must order by relevance_score DESC to pick highest"
+        )
 
     async def test_unscored_articles_excluded_before_distinct(self):
         """
@@ -320,8 +386,10 @@ class TestGetArticlesSinceDedup:
         This test verifies the SQL ordering: WHERE filters first, then DISTINCT ON
         picks from the remaining (FinBERT-scored) rows.
         """
-        from scripts.db.queries.raw_articles import get_articles_since
         import inspect
+
+        from scripts.db.queries.raw_articles import get_articles_since
+
         source = inspect.getsource(get_articles_since)
 
         # The WHERE clause must contain finbert_score IS NOT NULL
@@ -338,18 +406,28 @@ class TestGetArticlesSinceDedup:
 
     async def test_query_returns_expected_columns(self):
         """get_articles_since returns dicts with the expected keys."""
-        from scripts.db.queries.raw_articles import get_articles_since
         import inspect
+
+        from scripts.db.queries.raw_articles import get_articles_since
+
         source = inspect.getsource(get_articles_since)
         # Must select these columns for score_narrative_signals compatibility
-        for col in ("published_at", "finbert_score", "relevance_score", "source",
-                     "finbert_pos", "finbert_neg", "finbert_neu"):
+        for col in (
+            "published_at",
+            "finbert_score",
+            "relevance_score",
+            "source",
+            "finbert_pos",
+            "finbert_neg",
+            "finbert_neu",
+        ):
             assert col in source, f"get_articles_since must SELECT {col}"
 
 
 # ---------------------------------------------------------------------------
 # C. Integration test: narrative_job calls cluster_articles
 # ---------------------------------------------------------------------------
+
 
 class TestNarrativeJobClustering:
     """Verify narrative_job() calls cluster_articles for each ticker."""
@@ -367,16 +445,31 @@ class TestNarrativeJobClustering:
             return 0
 
         with (
-            patch("pipeline.scheduler.get_active_tickers", new_callable=AsyncMock, return_value=mock_tickers),
+            patch(
+                "pipeline.scheduler.get_active_tickers",
+                new_callable=AsyncMock,
+                return_value=mock_tickers,
+            ),
             patch("pipeline.scheduler._fetch_all_tickers", new_callable=AsyncMock),
             patch("pipeline.scheduler.cluster_articles", side_effect=_mock_cluster),
             patch("pipeline.scheduler._record_run", new_callable=AsyncMock),
-            patch("scripts.db.queries.raw_articles.count_unclustered_articles", new_callable=AsyncMock, return_value=0),
-            patch("pipeline.scheduler._get_cluster_telemetry", new_callable=AsyncMock, return_value={
-                "cross_source_clusters": 0, "same_source_clusters": 0, "largest_cluster_size": 0,
-            }),
+            patch(
+                "scripts.db.queries.raw_articles.count_unclustered_articles",
+                new_callable=AsyncMock,
+                return_value=0,
+            ),
+            patch(
+                "pipeline.scheduler._get_cluster_telemetry",
+                new_callable=AsyncMock,
+                return_value={
+                    "cross_source_clusters": 0,
+                    "same_source_clusters": 0,
+                    "largest_cluster_size": 0,
+                },
+            ),
         ):
             from pipeline.scheduler import narrative_job
+
             await narrative_job()
 
         assert sorted(cluster_calls) == sorted(mock_tickers)
@@ -396,16 +489,31 @@ class TestNarrativeJobClustering:
             return 1
 
         with (
-            patch("pipeline.scheduler.get_active_tickers", new_callable=AsyncMock, return_value=mock_tickers),
+            patch(
+                "pipeline.scheduler.get_active_tickers",
+                new_callable=AsyncMock,
+                return_value=mock_tickers,
+            ),
             patch("pipeline.scheduler._fetch_all_tickers", new_callable=AsyncMock),
             patch("pipeline.scheduler.cluster_articles", side_effect=_mock_cluster),
             patch("pipeline.scheduler._record_run", new_callable=AsyncMock),
-            patch("scripts.db.queries.raw_articles.count_unclustered_articles", new_callable=AsyncMock, return_value=0),
-            patch("pipeline.scheduler._get_cluster_telemetry", new_callable=AsyncMock, return_value={
-                "cross_source_clusters": 0, "same_source_clusters": 0, "largest_cluster_size": 0,
-            }),
+            patch(
+                "scripts.db.queries.raw_articles.count_unclustered_articles",
+                new_callable=AsyncMock,
+                return_value=0,
+            ),
+            patch(
+                "pipeline.scheduler._get_cluster_telemetry",
+                new_callable=AsyncMock,
+                return_value={
+                    "cross_source_clusters": 0,
+                    "same_source_clusters": 0,
+                    "largest_cluster_size": 0,
+                },
+            ),
         ):
             from pipeline.scheduler import narrative_job
+
             await narrative_job()
 
         # AAPL and GOOGL should still have been processed
@@ -417,6 +525,7 @@ class TestNarrativeJobClustering:
 # ---------------------------------------------------------------------------
 # D. Telemetry tests
 # ---------------------------------------------------------------------------
+
 
 class TestDedupTelemetry:
     """Verify dedup telemetry includes all 7 required fields."""
@@ -434,19 +543,32 @@ class TestDedupTelemetry:
             return 0
 
         with (
-            patch("pipeline.scheduler.get_active_tickers", new_callable=AsyncMock, return_value=mock_tickers),
+            patch(
+                "pipeline.scheduler.get_active_tickers",
+                new_callable=AsyncMock,
+                return_value=mock_tickers,
+            ),
             patch("pipeline.scheduler._fetch_all_tickers", new_callable=AsyncMock),
             patch("pipeline.scheduler.cluster_articles", side_effect=_mock_cluster),
             patch("pipeline.scheduler._record_run", new_callable=AsyncMock),
-            patch("scripts.db.queries.raw_articles.count_unclustered_articles", new_callable=AsyncMock, return_value=5),
-            patch("pipeline.scheduler._get_cluster_telemetry", new_callable=AsyncMock, return_value={
-                "cross_source_clusters": 0,
-                "same_source_clusters": 0,
-                "largest_cluster_size": 0,
-            }),
+            patch(
+                "scripts.db.queries.raw_articles.count_unclustered_articles",
+                new_callable=AsyncMock,
+                return_value=5,
+            ),
+            patch(
+                "pipeline.scheduler._get_cluster_telemetry",
+                new_callable=AsyncMock,
+                return_value={
+                    "cross_source_clusters": 0,
+                    "same_source_clusters": 0,
+                    "largest_cluster_size": 0,
+                },
+            ),
             patch("pipeline.scheduler._log") as mock_log,
         ):
             from pipeline.scheduler import narrative_job
+
             await narrative_job()
 
         # Collect all INFO log format strings
@@ -473,6 +595,7 @@ class TestDedupTelemetry:
 # E. Scoring integration: dedup reduces signal count
 # ---------------------------------------------------------------------------
 
+
 class TestScoringWithDedup:
     """
     Verify that the full scoring path produces fewer signals when
@@ -490,9 +613,33 @@ class TestScoringWithDedup:
         # Simulate: 3 articles about the same event, varying relevance
         # Sprint A: uses finbert_score + finbert class probabilities
         all_three = [
-            {"published_at": _NOW, "finbert_score": 0.5, "finbert_pos": 0.7, "finbert_neg": 0.2, "finbert_neu": 0.1, "relevance_score": 0.65, "source": "alpha_vantage"},
-            {"published_at": _NOW - timedelta(hours=1), "finbert_score": 0.6, "finbert_pos": 0.75, "finbert_neg": 0.15, "finbert_neu": 0.1, "relevance_score": 0.9, "source": "alpha_vantage"},
-            {"published_at": _NOW - timedelta(hours=2), "finbert_score": 0.4, "finbert_pos": 0.6, "finbert_neg": 0.2, "finbert_neu": 0.2, "relevance_score": 0.7, "source": "alpha_vantage"},
+            {
+                "published_at": _NOW,
+                "finbert_score": 0.5,
+                "finbert_pos": 0.7,
+                "finbert_neg": 0.2,
+                "finbert_neu": 0.1,
+                "relevance_score": 0.65,
+                "source": "alpha_vantage",
+            },
+            {
+                "published_at": _NOW - timedelta(hours=1),
+                "finbert_score": 0.6,
+                "finbert_pos": 0.75,
+                "finbert_neg": 0.15,
+                "finbert_neu": 0.1,
+                "relevance_score": 0.9,
+                "source": "alpha_vantage",
+            },
+            {
+                "published_at": _NOW - timedelta(hours=2),
+                "finbert_score": 0.4,
+                "finbert_pos": 0.6,
+                "finbert_neg": 0.2,
+                "finbert_neu": 0.2,
+                "relevance_score": 0.7,
+                "source": "alpha_vantage",
+            },
         ]
 
         # Without dedup: all 3 scored

@@ -69,12 +69,12 @@ from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
-from scripts.db.connection import close_pool  # noqa: E402
-from scripts.eval import data  # noqa: E402
-from scripts.eval.run import HOLDOUT_START, RESEARCH_END, RESEARCH_START, _utc  # noqa: E402
-from pipeline.scoring.composite import LAYER_WEIGHTS, compute_composite  # noqa: E402
+from pipeline.scoring.composite import LAYER_WEIGHTS  # noqa: E402
 from pipeline.scoring.divergence import compute_divergence  # noqa: E402
 from pipeline.scoring.ema import compute_ema  # noqa: E402
+from scripts.db.connection import close_pool  # noqa: E402
+from scripts.eval import data  # noqa: E402
+from scripts.eval.run import RESEARCH_END, RESEARCH_START, _utc  # noqa: E402
 
 _LAYER_COLS = {
     "market": "market_index",
@@ -95,7 +95,7 @@ PRODUCTION_CONFIG: dict = {
 #: Documented identity tolerances (see module docstring for the two known
 #: deviation sources). Measured 2026-07-22 over the full clean history.
 IDENTITY_TOLERANCES = {
-    "raw_p99": 0.01,       # rounding of stored sub-indices
+    "raw_p99": 0.01,  # rounding of stored sub-indices
     "raw_max": 0.05,
     "smoothed_p99": 0.05,  # rounding cascade through the EMA
     "exo_p99": 0.01,
@@ -169,9 +169,7 @@ def replay_ticks(raw_ticks: pd.DataFrame, config: dict) -> pd.DataFrame:
         total_w = sum(weights[ly] for ly in present)
         score = sum(weights[ly] / total_w * float(v) for ly, v in present.items())
         if cap:
-            _, score = compute_divergence(
-                {ly: float(v) for ly, v in present.items()}, score
-            )
+            _, score = compute_divergence({ly: float(v) for ly, v in present.items()}, score)
         return round(score, 2)
 
     out = []
@@ -184,12 +182,16 @@ def replay_ticks(raw_ticks: pd.DataFrame, config: dict) -> pd.DataFrame:
 
         raws = [_raw(row) for row in g.to_dict("records")]
         smooths = apply_ema_series(list(dt_h), raws, hl)
-        out.append(pd.DataFrame({
-            "ticker": ticker,
-            "timestamp": g["timestamp"].array,  # .values would drop the tz
-            "replay_raw": raws,
-            "replay_smoothed": smooths,
-        }))
+        out.append(
+            pd.DataFrame(
+                {
+                    "ticker": ticker,
+                    "timestamp": g["timestamp"].array,  # .values would drop the tz
+                    "replay_raw": raws,
+                    "replay_smoothed": smooths,
+                }
+            )
+        )
     return pd.concat(out, ignore_index=True)
 
 
@@ -209,9 +211,8 @@ def window_bounds(window: str) -> tuple[str, str]:
     if window == "full":
         # full CLEAN history: everything stored, start of program → now+1d.
         from datetime import datetime, timedelta, timezone
-        return RESEARCH_START, (
-            datetime.now(timezone.utc) + timedelta(days=1)
-        ).strftime("%Y-%m-%d")
+
+        return RESEARCH_START, (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%d")
     raise SystemExit(f"unknown window {window!r} (research|full)")
 
 
@@ -232,9 +233,7 @@ def identity_report(raw_ticks: pd.DataFrame, replayed: pd.DataFrame) -> dict:
 
     rep: dict = {
         "raw": _stats(m["replay_raw"] - pd.to_numeric(m["composite_score"])),
-        "smoothed": _stats(
-            m["replay_smoothed"] - pd.to_numeric(m["composite_score_smoothed"])
-        ),
+        "smoothed": _stats(m["replay_smoothed"] - pd.to_numeric(m["composite_score_smoothed"])),
     }
 
     # exo identity: the config surface itself must reproduce score_exo when
@@ -249,19 +248,20 @@ def identity_report(raw_ticks: pd.DataFrame, replayed: pd.DataFrame) -> dict:
         exo_rep = replay_ticks(raw_ticks, exo_cfg)
         me = raw_ticks.merge(exo_rep, on=["ticker", "timestamp"], how="inner")
         me = me[pd.to_numeric(me["composite_score_exo"], errors="coerce").notna()]
-        rep["exo"] = _stats(
-            me["replay_raw"] - pd.to_numeric(me["composite_score_exo"])
-        )
+        rep["exo"] = _stats(me["replay_raw"] - pd.to_numeric(me["composite_score_exo"]))
 
     rep["tolerances"] = IDENTITY_TOLERANCES
     rep["pass"] = (
         rep["raw"]["p99"] <= IDENTITY_TOLERANCES["raw_p99"]
         and rep["raw"]["max"] <= IDENTITY_TOLERANCES["raw_max"]
         and rep["smoothed"]["p99"] <= IDENTITY_TOLERANCES["smoothed_p99"]
-        and ("exo" not in rep or (
-            rep["exo"]["p99"] <= IDENTITY_TOLERANCES["exo_p99"]
-            and rep["exo"]["max"] <= IDENTITY_TOLERANCES["exo_max"]
-        ))
+        and (
+            "exo" not in rep
+            or (
+                rep["exo"]["p99"] <= IDENTITY_TOLERANCES["exo_p99"]
+                and rep["exo"]["max"] <= IDENTITY_TOLERANCES["exo_max"]
+            )
+        )
     )
     return rep
 
@@ -274,11 +274,13 @@ async def _run(args) -> int:
 
     # Always LOAD from the start of history (EMA seeding), filter output later.
     from datetime import datetime, timedelta, timezone
+
     load_end = (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%d")
-    print(f"loading full tick history {RESEARCH_START}..{load_end} "
-          f"(output window {start_s}..{end_s}) ...")
-    raw = await data.load_sentiment_panel(_utc(RESEARCH_START), _utc(load_end),
-                                          granularity="raw")
+    print(
+        f"loading full tick history {RESEARCH_START}..{load_end} "
+        f"(output window {start_s}..{end_s}) ..."
+    )
+    raw = await data.load_sentiment_panel(_utc(RESEARCH_START), _utc(load_end), granularity="raw")
     if raw.empty:
         print("no data", file=sys.stderr)
         return 2
@@ -297,8 +299,10 @@ async def _run(args) -> int:
     windowed = replayed[mask]
     path = out / f"replay_{cfg['name']}_{args.window}.csv"
     windowed.to_csv(path, index=False)
-    print(f"replayed {len(windowed)} ticks ({windowed['ticker'].nunique()} tickers) "
-          f"under config '{cfg['name']}' → {path}")
+    print(
+        f"replayed {len(windowed)} ticks ({windowed['ticker'].nunique()} tickers) "
+        f"under config '{cfg['name']}' → {path}"
+    )
     return 0
 
 
@@ -307,9 +311,12 @@ def main(argv=None) -> int:
     p.add_argument("--config", help="candidate config JSON (default: production)")
     p.add_argument("--window", choices=["research", "full"], default="research")
     p.add_argument("--out", default="exports/eval/replay")
-    p.add_argument("--identity", action="store_true",
-                   help="validate: replay the production config and compare "
-                        "against stored history (must pass before any candidate)")
+    p.add_argument(
+        "--identity",
+        action="store_true",
+        help="validate: replay the production config and compare "
+        "against stored history (must pass before any candidate)",
+    )
     args = p.parse_args(argv)
 
     async def _wrapped():

@@ -5,11 +5,10 @@ Unit tests for the market-hours-aware staleness logic introduced in Task 2.
 
 All tests are pure and synchronous — no DB, Redis, or async required.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-
-import pytest
 
 from pipeline.confidence.staleness import check_staleness, is_market_hours
 
@@ -22,8 +21,8 @@ def _utc(year: int, month: int, day: int, hour: int = 0, minute: int = 0) -> dat
 # is_market_hours()
 # ──────────────────────────────────────────────────────────────────────────────
 
-class TestIsMarketHours:
 
+class TestIsMarketHours:
     def test_weekday_during_hours_returns_true(self):
         # Monday 2026-04-27 at 15:00 UTC — well within market hours
         now = _utc(2026, 4, 27, 15, 0)
@@ -64,8 +63,8 @@ class TestIsMarketHours:
 # check_staleness() — market-hours-aware cases
 # ──────────────────────────────────────────────────────────────────────────────
 
-class TestMarketStaleness:
 
+class TestMarketStaleness:
     # ── Test 4: EOD score on Friday stays fresh over the weekend ─────────────
 
     def test_eod_score_is_not_stale_on_saturday(self):
@@ -74,7 +73,7 @@ class TestMarketStaleness:
         The data is fresh — markets just haven't opened yet.
         """
         # Saturday morning UTC
-        now          = _utc(2026, 4, 25, 10, 0)   # Saturday 10:00 UTC
+        now = _utc(2026, 4, 25, 10, 0)  # Saturday 10:00 UTC
         market_as_of = _utc(2026, 4, 24, 21, 15)  # Friday  21:15 UTC (EOD job)
 
         # 2026-04-25 is a Saturday
@@ -93,8 +92,8 @@ class TestMarketStaleness:
         A score timestamped Friday 10:00 UTC (before close, EOD job missed)
         SHOULD be flagged stale on Saturday — it predates the last market close.
         """
-        now          = _utc(2026, 4, 25, 10, 0)   # Saturday 10:00 UTC
-        market_as_of = _utc(2026, 4, 24, 10, 0)   # Friday  10:00 UTC (mid-morning)
+        now = _utc(2026, 4, 25, 10, 0)  # Saturday 10:00 UTC
+        market_as_of = _utc(2026, 4, 24, 10, 0)  # Friday  10:00 UTC (mid-morning)
 
         result = check_staleness({"market": market_as_of}, now=now)
         assert result["market"] is True, (
@@ -108,7 +107,7 @@ class TestMarketStaleness:
         During market hours, threshold is 90 minutes.  Data that is 2 hours
         old must be flagged stale.
         """
-        now          = _utc(2026, 4, 28, 16, 0)   # Monday 16:00 UTC (market open)
+        now = _utc(2026, 4, 28, 16, 0)  # Monday 16:00 UTC (market open)
         market_as_of = now - timedelta(hours=2)
 
         assert is_market_hours(now) is True
@@ -121,7 +120,7 @@ class TestMarketStaleness:
     # ── Fresh during market hours when data is recent ────────────────────────
 
     def test_fresh_during_market_hours_when_recent(self):
-        now          = _utc(2026, 4, 28, 16, 0)   # Monday 16:00 UTC
+        now = _utc(2026, 4, 28, 16, 0)  # Monday 16:00 UTC
         market_as_of = now - timedelta(minutes=30)
 
         assert is_market_hours(now) is True
@@ -140,11 +139,11 @@ class TestMarketStaleness:
 
     def test_non_market_sources_use_fixed_threshold(self):
         """news threshold is 6 h — unaffected by market hours logic."""
-        now      = _utc(2026, 4, 25, 10, 0)   # Saturday
-        news_ts  = now - timedelta(hours=5)    # 5 h old → fresh
-        result   = check_staleness({"news": news_ts}, now=now)
+        now = _utc(2026, 4, 25, 10, 0)  # Saturday
+        news_ts = now - timedelta(hours=5)  # 5 h old → fresh
+        result = check_staleness({"news": news_ts}, now=now)
         assert result["news"] is False
 
-        old_news = now - timedelta(hours=7)    # 7 h old → stale
-        result2  = check_staleness({"news": old_news}, now=now)
+        old_news = now - timedelta(hours=7)  # 7 h old → stale
+        result2 = check_staleness({"news": old_news}, now=now)
         assert result2["news"] is True

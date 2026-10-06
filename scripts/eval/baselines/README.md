@@ -11,7 +11,7 @@ Every scoring change must pass this gate before release. The harness reads the
 the DB — it measures what was served, not what the code intends — and never
 imports `pipeline/` scoring code.
 
-Ported from the original backtest study (`docs/SUMMARYOFTESTING.md`); the
+Ported from the original backtest study (July 2026, summarized in `docs/history/nowcasting-refactor-2026-07.md`); the
 ported engine reproduces the study's headline numbers (composite std 8.3 vs
 8.2, lead-lag peak at offset 0 with corr +0.40 vs +0.43, best IC `dexo_3`
 ≈ 0.036/t 4.3 vs 0.033/t 4.2).

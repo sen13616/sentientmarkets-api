@@ -1,4 +1,4 @@
-# SentimentMarkets Sentiment API — Usage Guide
+# SentientMarkets Sentiment API — Usage Guide
 
 **Base URL:** `https://sentimentapi-p.up.railway.app`
 
@@ -11,6 +11,8 @@ All requests require a Bearer token in the `Authorization` header.
 ```
 Authorization: Bearer sk-sm-your-api-key
 ```
+
+The examples below read the key from an environment variable: `export SENTIMENT_API_KEY=sk-sm-…`.
 
 API keys are available in two tiers:
 
@@ -39,7 +41,7 @@ Returns the latest pre-computed sentiment score for a US-listed equity ticker.
 **Free Tier Response**
 
 ```bash
-curl -H "Authorization: Bearer sk-sm-your-key" \
+curl -H "Authorization: Bearer $SENTIMENT_API_KEY" \
   https://sentimentapi-p.up.railway.app/v1/sentiment/AAPL
 ```
 
@@ -66,7 +68,7 @@ curl -H "Authorization: Bearer sk-sm-your-key" \
 **Pro Tier Response**
 
 ```bash
-curl -H "Authorization: Bearer sk-sm-your-key" \
+curl -H "Authorization: Bearer $SENTIMENT_API_KEY" \
   "https://sentimentapi-p.up.railway.app/v1/sentiment/AAPL?detail=full"
 ```
 
@@ -134,7 +136,7 @@ Pro-tier fields beyond the Free set: `universe_percentile` (percentile of this t
 Returns historical sentiment scores for a ticker. **Pro tier only.**
 
 ```bash
-curl -H "Authorization: Bearer sk-sm-your-key" \
+curl -H "Authorization: Bearer $SENTIMENT_API_KEY" \
   "https://sentimentapi-p.up.railway.app/v1/sentiment/AAPL/history?days=30"
 ```
 
@@ -173,10 +175,10 @@ curl -H "Authorization: Bearer sk-sm-your-key" \
 
 ### GET /v1/tickers
 
-Returns the list of tickers in the supported universe.
+Returns the active universe. Retired symbols (acquired, merged, renamed) are not listed; see the `delisted` status below.
 
 ```bash
-curl -H "Authorization: Bearer sk-sm-your-key" \
+curl -H "Authorization: Bearer $SENTIMENT_API_KEY" \
   https://sentimentapi-p.up.railway.app/v1/tickers
 ```
 
@@ -184,15 +186,15 @@ curl -H "Authorization: Bearer sk-sm-your-key" \
 
 ```json
 {
-  "universe_size": 502,
+  "universe_size": 586,
   "tickers": [
-    { "ticker": "AAPL", "name": "Apple Inc.", "sector": "Information Technology" },
-    { "ticker": "ABBV", "name": "AbbVie Inc.", "sector": "Health Care" }
+    { "ticker": "AAPL", "name": "Apple Inc.", "sector": "Information Technology", "in_sp500": true },
+    { "ticker": "DKNG", "name": "DraftKings Inc.", "sector": "Consumer Discretionary", "in_sp500": false }
   ]
 }
 ```
 
-Each entry is an object with `ticker`, `name` (company name, may be `null` if not yet seeded), and `sector` (GICS sector, may be `null`).
+Each entry is an object with `ticker`, `name` (company name, may be `null` if not yet seeded), `sector` (GICS sector, may be `null`) and `in_sp500` (current S&P 500 member).
 
 ---
 
@@ -201,7 +203,7 @@ Each entry is an object with `ticker`, `name` (company name, may be `null` if no
 Universe-level statistics for the latest scoring tick. **Pro tier only** (free keys receive 403). Served from a single per-tick cached blob; returns 503 `temporarily_unavailable` before the first tick after a deployment.
 
 ```bash
-curl -H "Authorization: Bearer sk-sm-your-key" \
+curl -H "Authorization: Bearer $SENTIMENT_API_KEY" \
   https://sentimentapi-p.up.railway.app/v1/market/overview
 ```
 
@@ -244,7 +246,7 @@ curl -H "Authorization: Bearer sk-sm-your-key" \
 Returns API health and last pipeline run timestamps. **Requires a valid API key (any tier)** and counts against the key's rate limit — use `/health` for unauthenticated liveness checks.
 
 ```bash
-curl -H "Authorization: Bearer sk-sm-your-key" \
+curl -H "Authorization: Bearer $SENTIMENT_API_KEY" \
   https://sentimentapi-p.up.railway.app/v1/status
 ```
 
@@ -277,6 +279,22 @@ curl https://sentimentapi-p.up.railway.app/health
 
 ```json
 { "status": "ok" }
+```
+
+### GET /health/pipeline
+
+Data-freshness check for uptime monitors. No authentication required. Returns **200** when the
+scoring tick ran within the last 60 minutes and the news job within the last 120 minutes,
+otherwise **503**.
+
+```json
+{
+  "status": "ok",
+  "checks": {
+    "scoring_tick": { "last_run": "2026-10-06T02:00:24Z", "age_minutes": 25.8, "max_age_minutes": 60, "ok": true },
+    "narrative":    { "last_run": "2026-10-06T01:58:35Z", "age_minutes": 27.6, "max_age_minutes": 120, "ok": true }
+  }
+}
 ```
 
 ---
@@ -368,6 +386,7 @@ Possible status values:
 |---|---|
 | `insufficient_data` | Ticker is supported but has no scored data yet |
 | `ticker_not_found` | Ticker is not in the supported universe |
+| `delisted` | The symbol stopped trading (acquisition, take-private, merger or ticker change). The message gives the last trading day and, where there is one, the successor symbol. History stays available via `/history`. |
 | `temporarily_unavailable` | Temporary service issue |
 
 ---
@@ -401,11 +420,7 @@ data = response.json()
 print(f"AAPL sentiment: {data['score']} ({data['label']})")
 
 # Pro tier full detail
-response = requests.get(
-    f"{BASE_URL}/v1/sentiment/AAPL",
-    headers=headers,
-    params={"detail": "full"}
-)
+response = requests.get(f"{BASE_URL}/v1/sentiment/AAPL", headers=headers, params={"detail": "full"})
 data = response.json()
 print(f"Market sub-index: {data['sub_indices']['market']}")
 print(f"Explanation: {data['explanation']}")
@@ -437,15 +452,15 @@ console.log(proData.explanation);
 
 ```bash
 # Quick score check
-curl -s -H "Authorization: Bearer sk-sm-your-key" \
+curl -s -H "Authorization: Bearer $SENTIMENT_API_KEY" \
   https://sentimentapi-p.up.railway.app/v1/sentiment/TSLA | python3 -m json.tool
 
 # Full pro breakdown
-curl -s -H "Authorization: Bearer sk-sm-your-key" \
+curl -s -H "Authorization: Bearer $SENTIMENT_API_KEY" \
   "https://sentimentapi-p.up.railway.app/v1/sentiment/NVDA?detail=full" | python3 -m json.tool
 
 # Historical scores
-curl -s -H "Authorization: Bearer sk-sm-your-key" \
+curl -s -H "Authorization: Bearer $SENTIMENT_API_KEY" \
   "https://sentimentapi-p.up.railway.app/v1/sentiment/MSFT/history?days=7" | python3 -m json.tool
 ```
 
@@ -453,7 +468,7 @@ curl -s -H "Authorization: Bearer sk-sm-your-key" \
 
 ## Supported Universe
 
-502 US-listed equities covering the S&P 500. Full list available at:
+586 US-listed equities: every current S&P 500 member (`in_sp500: true`) plus still-trading former names. Full list available at:
 
 ```
 GET /v1/tickers
@@ -468,7 +483,7 @@ Any ticker not in the supported universe returns a `ticker_not_found` response.
 | Layer | Frequency | Coverage |
 |---|---|---|
 | Market data | Every 15 min (market hours) | Price, volume, RSI, order flow, bid-ask |
-| News sentiment | Every 30 min | Alpha Vantage NEWS_SENTIMENT, Finnhub news |
+| News sentiment | Every 30 min (:05 and :35) | Alpha Vantage NEWS_SENTIMENT, Finnhub news |
 | Analyst & insider | Every 6 hours | Finnhub insider transactions, recommendations, targets |
 | Macro context | VIX + sector ETFs hourly (market hours); FRED yields daily at 02:00 UTC | VIX, sector ETF trends, Treasury yield curve |
 | Short volume | Weekdays after close (21:30 UTC) | FINRA REGSHO daily short volume |
@@ -478,4 +493,4 @@ Scores are pre-computed and cached — API responses are served from the cache r
 
 ---
 
-*SentimentMarkets Sentiment API — built on FastAPI, PostgreSQL, and Redis. Deployed on Railway.*
+*SentientMarkets Sentiment API — built on FastAPI, PostgreSQL, and Redis. Deployed on Railway.*

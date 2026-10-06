@@ -16,15 +16,16 @@ If a layer sub-index is None, its weight is redistributed proportionally
 across the remaining present layers so the weights still sum to 1.0.
 When ALL layers are missing the function returns the neutral score (50.0).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
 LAYER_WEIGHTS: dict[str, float] = {
-    "market":     0.35,
-    "narrative":  0.30,
+    "market": 0.35,
+    "narrative": 0.30,
     "influencer": 0.25,
-    "macro":      0.10,
+    "macro": 0.10,
 }
 
 #: The non-price layers. The market layer is derived from price/technicals,
@@ -35,8 +36,8 @@ EXO_LAYERS: tuple[str, ...] = ("narrative", "influencer", "macro")
 
 @dataclass(frozen=True)
 class CompositeResult:
-    score: float                         # weighted composite, 0–100
-    weights_used: dict[str, float]       # effective (redistributed) weights
+    score: float  # weighted composite, 0–100
+    weights_used: dict[str, float]  # effective (redistributed) weights
     missing_layers: list[str] = field(default_factory=list, compare=False)
 
 
@@ -57,12 +58,13 @@ def compute_composite(
     -------
     CompositeResult with `score`, `weights_used`, and `missing_layers`.
     """
+
     # Accept either SubIndexResult objects (has .value) or raw floats
     def _value(v: object) -> float:
         return float(v.value) if hasattr(v, "value") else float(v)  # type: ignore[union-attr]
 
-    present  = {k: v for k, v in sub_indices.items() if v is not None}
-    missing  = [k for k, v in sub_indices.items() if v is None]
+    present = {k: v for k, v in sub_indices.items() if v is not None}
+    missing = [k for k, v in sub_indices.items() if v is None]
 
     # Also treat keys from LAYER_WEIGHTS not present in sub_indices as missing
     for layer in LAYER_WEIGHTS:

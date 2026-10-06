@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tools/seed_sectors.py
+scripts/tools/seed_sectors.py
 
 Populate the `sector` column in `ticker_universe` from the static
 `TICKER_SECTORS` dict in `tools/sector_map.py` (Sprint P4.1).
@@ -8,13 +8,14 @@ Populate the `sector` column in `ticker_universe` from the static
 Run AFTER applying migrations/008_add_ticker_sector.sql:
 
     psql $DATABASE_URL < migrations/008_add_ticker_sector.sql
-    python3 tools/seed_sectors.py
+    python3 scripts/tools/seed_sectors.py
 
 Idempotent — re-runs only touch rows whose `sector` value actually changes
 (DISTINCT FROM guard). Prints counts of updated / unchanged / missing.
 
 Requires DATABASE_URL in .env (or the environment).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -29,7 +30,6 @@ _ENV_FILE = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
 load_dotenv(_ENV_FILE, override=True)
 
 import asyncpg
-
 from sector_map import TICKER_SECTORS
 
 
@@ -56,7 +56,8 @@ async def main() -> None:
                  WHERE ticker = $1
                    AND (sector IS DISTINCT FROM $2)
                 """,
-                ticker, sector,
+                ticker,
+                sector,
             )
             # asyncpg's execute returns "UPDATE 0" or "UPDATE 1"
             count = int(result.split()[-1]) if result.startswith("UPDATE") else 0
@@ -65,7 +66,8 @@ async def main() -> None:
             else:
                 # No row changed: either ticker not in universe, or value already correct.
                 exists = await conn.fetchval(
-                    "SELECT 1 FROM ticker_universe WHERE ticker = $1", ticker,
+                    "SELECT 1 FROM ticker_universe WHERE ticker = $1",
+                    ticker,
                 )
                 if exists:
                     unchanged += 1
@@ -81,8 +83,9 @@ async def main() -> None:
         )
 
         print(f"seed_sectors: updated={updated} unchanged={unchanged} missing={missing}")
-        print(f"  ticker_universe.sector populated: {total_with_sector} non-null, "
-              f"{total_null} null")
+        print(
+            f"  ticker_universe.sector populated: {total_with_sector} non-null, {total_null} null"
+        )
     finally:
         await conn.close()
 

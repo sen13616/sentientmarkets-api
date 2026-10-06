@@ -1,5 +1,5 @@
 """
-Tests for the demo-key feature (docs/APIACCESSPAGE.md §4.7):
+Tests for the demo-key feature (the website's API-access page spec §4.7):
 
   1. Mint returns a working free key (and it authenticates).
   2. Reuse with a valid existing_key creates no row and pushes expiry.
@@ -10,6 +10,7 @@ Tests for the demo-key feature (docs/APIACCESSPAGE.md §4.7):
 DB and Redis are always mocked; patch targets are the names as imported
 into api.routes.demo_key / pipeline.scheduler.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -60,6 +61,7 @@ def client():
 # Origin gate
 # ---------------------------------------------------------------------------
 
+
 class TestOriginGate:
     def test_missing_origin_returns_403(self, client):
         r = client.post("/v1/demo-key", json={"existing_key": None})
@@ -95,11 +97,12 @@ class TestOriginGate:
         assert not origin_allowed("")
 
     def test_wildcard_origin_can_mint(self, client):
-        with patch(
-            "api.routes.demo_key.insert_demo_key",
-            AsyncMock(return_value=FUTURE),
-        ), patch(
-            "api.routes.demo_key.get_redis", return_value=_redis_mock()
+        with (
+            patch(
+                "api.routes.demo_key.insert_demo_key",
+                AsyncMock(return_value=FUTURE),
+            ),
+            patch("api.routes.demo_key.get_redis", return_value=_redis_mock()),
         ):
             r = client.post(
                 "/v1/demo-key",
@@ -109,11 +112,12 @@ class TestOriginGate:
         assert r.status_code == 200
 
     def test_trailing_slash_origin_is_normalized(self, client):
-        with patch(
-            "api.routes.demo_key.insert_demo_key",
-            AsyncMock(return_value=FUTURE),
-        ), patch(
-            "api.routes.demo_key.get_redis", return_value=_redis_mock()
+        with (
+            patch(
+                "api.routes.demo_key.insert_demo_key",
+                AsyncMock(return_value=FUTURE),
+            ),
+            patch("api.routes.demo_key.get_redis", return_value=_redis_mock()),
         ):
             r = client.post(
                 "/v1/demo-key",
@@ -127,11 +131,13 @@ class TestOriginGate:
 # §4.7.1 — Mint returns a working free key
 # ---------------------------------------------------------------------------
 
+
 class TestMint:
     def test_mint_returns_free_key(self, client):
         insert = AsyncMock(return_value=FUTURE)
-        with patch("api.routes.demo_key.insert_demo_key", insert), patch(
-            "api.routes.demo_key.get_redis", return_value=_redis_mock()
+        with (
+            patch("api.routes.demo_key.insert_demo_key", insert),
+            patch("api.routes.demo_key.get_redis", return_value=_redis_mock()),
         ):
             r = client.post(
                 "/v1/demo-key",
@@ -150,8 +156,9 @@ class TestMint:
         """The plaintext handed to the browser passes api.auth.authenticate
         when its hash is in the DB (contract at the seam — a live round-trip
         needs a real DB)."""
-        with patch("api.routes.demo_key.insert_demo_key", AsyncMock(return_value=FUTURE)), patch(
-            "api.routes.demo_key.get_redis", return_value=_redis_mock()
+        with (
+            patch("api.routes.demo_key.insert_demo_key", AsyncMock(return_value=FUTURE)),
+            patch("api.routes.demo_key.get_redis", return_value=_redis_mock()),
         ):
             r = client.post(
                 "/v1/demo-key",
@@ -165,15 +172,17 @@ class TestMint:
             return "free" if h == key_hash else None
 
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=plaintext)
-        with patch("api.auth.get_redis", side_effect=Exception("no redis")), patch(
-            "api.auth.get_key_tier", AsyncMock(side_effect=db_lookup)
+        with (
+            patch("api.auth.get_redis", side_effect=Exception("no redis")),
+            patch("api.auth.get_key_tier", AsyncMock(side_effect=db_lookup)),
         ):
             assert await authenticate(creds) == "free"
 
     def test_mint_survives_redis_outage(self, client):
         """Cap check fails open — matches api/rate_limit.py's contract."""
-        with patch("api.routes.demo_key.insert_demo_key", AsyncMock(return_value=FUTURE)), patch(
-            "api.routes.demo_key.get_redis", side_effect=Exception("redis down")
+        with (
+            patch("api.routes.demo_key.insert_demo_key", AsyncMock(return_value=FUTURE)),
+            patch("api.routes.demo_key.get_redis", side_effect=Exception("redis down")),
         ):
             r = client.post(
                 "/v1/demo-key",
@@ -187,17 +196,16 @@ class TestMint:
 # §4.7.2 — Reuse: no new row, expiry pushed
 # ---------------------------------------------------------------------------
 
+
 class TestReuse:
     def test_valid_existing_key_is_extended_not_replaced(self, client):
         existing = "sk-sm-free-existing-token"
         insert = AsyncMock()
         redis = _redis_mock()
-        with patch(
-            "api.routes.demo_key.extend_demo_key", AsyncMock(return_value=FUTURE)
-        ) as extend, patch(
-            "api.routes.demo_key.insert_demo_key", insert
-        ), patch(
-            "api.routes.demo_key.get_redis", return_value=redis
+        with (
+            patch("api.routes.demo_key.extend_demo_key", AsyncMock(return_value=FUTURE)) as extend,
+            patch("api.routes.demo_key.insert_demo_key", insert),
+            patch("api.routes.demo_key.get_redis", return_value=redis),
         ):
             r = client.post(
                 "/v1/demo-key",
@@ -209,20 +217,18 @@ class TestReuse:
         assert body["api_key"] == existing
         assert body["expires_at"] == FUTURE.isoformat().replace("+00:00", "Z")
         extend.assert_awaited_once_with(_sha256(existing))
-        insert.assert_not_awaited()          # no new row
-        redis.eval.assert_not_awaited()      # extend consumes no mint cap
+        insert.assert_not_awaited()  # no new row
+        redis.eval.assert_not_awaited()  # extend consumes no mint cap
 
     def test_invalid_existing_key_falls_through_to_mint(self, client):
         """Expired / unknown / standard existing_key (extend returns None)
         → cap is enforced and a fresh key is minted."""
         old = "sk-sm-free-expired-token"
         redis = _redis_mock()
-        with patch(
-            "api.routes.demo_key.extend_demo_key", AsyncMock(return_value=None)
-        ), patch(
-            "api.routes.demo_key.insert_demo_key", AsyncMock(return_value=FUTURE)
-        ), patch(
-            "api.routes.demo_key.get_redis", return_value=redis
+        with (
+            patch("api.routes.demo_key.extend_demo_key", AsyncMock(return_value=None)),
+            patch("api.routes.demo_key.insert_demo_key", AsyncMock(return_value=FUTURE)),
+            patch("api.routes.demo_key.get_redis", return_value=redis),
         ):
             r = client.post(
                 "/v1/demo-key",
@@ -238,12 +244,16 @@ class TestReuse:
 # §4.7.4 — IP cap
 # ---------------------------------------------------------------------------
 
+
 class TestMintCap:
     def test_exceeding_cap_returns_429(self, client):
         insert = AsyncMock()
-        with patch("api.routes.demo_key.insert_demo_key", insert), patch(
-            "api.routes.demo_key.get_redis",
-            return_value=_redis_mock(eval_return=DEMO_KEY_IP_CAP + 1, ttl_return=3600),
+        with (
+            patch("api.routes.demo_key.insert_demo_key", insert),
+            patch(
+                "api.routes.demo_key.get_redis",
+                return_value=_redis_mock(eval_return=DEMO_KEY_IP_CAP + 1, ttl_return=3600),
+            ),
         ):
             r = client.post(
                 "/v1/demo-key",
@@ -261,12 +271,14 @@ class TestMintCap:
 # §4.7.3 — Expiry contract (auth + SQL guards)
 # ---------------------------------------------------------------------------
 
+
 class TestExpiryContract:
     async def test_expired_key_gets_401(self):
         """get_key_tier returning None (expired = no row) → 401."""
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="sk-sm-free-x")
-        with patch("api.auth.get_redis", side_effect=Exception("no redis")), patch(
-            "api.auth.get_key_tier", AsyncMock(return_value=None)
+        with (
+            patch("api.auth.get_redis", side_effect=Exception("no redis")),
+            patch("api.auth.get_key_tier", AsyncMock(return_value=None)),
         ):
             with pytest.raises(HTTPException) as exc:
                 await authenticate(creds)
@@ -288,6 +300,7 @@ class TestExpiryContract:
 # §4.7.5 — Cleanup: demo-only, never standard
 # ---------------------------------------------------------------------------
 
+
 class TestCleanup:
     def test_delete_sql_targets_only_expired_demo_rows(self):
         src = inspect.getsource(api_keys_queries.delete_expired_demo_keys)
@@ -298,8 +311,9 @@ class TestCleanup:
 
         delete = AsyncMock(return_value=3)
         record = AsyncMock()
-        with patch("pipeline.scheduler.delete_expired_demo_keys", delete), patch(
-            "pipeline.scheduler._record_run", record
+        with (
+            patch("pipeline.scheduler.delete_expired_demo_keys", delete),
+            patch("pipeline.scheduler._record_run", record),
         ):
             await demo_key_cleanup_job()
         delete.assert_awaited_once()
@@ -309,17 +323,21 @@ class TestCleanup:
         from pipeline.scheduler import demo_key_cleanup_job
 
         record = AsyncMock()
-        with patch(
-            "pipeline.scheduler.delete_expired_demo_keys",
-            AsyncMock(side_effect=Exception("db down")),
-        ), patch("pipeline.scheduler._record_run", record):
-            await demo_key_cleanup_job()   # must not raise
+        with (
+            patch(
+                "pipeline.scheduler.delete_expired_demo_keys",
+                AsyncMock(side_effect=Exception("db down")),
+            ),
+            patch("pipeline.scheduler._record_run", record),
+        ):
+            await demo_key_cleanup_job()  # must not raise
         record.assert_awaited_once_with("demo_key_cleanup")
 
 
 # ---------------------------------------------------------------------------
 # Helpers & wiring
 # ---------------------------------------------------------------------------
+
 
 class TestClientIp:
     def _request(self, headers, client_host="10.0.0.1"):

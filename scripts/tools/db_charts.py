@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tools/db_charts.py
+scripts/tools/db_charts.py
 
 Chart rendering utilities for the SentimentAPI database viewer.
 
@@ -10,11 +10,10 @@ Provides two functions:
 
 Both share a consistent colour map for sentiment layers.
 """
+
 from __future__ import annotations
 
-import io
 from datetime import datetime
-from typing import Sequence
 
 # ---------------------------------------------------------------------------
 # Colour maps (shared between ASCII and PNG renderers)
@@ -22,21 +21,21 @@ from typing import Sequence
 
 # plotext colour names
 _PLOTEXT_COLOURS: dict[str, str] = {
-    "composite":  "cyan",
-    "market":     "green",
-    "narrative":  "blue",
+    "composite": "cyan",
+    "market": "green",
+    "narrative": "blue",
     "influencer": "magenta",
-    "macro":      "yellow",
+    "macro": "yellow",
     "confidence": "white",
 }
 
 # matplotlib hex colours (matching the terminal palette intent)
 _MPL_COLOURS: dict[str, str] = {
-    "composite":  "#00bcd4",
-    "market":     "#4caf50",
-    "narrative":  "#2196f3",
+    "composite": "#00bcd4",
+    "market": "#4caf50",
+    "narrative": "#2196f3",
     "influencer": "#9c27b0",
-    "macro":      "#ffc107",
+    "macro": "#ffc107",
     "confidence": "#9e9e9e",
 }
 
@@ -56,6 +55,7 @@ def _pick_mpl_colour(label: str) -> str:
 # ---------------------------------------------------------------------------
 # ASCII chart (plotext)
 # ---------------------------------------------------------------------------
+
 
 def ascii_line_chart(
     title: str,
@@ -140,9 +140,10 @@ def export_chart_png(
     import os
 
     import matplotlib
+
     matplotlib.use("Agg")  # non-interactive backend
-    import matplotlib.pyplot as plt
     import matplotlib.dates as mdates
+    import matplotlib.pyplot as plt
 
     # Filter out empty / all-None series
     valid_series: dict[str, list[tuple[datetime, float]]] = {}

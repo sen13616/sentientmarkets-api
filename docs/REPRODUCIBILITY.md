@@ -1,6 +1,6 @@
 # Reproducibility note for reviewers
 
-**Updated:** 2026-07-22 (research-program build-out: eval harness, replay scorer, holdout discipline)
+**Updated:** 2026-10-06 (offline repairs tagged with `replay_run`; research snapshots; dev requirements)
 **Audience:** Academic reviewers auditing the implementation against the research paper "How to Quantify Stock Sentiment".
 
 This repository implements a live multi-source sentiment scoring pipeline. The implementation is real software running in production on Railway; it is not a static snapshot. As a result there is a hard split between *what a reviewer can verify offline by cloning this repo* and *what they cannot reproduce without the production infrastructure*. This note tells you which is which, so you can audit the parts that are reproducible and trust the parts that aren't with appropriate skepticism.
@@ -16,8 +16,8 @@ Every formula the paper describes — z-score normalization, the per-signal weig
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-pytest                  # ~50 unit-test files, 770+ tests, all green; ~25 s on a modern laptop
+pip install -r requirements-dev.txt
+pytest                  # ~60 unit-test files, ~890 tests, all green; ~30 s on a modern laptop
 ```
 
 `conftest.py` auto-deselects tests marked `@pytest.mark.integration`. The deselected files (`integration_test_connections.py`, `integration_test_sources.py`) are the only places that need a live database, Redis, or external API; everything else runs purely from in-memory test fixtures. The result of a clean run is the canonical evidence that the scoring math behaves as the paper specifies.
@@ -60,6 +60,17 @@ The predictive-research workflow is itself reproducible and disciplined:
 - **Experiment ledger** — `scripts/eval/EXPERIMENTS.md`: one row per configuration evaluated, pre-registration committed before results, verdicts per pre-registered criteria. The row count is the multiple-comparisons denominator.
 
 ---
+
+### Repaired periods and strategy tests (added 2026-10-06)
+
+Some of the stored history was **recomputed offline** after production outages, using the same
+scoring code "as of" each past tick. Every such row carries `sentiment_history.replay_run`, and
+METHODOLOGY.md §16.5 documents each event (window, inputs, settings). Filter
+`replay_run IS NULL` to audit only scores that were served live.
+
+Strategy tests run on exported, versioned snapshots (`python -m research.snapshot`), each with a
+`manifest.json` recording the window, row counts and git commit. Given a snapshot directory,
+`python -m research.run` reproduces a backtest exactly, offline. See `research/README.md`.
 
 ## What you cannot reproduce locally
 
@@ -111,7 +122,7 @@ The reading order I would recommend for a paper reviewer:
 3. **[`METHODOLOGY.md`](../METHODOLOGY.md)** — the complete code-accurate methodology: every constant, formula, weight, schedule, threshold, with file references. The single most complete document in the repo.
 4. **[`docs/DATA_DICTIONARY.md`](DATA_DICTIONARY.md)** — every column in every table, tied back to the methodology.
 5. **[`scripts/eval/EXPERIMENTS.md`](../scripts/eval/EXPERIMENTS.md)** + **[`scripts/eval/HOLDOUT.md`](../scripts/eval/HOLDOUT.md)** — the pre-registered experiment ledger and the frozen holdout discipline governing all predictive-research claims.
-6. **[`CHANGELOG.md`](../CHANGELOG.md)** and **[`docs/CHANGES.md`](CHANGES.md)** — phase-by-phase history; the latter maps the 2026-07-21 nowcasting refactor to the external backtest study's findings.
+6. **[`CHANGELOG.md`](../CHANGELOG.md)** and **[`docs/history/nowcasting-refactor-2026-07.md`](history/nowcasting-refactor-2026-07.md)** — phase-by-phase history; the latter maps the 2026-07-21 nowcasting refactor to the external backtest study's findings.
 
 (The historical per-channel audit files `docs/audit_*` cited by earlier revisions of this note were local working documents from the Phase-1–5 reconciliation cycles; they are superseded by `METHODOLOGY.md` and are no longer shipped. Their four-state vocabulary — RESOLVED / ACCEPTED / OPEN / REGRESSION — survives in the deviations list below: ACCEPTED items are places where the deployed system deliberately differs from the paper text, e.g. the TED-substitute discussion in `pipeline/sources/fred.py`.)
 

@@ -7,6 +7,7 @@ Requires local PostgreSQL and Redis to be running.
 Run with:
     pytest -m integration
 """
+
 import pytest
 
 from scripts.db.connection import close_pool, get_pool, init_pool

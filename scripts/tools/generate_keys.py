@@ -19,6 +19,7 @@ Usage
 
 Requires DATABASE_URL in .env (or the environment).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -106,9 +107,7 @@ async def _list(conn: asyncpg.Connection, args) -> None:
 
 
 async def _revoke(conn: asyncpg.Connection, args) -> None:
-    result = await conn.execute(
-        "UPDATE api_keys SET is_active = FALSE WHERE id = $1", args.id
-    )
+    result = await conn.execute("UPDATE api_keys SET is_active = FALSE WHERE id = $1", args.id)
     if result.endswith("0"):
         print(f"no key with id {args.id}")
         sys.exit(1)
@@ -121,8 +120,7 @@ def _parse_args(argv=None):
 
     c = sub.add_parser("create", help="mint a new key (plaintext printed once)")
     c.add_argument("--tier", choices=list(_PREFIXES), required=True)
-    c.add_argument("--label", required=True,
-                   help="consumer name, e.g. 'website' or 'research'")
+    c.add_argument("--label", required=True, help="consumer name, e.g. 'website' or 'research'")
     c.add_argument("--owner", default=_DEFAULT_OWNER)
 
     sub.add_parser("list", help="list keys (never shows hashes or plaintext)")
@@ -137,9 +135,7 @@ async def main(argv=None) -> None:
     args = _parse_args(argv)
     conn = await asyncpg.connect(_dsn())
     try:
-        await {"create": _create, "list": _list, "revoke": _revoke}[args.command](
-            conn, args
-        )
+        await {"create": _create, "list": _list, "revoke": _revoke}[args.command](conn, args)
     finally:
         await conn.close()
 

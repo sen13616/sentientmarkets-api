@@ -14,7 +14,7 @@
 > evaluated only when a candidate has already won on the research window, and every
 > holdout evaluation is logged here with a date and result.**
 
-Rationale: the backtest study (`docs/SUMMARYOFTESTING.md`) covers ~3 months of a single
+Rationale: the backtest study (July 2026, summarized in `docs/history/nowcasting-refactor-2026-07.md`) covers ~3 months of a single
 market regime. Iterating candidate configurations against the full history guarantees
 overfitting — with enough tries, something will look predictive by chance. The holdout
 exists to answer one question per candidate, once: *does the research-window win

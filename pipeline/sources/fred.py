@@ -33,6 +33,7 @@ VIX convention. Scoring picks them up via the single `_MACRO_TICKER` fetch
 in `_score_macro`. Per-signal weights and aggregation are in
 `pipeline/scoring/subindices.py:_MACRO_SIGNAL_WEIGHTS`.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -43,21 +44,21 @@ from datetime import datetime, timezone
 import httpx
 from dotenv import load_dotenv
 
+from pipeline.rate_limits import FRED_DELAY, FRED_SEM, guarded_get
 from scripts.db.queries.raw_signals import insert_signals
-from pipeline.rate_limits import FRED_SEM, FRED_DELAY, guarded_get
 
 _log = logging.getLogger(__name__)
 
 load_dotenv(override=False)
 
-_FRED_KEY  = os.environ.get("FRED_API_KEY", "")
+_FRED_KEY = os.environ.get("FRED_API_KEY", "")
 _FRED_BASE = "https://api.stlouisfed.org/fred/series/observations"
 
 #: Mapping from our signal_type to the FRED series id.
 SERIES_MAP: dict[str, str] = {
     "treasury_yield_10y": "DGS10",
-    "treasury_yield_2y":  "DGS2",
-    "ted_spread":         "T10Y2Y",
+    "treasury_yield_2y": "DGS2",
+    "ted_spread": "T10Y2Y",
 }
 
 _MACRO_TICKER = "_MACRO_"
@@ -87,11 +88,11 @@ async def _fetch_observation(
         return []
 
     params: dict[str, str] = {
-        "series_id":  series_id,
-        "api_key":    _FRED_KEY,
-        "file_type":  "json",
+        "series_id": series_id,
+        "api_key": _FRED_KEY,
+        "file_type": "json",
         "sort_order": sort_order,
-        "limit":      str(limit),
+        "limit": str(limit),
     }
     if observation_start is not None:
         params["observation_start"] = observation_start
@@ -99,13 +100,17 @@ async def _fetch_observation(
         params["observation_end"] = observation_end
 
     resp = await guarded_get(
-        client, _FRED_BASE, params=params,
-        sem=FRED_SEM, delay=FRED_DELAY,
+        client,
+        _FRED_BASE,
+        params=params,
+        sem=FRED_SEM,
+        delay=FRED_DELAY,
         label=f"FRED {series_id}",
     )
     if resp is None or resp.status_code != 200:
-        _log.warning("FRED %s unavailable (status=%s)",
-                     series_id, resp.status_code if resp else None)
+        _log.warning(
+            "FRED %s unavailable (status=%s)", series_id, resp.status_code if resp else None
+        )
         return []
 
     try:
@@ -162,14 +167,21 @@ async def fetch_fred_signals(client: httpx.AsyncClient) -> int:
     rows: list[tuple] = []
     for sig_type, series_id in SERIES_MAP.items():
         obs = await _fetch_observation(
-            client, series_id, limit=_OBS_FETCH_LIMIT, sort_order="desc",
+            client,
+            series_id,
+            limit=_OBS_FETCH_LIMIT,
+            sort_order="desc",
         )
         if not obs:
-            _log.warning("FRED %s empty on first attempt — retrying in %.0fs",
-                         series_id, _RETRY_DELAY_S)
+            _log.warning(
+                "FRED %s empty on first attempt — retrying in %.0fs", series_id, _RETRY_DELAY_S
+            )
             await asyncio.sleep(_RETRY_DELAY_S)
             obs = await _fetch_observation(
-                client, series_id, limit=_OBS_FETCH_LIMIT, sort_order="desc",
+                client,
+                series_id,
+                limit=_OBS_FETCH_LIMIT,
+                sort_order="desc",
             )
         if not obs:
             _log.warning("FRED %s returned no usable observation this tick", series_id)
@@ -179,6 +191,7 @@ async def fetch_fred_signals(client: httpx.AsyncClient) -> int:
 
     if rows:
         await insert_signals(rows)
-        _log.info("fetch_fred_signals: wrote %d rows (%s)",
-                  len(rows), ", ".join(r[1] for r in rows))
+        _log.info(
+            "fetch_fred_signals: wrote %d rows (%s)", len(rows), ", ".join(r[1] for r in rows)
+        )
     return len(rows)

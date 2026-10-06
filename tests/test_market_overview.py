@@ -10,6 +10,7 @@ Unit tests for the universe-stats additions:
 
 All external I/O (DB, Redis) is mocked — no live connections required.
 """
+
 from __future__ import annotations
 
 import json
@@ -35,26 +36,26 @@ _NOW = datetime(2026, 7, 15, 14, 30, tzinfo=timezone.utc)
 # ---------------------------------------------------------------------------
 
 _MOCK_STATE: dict = {
-    "ticker":              "AAPL",
-    "composite_score":     72.0,
-    "score_change_1d":     3.25,
+    "ticker": "AAPL",
+    "composite_score": 72.0,
+    "score_change_1d": 3.25,
     "score_change_1d_pct": 4.73,
-    "confidence":          {"score": 81, "flags": []},
-    "timestamp":           "2026-07-15T14:30:00+00:00",
+    "confidence": {"score": 81, "flags": []},
+    "timestamp": "2026-07-15T14:30:00+00:00",
     "sub_indices": {
-        "market":     {"value": 78.0},
-        "narrative":  {"value": 69.0},
+        "market": {"value": 78.0},
+        "narrative": {"value": 69.0},
         "influencer": {"value": 80.0},
-        "macro":      {"value": 61.0},
+        "macro": {"value": 61.0},
     },
-    "divergence":  "aligned",
+    "divergence": "aligned",
     "top_drivers": [],
     "explanation": "",
     "freshness": {
-        "market_as_of":     "2026-07-15T14:30:00+00:00",
-        "narrative_as_of":  "2026-07-15T14:00:00+00:00",
+        "market_as_of": "2026-07-15T14:30:00+00:00",
+        "narrative_as_of": "2026-07-15T14:00:00+00:00",
         "influencer_as_of": "2026-07-15T08:00:00+00:00",
-        "macro_as_of":      "2026-07-15T02:00:00+00:00",
+        "macro_as_of": "2026-07-15T02:00:00+00:00",
     },
 }
 
@@ -62,8 +63,12 @@ _MOCK_OVERVIEW: dict = build_overview(
     scores={"AAPL": 72.0, "MSFT": 55.0, "XOM": 41.0, "CVX": 47.5},
     changes={"AAPL": 3.25, "MSFT": -1.5, "XOM": None, "CVX": 0.5},
     change_pcts={"AAPL": 4.73, "MSFT": -2.65, "XOM": None, "CVX": 1.06},
-    sector_map={"AAPL": "Information Technology", "MSFT": "Information Technology",
-                "XOM": "Energy", "CVX": "Energy"},
+    sector_map={
+        "AAPL": "Information Technology",
+        "MSFT": "Information Technology",
+        "XOM": "Energy",
+        "CVX": "Energy",
+    },
     timestamp=_NOW,
 )
 
@@ -71,6 +76,7 @@ _MOCK_OVERVIEW: dict = build_overview(
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def free_client():
@@ -99,8 +105,8 @@ def _overview_redis(payload: str | None):
 # compute_percentiles
 # ===========================================================================
 
-class TestComputePercentiles:
 
+class TestComputePercentiles:
     def test_empty_universe(self):
         assert compute_percentiles({}) == {}
 
@@ -123,8 +129,8 @@ class TestComputePercentiles:
 # build_overview
 # ===========================================================================
 
-class TestBuildOverview:
 
+class TestBuildOverview:
     def test_empty_universe(self):
         blob = build_overview({}, {}, {}, {}, _NOW)
         assert blob["universe_scored"] == 0
@@ -144,8 +150,8 @@ class TestBuildOverview:
         top = [m["ticker"] for m in _MOCK_OVERVIEW["top_movers"]]
         bottom = [m["ticker"] for m in _MOCK_OVERVIEW["bottom_movers"]]
         assert "XOM" not in top and "XOM" not in bottom  # null change → excluded
-        assert top[0] == "AAPL"        # largest gain first
-        assert bottom[0] == "MSFT"     # largest loss first
+        assert top[0] == "AAPL"  # largest gain first
+        assert bottom[0] == "MSFT"  # largest loss first
 
     def test_gap_safety_all_changes_null(self):
         """First tick after an outage: no baselines → no movers, null breadth."""
@@ -165,8 +171,11 @@ class TestBuildOverview:
         scores = {t: 50.0 + i for i, t in enumerate(["A", "B", "C"])}
         changes = {"A": 3.0, "B": 1.0, "C": -2.0}
         blob = build_overview(
-            scores=scores, changes=changes,
-            change_pcts={t: None for t in scores}, sector_map={}, timestamp=_NOW,
+            scores=scores,
+            changes=changes,
+            change_pcts={t: None for t in scores},
+            sector_map={},
+            timestamp=_NOW,
         )
         top = {m["ticker"] for m in blob["top_movers"]}
         bottom = {m["ticker"] for m in blob["bottom_movers"]}
@@ -184,7 +193,7 @@ class TestBuildOverview:
             scores={"A": 60.0, "B": 40.0},
             changes={"A": 1.0, "B": -1.0},
             change_pcts={"A": 1.7, "B": -2.4},
-            sector_map={"A": "Energy"},   # B has no sector
+            sector_map={"A": "Energy"},  # B has no sector
             timestamp=_NOW,
         )
         assert blob["universe_scored"] == 2
@@ -196,6 +205,7 @@ class TestBuildOverview:
 # build_summary
 # ===========================================================================
 
+
 def _overview(scores, changes=None, change_pcts=None, sector_map=None):
     """Helper: build an overview blob with sensible defaults for summary tests."""
     changes = changes if changes is not None else {t: 1.0 for t in scores}
@@ -204,7 +214,6 @@ def _overview(scores, changes=None, change_pcts=None, sector_map=None):
 
 
 class TestBuildSummary:
-
     def test_empty_universe_fallback(self):
         blob = build_overview({}, {}, {}, {}, _NOW)
         assert blob["summary"] == "No market sentiment data available for this tick."
@@ -234,31 +243,44 @@ class TestBuildSummary:
 
     def test_breadth_improving_clause_present(self):
         # All names above 50 and improving → both breadth clauses appear.
-        s = build_summary(_overview(
-            {"A": 60.0, "B": 62.0}, changes={"A": 2.0, "B": 3.0}))
+        s = build_summary(_overview({"A": 60.0, "B": 62.0}, changes={"A": 2.0, "B": 3.0}))
         assert "% of names above neutral" in s
         assert "improving" in s
 
     def test_breadth_improving_clause_omitted_when_null(self):
         # No baselines → breadth_improving_pct is None → no improving/weakening clause.
         blob = build_overview(
-            {"A": 60.0, "B": 62.0}, {"A": None, "B": None},
-            {"A": None, "B": None}, {}, _NOW)
+            {"A": 60.0, "B": 62.0}, {"A": None, "B": None}, {"A": None, "B": None}, {}, _NOW
+        )
         s = build_summary(blob)
         assert "improving" not in s and "weakening" not in s
 
     def test_sector_lead_and_lag(self):
         blob = _overview(
-            {"AAPL": 80.0, "MSFT": 78.0, "XOM": 30.0, "CVX": 32.0,
-             "JPM": 55.0, "BAC": 54.0, "PG": 45.0, "KO": 46.0},
-            sector_map={"AAPL": "Information Technology", "MSFT": "Information Technology",
-                        "XOM": "Energy", "CVX": "Energy",
-                        "JPM": "Financials", "BAC": "Financials",
-                        "PG": "Consumer Staples", "KO": "Consumer Staples"},
+            {
+                "AAPL": 80.0,
+                "MSFT": 78.0,
+                "XOM": 30.0,
+                "CVX": 32.0,
+                "JPM": 55.0,
+                "BAC": 54.0,
+                "PG": 45.0,
+                "KO": 46.0,
+            },
+            sector_map={
+                "AAPL": "Information Technology",
+                "MSFT": "Information Technology",
+                "XOM": "Energy",
+                "CVX": "Energy",
+                "JPM": "Financials",
+                "BAC": "Financials",
+                "PG": "Consumer Staples",
+                "KO": "Consumer Staples",
+            },
         )
         s = build_summary(blob)
-        assert "Information Technology" in s   # highest-average sector leads
-        assert "Energy lags" in s              # lowest-average sector lags
+        assert "Information Technology" in s  # highest-average sector leads
+        assert "Energy lags" in s  # lowest-average sector lags
 
     def test_movers_named(self):
         blob = _overview(
@@ -279,12 +301,22 @@ class TestBuildSummary:
 # Sentiment response — new fields
 # ===========================================================================
 
-class TestSentimentChangeFields:
 
+class TestSentimentChangeFields:
     def _patches(self, state=_MOCK_STATE):
         return (
             patch("api.rate_limit.check_rate_limit", AsyncMock()),
-            patch("api.routes.sentiment.get_ticker_status", AsyncMock(return_value={"ticker": "AAPL", "delisted_at": None, "successor_ticker": None, "delisted_reason": None})),
+            patch(
+                "api.routes.sentiment.get_ticker_status",
+                AsyncMock(
+                    return_value={
+                        "ticker": "AAPL",
+                        "delisted_at": None,
+                        "successor_ticker": None,
+                        "delisted_reason": None,
+                    }
+                ),
+            ),
             patch("api.response.assembler._load_from_redis", AsyncMock(return_value=state)),
         )
 
@@ -299,8 +331,11 @@ class TestSentimentChangeFields:
 
     def test_pro_tier_includes_change_and_percentile(self, pro_client):
         p1, p2, p3 = self._patches()
-        with p1, p2, p3, patch(
-            "api.response.assembler._load_percentile", AsyncMock(return_value=87.3)
+        with (
+            p1,
+            p2,
+            p3,
+            patch("api.response.assembler._load_percentile", AsyncMock(return_value=87.3)),
         ):
             r = pro_client.get(
                 "/v1/sentiment/AAPL?detail=full", headers={"Authorization": "Bearer k"}
@@ -314,11 +349,17 @@ class TestSentimentChangeFields:
     def test_pre_feature_state_yields_nulls(self, pro_client):
         """States written before this feature (or across a gap) have no
         change keys — fields must be null, never interpolated."""
-        old_state = {k: v for k, v in _MOCK_STATE.items()
-                     if k not in ("score_change_1d", "score_change_1d_pct")}
+        old_state = {
+            k: v
+            for k, v in _MOCK_STATE.items()
+            if k not in ("score_change_1d", "score_change_1d_pct")
+        }
         p1, p2, p3 = self._patches(state=old_state)
-        with p1, p2, p3, patch(
-            "api.response.assembler._load_percentile", AsyncMock(return_value=None)
+        with (
+            p1,
+            p2,
+            p3,
+            patch("api.response.assembler._load_percentile", AsyncMock(return_value=None)),
         ):
             r = pro_client.get(
                 "/v1/sentiment/AAPL?detail=full", headers={"Authorization": "Bearer k"}
@@ -334,8 +375,8 @@ class TestSentimentChangeFields:
 # GET /v1/market/overview
 # ===========================================================================
 
-class TestMarketOverviewRoute:
 
+class TestMarketOverviewRoute:
     def test_free_tier_forbidden(self, free_client):
         with patch("api.rate_limit.check_rate_limit", AsyncMock()):
             r = free_client.get("/v1/market/overview", headers={"Authorization": "Bearer k"})
@@ -377,8 +418,8 @@ class TestMarketOverviewRoute:
 # compute_cross_sectional (nowcasting plan, Phase 2)
 # ===========================================================================
 
-class TestComputeCrossSectional:
 
+class TestComputeCrossSectional:
     _SECTORS = {"AAPL": "Tech", "MSFT": "Tech", "NVDA": "Tech", "XOM": "Energy"}
 
     def test_empty_universe(self):
@@ -418,15 +459,11 @@ class TestComputeCrossSectional:
         assert xs["XOM"]["sector_pctl"] is None
 
     def test_unknown_sector_gets_none(self):
-        xs = compute_cross_sectional(
-            {"AAPL": 60.0, "MSFT": 50.0, "NVDA": 40.0}, {"AAPL": "Tech"}
-        )
+        xs = compute_cross_sectional({"AAPL": 60.0, "MSFT": 50.0, "NVDA": 40.0}, {"AAPL": "Tech"})
         assert xs["MSFT"]["sector_pctl"] is None
 
     def test_values_json_roundtrip(self):
-        xs = compute_cross_sectional(
-            {"AAPL": 60.0, "MSFT": 50.0, "NVDA": 40.0}, self._SECTORS
-        )
+        xs = compute_cross_sectional({"AAPL": 60.0, "MSFT": 50.0, "NVDA": 40.0}, self._SECTORS)
         for v in xs.values():
             assert json.loads(json.dumps(v)) == v
 
@@ -435,22 +472,36 @@ class TestComputeCrossSectional:
 # Cross-sectional fields on the pro sentiment response
 # ===========================================================================
 
-class TestSentimentXsFields:
 
+class TestSentimentXsFields:
     _XS = {"raw_z": 1.42, "raw_pctl": 91.5, "sector_pctl": 88.0}
 
     def _patches(self):
         return (
             patch("api.rate_limit.check_rate_limit", AsyncMock()),
-            patch("api.routes.sentiment.get_ticker_status", AsyncMock(return_value={"ticker": "AAPL", "delisted_at": None, "successor_ticker": None, "delisted_reason": None})),
+            patch(
+                "api.routes.sentiment.get_ticker_status",
+                AsyncMock(
+                    return_value={
+                        "ticker": "AAPL",
+                        "delisted_at": None,
+                        "successor_ticker": None,
+                        "delisted_reason": None,
+                    }
+                ),
+            ),
             patch("api.response.assembler._load_from_redis", AsyncMock(return_value=_MOCK_STATE)),
             patch("api.response.assembler._load_percentile", AsyncMock(return_value=87.3)),
         )
 
     def test_pro_full_includes_xs_fields(self, pro_client):
         p1, p2, p3, p4 = self._patches()
-        with p1, p2, p3, p4, patch(
-            "api.response.assembler._load_xs", AsyncMock(return_value=self._XS)
+        with (
+            p1,
+            p2,
+            p3,
+            p4,
+            patch("api.response.assembler._load_xs", AsyncMock(return_value=self._XS)),
         ):
             r = pro_client.get(
                 "/v1/sentiment/AAPL?detail=full", headers={"Authorization": "Bearer k"}
@@ -463,9 +514,7 @@ class TestSentimentXsFields:
 
     def test_ticker_absent_from_tick_yields_nulls(self, pro_client):
         p1, p2, p3, p4 = self._patches()
-        with p1, p2, p3, p4, patch(
-            "api.response.assembler._load_xs", AsyncMock(return_value=None)
-        ):
+        with p1, p2, p3, p4, patch("api.response.assembler._load_xs", AsyncMock(return_value=None)):
             r = pro_client.get(
                 "/v1/sentiment/AAPL?detail=full", headers={"Authorization": "Bearer k"}
             )
@@ -478,9 +527,7 @@ class TestSentimentXsFields:
     def test_free_tier_never_gets_xs_fields(self, free_client):
         p1, p2, p3, p4 = self._patches()
         with p1, p2, p3, p4:
-            r = free_client.get(
-                "/v1/sentiment/AAPL", headers={"Authorization": "Bearer k"}
-            )
+            r = free_client.get("/v1/sentiment/AAPL", headers={"Authorization": "Bearer k"})
         assert r.status_code == 200
         body = r.json()
         for field in ("score_raw_z", "score_raw_percentile", "sector_percentile"):
@@ -491,15 +538,25 @@ class TestSentimentXsFields:
 # score_exo fields (nowcasting plan, Phase 3)
 # ===========================================================================
 
-class TestScoreExoFields:
 
+class TestScoreExoFields:
     _STATE = {**_MOCK_STATE, "score_exo": 64.85}
     _XS = {"raw_z": 1.42, "raw_pctl": 91.5, "sector_pctl": 88.0, "exo_pctl": 76.0}
 
     def _patches(self, state):
         return (
             patch("api.rate_limit.check_rate_limit", AsyncMock()),
-            patch("api.routes.sentiment.get_ticker_status", AsyncMock(return_value={"ticker": "AAPL", "delisted_at": None, "successor_ticker": None, "delisted_reason": None})),
+            patch(
+                "api.routes.sentiment.get_ticker_status",
+                AsyncMock(
+                    return_value={
+                        "ticker": "AAPL",
+                        "delisted_at": None,
+                        "successor_ticker": None,
+                        "delisted_reason": None,
+                    }
+                ),
+            ),
             patch("api.response.assembler._load_from_redis", AsyncMock(return_value=state)),
             patch("api.response.assembler._load_percentile", AsyncMock(return_value=87.3)),
         )
@@ -508,7 +565,7 @@ class TestScoreExoFields:
         xs = compute_cross_sectional(
             raw_scores={"A": 60.0, "B": 50.0, "C": 40.0},
             sector_map={},
-            exo_scores={"A": 70.0, "C": 30.0},   # B has no exo this tick
+            exo_scores={"A": 70.0, "C": 30.0},  # B has no exo this tick
         )
         assert xs["A"]["exo_pctl"] == 100.0
         assert xs["C"]["exo_pctl"] == 0.0
@@ -516,8 +573,12 @@ class TestScoreExoFields:
 
     def test_pro_full_includes_exo_fields(self, pro_client):
         p1, p2, p3, p4 = self._patches(self._STATE)
-        with p1, p2, p3, p4, patch(
-            "api.response.assembler._load_xs", AsyncMock(return_value=self._XS)
+        with (
+            p1,
+            p2,
+            p3,
+            p4,
+            patch("api.response.assembler._load_xs", AsyncMock(return_value=self._XS)),
         ):
             r = pro_client.get(
                 "/v1/sentiment/AAPL?detail=full", headers={"Authorization": "Bearer k"}
@@ -529,9 +590,7 @@ class TestScoreExoFields:
 
     def test_pre_feature_state_yields_null_exo(self, pro_client):
         p1, p2, p3, p4 = self._patches(_MOCK_STATE)  # no score_exo key
-        with p1, p2, p3, p4, patch(
-            "api.response.assembler._load_xs", AsyncMock(return_value=None)
-        ):
+        with p1, p2, p3, p4, patch("api.response.assembler._load_xs", AsyncMock(return_value=None)):
             r = pro_client.get(
                 "/v1/sentiment/AAPL?detail=full", headers={"Authorization": "Bearer k"}
             )

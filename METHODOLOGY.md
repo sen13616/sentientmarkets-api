@@ -18,7 +18,7 @@ Two decoupled systems:
 
 - **System A (pipeline)** — APScheduler background jobs. **Ingestion jobs are data-only**:
   they fetch from external APIs and write to PostgreSQL; they never score. A single
-  **`scoring_tick_job`** recomputes all four scoring layers for all ~502 tickers from
+  **`scoring_tick_job`** recomputes all four scoring layers for every active ticker (~586) from
   current DB state. No score is ever computed in response to a user request.
 - **System B (API)** — FastAPI serves the pre-computed state from Redis
   (`sentiment:{ticker}`), falling back to the latest `sentiment_history` row if Redis is
@@ -62,7 +62,7 @@ throughout the codebase.
 | `scoring_tick_job` | Every 30 min at :00/:30 around the clock, **plus** :15/:45 fills weekdays 14:45–20:45 (`OrTrigger`) → effective **15 min during market hours, 30 min off-hours** | The only scoring job. Recomputes all 4 layers for every active ticker, then publishes universe stats (§12) |
 | `market_job` | Weekdays, hours 14–20, every 15 min (`*/15`) | One batched yfinance OHLCV download for all tickers, then per-ticker derived signals (RSI, returns, order flow, volume ratio, bid-ask) |
 | `market_eod_job` | Weekdays 21:15 | Same as `market_job`; captures definitive closing prices 15 min after the close so the ~21:30 scoring tick produces the end-of-day state that stays fresh overnight/weekend |
-| `narrative_job` | Every 30 min, 24/7 (interval) | 3 phases: (1) fetch news from Alpha Vantage + Finnhub, (2) semantic dedup clustering, (3) FinBERT scoring |
+| `narrative_job` | Cron :05 and :35 every hour, 24/7 (cron so deploys don't reset it; a run finishes before the :30/:00 scoring ticks) | 3 phases: (1) fetch news from Alpha Vantage + Finnhub, (2) semantic dedup clustering, (3) FinBERT scoring |
 | `influencer_job` | Cron 00:20 / 06:20 / 12:20 / 18:20 (cron so deploys don't reset the 6 h cadence) | Insider transactions + analyst signals |
 | `macro_daily_job` | Daily 02:00 | FRED Treasury signals (10y, 2y, 10y−2y slope) |
 | `macro_intraday_job` | Weekdays, hourly 14:00–20:00 | VIX + 11 sector ETF closes / 20-day returns |
@@ -70,7 +70,7 @@ throughout the codebase.
 | `options_job` | Weekdays 21:20 | Research-only: one yfinance option-chain snapshot per ticker (nearest-30-day expiry) → `pcr_volume`, `pcr_oi`, `atm_iv_30d`, `iv_skew_25d` (5%-OTM moneyness proxy for 25Δ). Guards reject after-hours placeholder surfaces (flat IVs, one-sided zero OI). **Feeds no score** — future registered experiment |
 | `retention_job` | Daily 03:30 | Tiered purges (§14) — never touches `sentiment_history` or `price_snapshots` |
 
-All jobs run with `max_instances=1` and `coalesce=True`.
+All jobs run with `max_instances=1` and `coalesce=True`, each wrapped in a hard job-level timeout (`JOB_TIMEOUTS_S`); the app's DB pool sets a per-query `command_timeout`, and a scoring tick skips any single ticker that exceeds `SCORE_TICKER_TIMEOUT_S`.
 
 **Scoring concurrency:** `_score_all()` scores all tickers concurrently, bounded by
 `Semaphore(10)` to stay inside the asyncpg pool. The ticker→GICS-sector map and the
@@ -663,7 +663,7 @@ they beat the incumbent on this gate.
 
 ### 16.2 Holdout split (frozen 2026-07-22, `scripts/eval/HOLDOUT.md`)
 
-The backtest study (`docs/SUMMARYOFTESTING.md`) found the published scores
+The backtest study (July 2026, summarized in `docs/history/nowcasting-refactor-2026-07.md`) found the published scores
 coincident-to-lagging with price. The research program iterating toward a leading signal
 runs under a frozen train/holdout split, with the 2026-06-23 → 07-03 ingestion outage as
 the natural boundary:

@@ -1,7 +1,7 @@
 """Daily forward-return analysis — port of the validated external backtest engine.
 
 Design choices that keep this honest (unchanged from the original study,
-docs/SUMMARYOFTESTING.md):
+docs/history/nowcasting-refactor-2026-07.md):
   * No look-ahead: signal as of ET-day d -> we ENTER at the close of the NEXT
     trading day (t1, strictly after every day-d tick) and measure forward
     returns close_t1 -> close_{t1+h}.
@@ -58,8 +58,7 @@ def prepare_daily(sent: pd.DataFrame) -> pd.DataFrame:
     ).copy()
     # all-None columns arrive as object dtype (both from asyncpg and test
     # fixtures) and would poison the arithmetic below
-    for col in ["score_raw", "score", "market", "narrative", "influencer",
-                "macro", "confidence"]:
+    for col in ["score_raw", "score", "market", "narrative", "influencer", "macro", "confidence"]:
         s[col] = pd.to_numeric(s[col], errors="coerce")
     s["score"] = s["score"].fillna(s["score_raw"])
 
@@ -67,6 +66,7 @@ def prepare_daily(sent: pd.DataFrame) -> pd.DataFrame:
     # research_features JSONB becomes a numeric column `rf_<key>` — no
     # per-feature plumbing. asyncpg returns JSONB as str; parse both shapes.
     if "research_features" in s.columns:
+
         def _parse(v):
             if isinstance(v, str):
                 try:
@@ -74,19 +74,18 @@ def prepare_daily(sent: pd.DataFrame) -> pd.DataFrame:
                 except Exception:
                     return {}
             return v if isinstance(v, dict) else {}
+
         parsed = s["research_features"].map(_parse)
         keys = sorted({k for d in parsed for k in d})
         for k in keys:
             col = f"rf_{k}"
             if col not in s.columns:
-                s[col] = pd.to_numeric(parsed.map(lambda d: d.get(k)), errors="coerce")
+                s[col] = pd.to_numeric(parsed.map(lambda d, k=k: d.get(k)), errors="coerce")
         s = s.drop(columns=["research_features"])
 
     s["ts"] = pd.to_datetime(s["timestamp"], utc=True)
     # ET calendar date of each tick, then keep the last tick per (ticker, date)
-    s["date"] = (
-        s["ts"].dt.tz_convert("US/Eastern").dt.normalize().dt.tz_localize(None)
-    )
+    s["date"] = s["ts"].dt.tz_convert("US/Eastern").dt.normalize().dt.tz_localize(None)
     s = s.sort_values("ts").groupby(["ticker", "date"], as_index=False).last()
 
     # cross-sectional percentile of score_raw within each day
@@ -118,9 +117,7 @@ def prepare_daily(sent: pd.DataFrame) -> pd.DataFrame:
 
 def research_feature_cols(s: pd.DataFrame) -> list[str]:
     """Auto-registered research-feature columns (levels + their 1d diffs)."""
-    return sorted(
-        c for c in s.columns if c.startswith("rf_") or c.startswith("drf_")
-    )
+    return sorted(c for c in s.columns if c.startswith("rf_") or c.startswith("drf_"))
 
 
 def add_lagged_feature(s: pd.DataFrame, col: str, lag: int) -> str:
@@ -166,11 +163,28 @@ def build_panel(
     ret_xs = ret.sub(ret.mean(axis=1), axis=0)
 
     keep = [
-        "ticker", "date", "score", "score_raw", "xs_pct", "confidence",
-        "narrative", "influencer", "macro", "market", "exo", "exo_pct",
-        "dscore_raw_1", "dscore_raw_3", "dscore_raw_5", "dscore_raw_7",
-        "dexo_1", "dexo_3", "dexo_5",
-        "dnarrative_1", "dinfluencer_1", "dmacro_1",
+        "ticker",
+        "date",
+        "score",
+        "score_raw",
+        "xs_pct",
+        "confidence",
+        "narrative",
+        "influencer",
+        "macro",
+        "market",
+        "exo",
+        "exo_pct",
+        "dscore_raw_1",
+        "dscore_raw_3",
+        "dscore_raw_5",
+        "dscore_raw_7",
+        "dexo_1",
+        "dexo_3",
+        "dexo_5",
+        "dnarrative_1",
+        "dinfluencer_1",
+        "dmacro_1",
     ]
     # Auto-registered research features ride along (Track B5)
     keep += [c for c in research_feature_cols(s) if c not in keep]
@@ -204,11 +218,26 @@ def build_panel(
 
 
 DEFAULT_FEATURES = [
-    "score", "score_raw", "xs_pct", "exo", "exo_pct", "confidence",
-    "narrative", "influencer", "macro", "market",
-    "dscore_raw_1", "dscore_raw_3", "dscore_raw_5", "dscore_raw_7",
-    "dexo_1", "dexo_3", "dexo_5",
-    "dnarrative_1", "dinfluencer_1", "dmacro_1",
+    "score",
+    "score_raw",
+    "xs_pct",
+    "exo",
+    "exo_pct",
+    "confidence",
+    "narrative",
+    "influencer",
+    "macro",
+    "market",
+    "dscore_raw_1",
+    "dscore_raw_3",
+    "dscore_raw_5",
+    "dscore_raw_7",
+    "dexo_1",
+    "dexo_3",
+    "dexo_5",
+    "dnarrative_1",
+    "dinfluencer_1",
+    "dmacro_1",
 ]
 
 
@@ -243,9 +272,9 @@ def ic_table(
                 if len(sub) < min_rows:
                     continue
                 ics = sub.groupby("date")[[f, tgt]].apply(
-                    lambda g: g[f].rank().corr(g[tgt].rank())
-                    if g[f].nunique() > 3
-                    else np.nan
+                    lambda g, f=f, tgt=tgt: (
+                        g[f].rank().corr(g[tgt].rank()) if g[f].nunique() > 3 else np.nan
+                    )
                 )
                 ics = ics.dropna()
                 if len(ics) < min_days:
@@ -309,11 +338,11 @@ def quintile_ls(
         return None
 
     cost_rt = cost_bps / 1e4
-    turnovers: list[float] = []      # per-day sum of both legs' one-way turnover
+    turnovers: list[float] = []  # per-day sum of both legs' one-way turnover
     for i, d in enumerate(dates):
         long_d, short_d = memb_by_day[d]
         if i < h:
-            to = 2.0                 # inception: both legs fully established
+            to = 2.0  # inception: both legs fully established
         else:
             prev_l, prev_s = memb_by_day[dates[i - h]]
             to_l = 1.0 - len(long_d & prev_l) / len(long_d) if long_d else 1.0
@@ -388,7 +417,5 @@ def lead_lag(
                 xs.append(r[col])
                 ys.append(rv)
         if len(xs) > min_n:
-            rows.append(
-                {"lag_k": k, "corr": round(np.corrcoef(xs, ys)[0, 1], 4), "n": len(xs)}
-            )
+            rows.append({"lag_k": k, "corr": round(np.corrcoef(xs, ys)[0, 1], 4), "n": len(xs)})
     return pd.DataFrame(rows)

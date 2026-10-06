@@ -13,6 +13,7 @@ The TTL acts as a safety net — the background pipeline overwrites the key on
 every scoring cycle, so in normal operation it never expires.  24 hours ensures
 stale keys are eventually evicted if a ticker leaves the active universe.
 """
+
 from __future__ import annotations
 
 import json
@@ -54,7 +55,7 @@ async def write_scored_state(ticker: str, state: dict) -> None:
         If init_redis() has not been called before this function.
     """
     client = get_redis()
-    key    = f"sentiment:{ticker.upper()}"
+    key = f"sentiment:{ticker.upper()}"
     payload = json.dumps(state, default=_default_serializer)
     await client.set(key, payload, ex=_TTL_SECONDS)
 
@@ -66,8 +67,8 @@ async def read_scored_state(ticker: str) -> dict | None:
     Returns None if the key does not exist (cache miss).
     """
     client = get_redis()
-    key    = f"sentiment:{ticker.upper()}"
-    raw    = await client.get(key)
+    key = f"sentiment:{ticker.upper()}"
+    raw = await client.get(key)
     if raw is None:
         return None
     return json.loads(raw)

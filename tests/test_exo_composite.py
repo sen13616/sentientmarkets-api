@@ -39,9 +39,7 @@ class TestComputeExoComposite:
         with_market = compute_exo_composite(
             _subs(market=99.0, narrative=60.0, influencer=70.0, macro=40.0)
         )
-        without_market = compute_exo_composite(
-            _subs(narrative=60.0, influencer=70.0, macro=40.0)
-        )
+        without_market = compute_exo_composite(_subs(narrative=60.0, influencer=70.0, macro=40.0))
         assert with_market.score == without_market.score
         assert "market" not in with_market.weights_used
 

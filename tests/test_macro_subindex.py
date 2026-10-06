@@ -10,6 +10,7 @@ Coverage for the dedicated `compute_macro_sub_index` aggregator
   • Non-macro signal types are silently ignored
   • Source list metadata
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -17,9 +18,9 @@ from datetime import datetime, timezone
 import pytest
 
 from pipeline.scoring.subindices import (
+    _MACRO_SIGNAL_WEIGHTS,
     SubIndexResult,
     compute_macro_sub_index,
-    _MACRO_SIGNAL_WEIGHTS,
 )
 
 
@@ -29,15 +30,20 @@ def _ts(offset_seconds: int = 0) -> datetime:
     )
 
 
-def _sig(sig_type: str, score: float, source: str = "fred", weight: float = 1.0,
-         ts: datetime | None = None) -> dict:
+def _sig(
+    sig_type: str,
+    score: float,
+    source: str = "fred",
+    weight: float = 1.0,
+    ts: datetime | None = None,
+) -> dict:
     """Pre-scored signal dict, mirroring what `score_macro_signals` emits."""
     return {
         "signal_type": sig_type,
-        "score":       score,
-        "weight":      weight,
-        "source":      source,
-        "timestamp":   ts or _ts(),
+        "score": score,
+        "weight": weight,
+        "source": source,
+        "timestamp": ts or _ts(),
     }
 
 
@@ -45,21 +51,24 @@ def _sig(sig_type: str, score: float, source: str = "fred", weight: float = 1.0,
 # 1. Weight table — paper transcription
 # ===========================================================================
 
-class TestWeightTable:
 
+class TestWeightTable:
     def test_all_five_signal_types_present(self):
         assert set(_MACRO_SIGNAL_WEIGHTS.keys()) == {
-            "vix", "sector_etf_return_20d",
-            "treasury_yield_10y", "treasury_yield_2y", "ted_spread",
+            "vix",
+            "sector_etf_return_20d",
+            "treasury_yield_10y",
+            "treasury_yield_2y",
+            "ted_spread",
         }
 
     def test_paper_values_exact(self):
         """Paper §Macroeconomic Signals — weight table transcribed directly."""
-        assert _MACRO_SIGNAL_WEIGHTS["vix"]                   == 1.0
+        assert _MACRO_SIGNAL_WEIGHTS["vix"] == 1.0
         assert _MACRO_SIGNAL_WEIGHTS["sector_etf_return_20d"] == 1.5
-        assert _MACRO_SIGNAL_WEIGHTS["treasury_yield_10y"]    == 1.0
-        assert _MACRO_SIGNAL_WEIGHTS["treasury_yield_2y"]     == 0.75
-        assert _MACRO_SIGNAL_WEIGHTS["ted_spread"]            == 1.0
+        assert _MACRO_SIGNAL_WEIGHTS["treasury_yield_10y"] == 1.0
+        assert _MACRO_SIGNAL_WEIGHTS["treasury_yield_2y"] == 0.75
+        assert _MACRO_SIGNAL_WEIGHTS["ted_spread"] == 1.0
 
     def test_weight_table_sums_to_five_and_a_quarter(self):
         assert sum(_MACRO_SIGNAL_WEIGHTS.values()) == 5.25
@@ -69,15 +78,15 @@ class TestWeightTable:
 # 2. All five present — exact arithmetic
 # ===========================================================================
 
-class TestAllFivePresent:
 
+class TestAllFivePresent:
     def test_uniform_neutral_returns_fifty(self):
         sigs = [
-            _sig("vix",                   50.0),
+            _sig("vix", 50.0),
             _sig("sector_etf_return_20d", 50.0),
-            _sig("treasury_yield_10y",    50.0),
-            _sig("treasury_yield_2y",     50.0),
-            _sig("ted_spread",            50.0),
+            _sig("treasury_yield_10y", 50.0),
+            _sig("treasury_yield_2y", 50.0),
+            _sig("ted_spread", 50.0),
         ]
         result = compute_macro_sub_index(sigs)
         assert result is not None
@@ -111,11 +120,11 @@ class TestAllFivePresent:
         ETF carries 1.5x weight (pulls the score *down* here toward 20).
         """
         sigs = [
-            _sig("vix",                   80.0),
+            _sig("vix", 80.0),
             _sig("sector_etf_return_20d", 20.0),
-            _sig("treasury_yield_10y",    50.0),
-            _sig("treasury_yield_2y",     50.0),
-            _sig("ted_spread",            50.0),
+            _sig("treasury_yield_10y", 50.0),
+            _sig("treasury_yield_2y", 50.0),
+            _sig("ted_spread", 50.0),
         ]
         result = compute_macro_sub_index(sigs)
         assert result is not None
@@ -126,8 +135,8 @@ class TestAllFivePresent:
 # 3. No shrinkage (key behavioural change from P4.2's stopgap)
 # ===========================================================================
 
-class TestNoShrinkage:
 
+class TestNoShrinkage:
     def test_single_signal_preserves_raw_value(self):
         """1 signal at score=80 must yield value=80 — NOT pulled toward 50.
 
@@ -161,15 +170,15 @@ class TestNoShrinkage:
 # 4. Missing components → weight redistribution (paper-direct)
 # ===========================================================================
 
-class TestMissingComponents:
 
+class TestMissingComponents:
     def test_drop_ted_redistributes_other_four(self):
         """Without TED, denom drops 5.25→4.25; remaining 4 share."""
         sigs = [
-            _sig("vix",                   80.0),
+            _sig("vix", 80.0),
             _sig("sector_etf_return_20d", 80.0),
-            _sig("treasury_yield_10y",    80.0),
-            _sig("treasury_yield_2y",     80.0),
+            _sig("treasury_yield_10y", 80.0),
+            _sig("treasury_yield_2y", 80.0),
         ]
         result = compute_macro_sub_index(sigs)
         assert result is not None
@@ -185,7 +194,7 @@ class TestMissingComponents:
           value = 180 / 2.5 = 72.0
         """
         sigs = [
-            _sig("vix",                   60.0),
+            _sig("vix", 60.0),
             _sig("sector_etf_return_20d", 80.0),
         ]
         result = compute_macro_sub_index(sigs)
@@ -198,15 +207,15 @@ class TestMissingComponents:
 # 5. Edge cases — empty / non-macro / zero-weight
 # ===========================================================================
 
-class TestEdgeCases:
 
+class TestEdgeCases:
     def test_empty_input_returns_none(self):
         assert compute_macro_sub_index([]) is None
 
     def test_only_non_macro_signal_types_returns_none(self):
         """Rows from other layers must not contribute to the macro sub-index."""
         sigs = [
-            _sig("rsi_14",          70.0, source="computed"),
+            _sig("rsi_14", 70.0, source="computed"),
             _sig("analyst_buy_pct", 80.0, source="finnhub"),
         ]
         assert compute_macro_sub_index(sigs) is None
@@ -214,7 +223,7 @@ class TestEdgeCases:
     def test_zero_weight_signal_excluded(self):
         """A row with weight=0 is silently dropped (mirrors compute_sub_index)."""
         sigs = [
-            _sig("vix",        80.0, weight=0.0),
+            _sig("vix", 80.0, weight=0.0),
             _sig("ted_spread", 20.0, weight=1.0),
         ]
         result = compute_macro_sub_index(sigs)
@@ -225,7 +234,7 @@ class TestEdgeCases:
     def test_duplicate_signal_type_keeps_most_recent(self):
         """Two VIX rows in the same batch → the newer one wins."""
         sigs = [
-            _sig("vix", 20.0, ts=_ts(0)),   # older
+            _sig("vix", 20.0, ts=_ts(0)),  # older
             _sig("vix", 80.0, ts=_ts(30)),  # newer
         ]
         result = compute_macro_sub_index(sigs)
@@ -238,13 +247,13 @@ class TestEdgeCases:
 # 6. Metadata
 # ===========================================================================
 
-class TestMetadata:
 
+class TestMetadata:
     def test_sources_aggregated_across_signals(self):
         sigs = [
-            _sig("vix",                   50.0, source="yfinance"),
+            _sig("vix", 50.0, source="yfinance"),
             _sig("sector_etf_return_20d", 50.0, source="alpha_vantage"),
-            _sig("treasury_yield_10y",    50.0, source="fred"),
+            _sig("treasury_yield_10y", 50.0, source="fred"),
         ]
         result = compute_macro_sub_index(sigs)
         assert result is not None
@@ -262,12 +271,13 @@ class TestMetadata:
 # 7. Orchestrator dispatch — `_score_macro` invokes the new aggregator
 # ===========================================================================
 
-class TestOrchestratorDispatch:
 
+class TestOrchestratorDispatch:
     @pytest.mark.asyncio
     async def test_score_macro_calls_compute_macro_sub_index(self):
         """`_score_macro` must call compute_macro_sub_index — NOT compute_sub_index."""
         from unittest.mock import AsyncMock, patch
+
         from pipeline.scoring.subindices import SubIndexResult as _SR
 
         mock_result = _SR(value=72.5, n_signals=4, sources=["fred"])
@@ -278,21 +288,35 @@ class TestOrchestratorDispatch:
             # Patch the orchestrator's own references — it imports these by
             # name, so patching the source modules would not take effect and
             # the test would hit the real database.
-            patch("pipeline.orchestrator.get_signals_since",
-                  new=AsyncMock(return_value=[{
-                      "signal_type": "vix", "value": 22.0, "source": "yfinance",
-                      "timestamp": _ts(),
-                  }])),
-            patch("pipeline.orchestrator.score_macro_signals",
-                  new=AsyncMock(return_value=[_sig("vix", 50.0)])),
-            patch("pipeline.orchestrator.compute_macro_sub_index",
-                  return_value=mock_result) as mock_macro,
+            patch(
+                "pipeline.orchestrator.get_signals_since",
+                new=AsyncMock(
+                    return_value=[
+                        {
+                            "signal_type": "vix",
+                            "value": 22.0,
+                            "source": "yfinance",
+                            "timestamp": _ts(),
+                        }
+                    ]
+                ),
+            ),
+            patch(
+                "pipeline.orchestrator.score_macro_signals",
+                new=AsyncMock(return_value=[_sig("vix", 50.0)]),
+            ),
+            patch(
+                "pipeline.orchestrator.compute_macro_sub_index", return_value=mock_result
+            ) as mock_macro,
             patch("pipeline.orchestrator.compute_sub_index") as mock_generic,
         ):
             from pipeline.orchestrator import _score_macro
+
             si, _sigs, _as_of = await _score_macro(
-                ticker="AAPL", sector="Information Technology",
-                now=_ts(), last_state=None,
+                ticker="AAPL",
+                sector="Information Technology",
+                now=_ts(),
+                last_state=None,
             )
 
         # The macro aggregator was used; the generic one was NOT called by the

@@ -7,6 +7,7 @@ June-gap fill support:
   - replay_scores.py settings flags (run id, EMA half-life, research flags)
   - news_backfill.py repair of stored-but-unscored articles
 """
+
 from __future__ import annotations
 
 import os
@@ -22,21 +23,33 @@ from pipeline.sources.market import (
 from scripts.backfill import reconstruct_signals as rs
 
 UTC = timezone.utc
-DAY = date(2026, 6, 24)   # Wednesday, EDT: session 13:30–20:00 UTC
+DAY = date(2026, 6, 24)  # Wednesday, EDT: session 13:30–20:00 UTC
 
 
 def _hbar(h, m, close, vol=100.0, hi=None, lo=None):
     start = datetime(2026, 6, 24, h, m, tzinfo=UTC)
-    return {"start": start, "open": close - 0.5, "high": hi or close + 1, "low": lo or close - 1,
-            "close": close, "volume": vol}
+    return {
+        "start": start,
+        "open": close - 0.5,
+        "high": hi or close + 1,
+        "low": lo or close - 1,
+        "close": close,
+        "volume": vol,
+    }
 
 
-HOURLY = [_hbar(13, 30, 100), _hbar(14, 30, 101), _hbar(15, 30, 102, hi=110),
-          _hbar(16, 30, 103), _hbar(17, 30, 104), _hbar(18, 30, 105), _hbar(19, 30, 106, lo=90)]
+HOURLY = [
+    _hbar(13, 30, 100),
+    _hbar(14, 30, 101),
+    _hbar(15, 30, 102, hi=110),
+    _hbar(16, 30, 103),
+    _hbar(17, 30, 104),
+    _hbar(18, 30, 105),
+    _hbar(19, 30, 106, lo=90),
+]
 
 
 class TestBars:
-
     def test_last_hourly_bar_ends_at_the_close(self):
         assert rs.hourly_bar_end(HOURLY[0]["start"]) == datetime(2026, 6, 24, 14, 30, tzinfo=UTC)
         assert rs.hourly_bar_end(HOURLY[-1]["start"]) == datetime(2026, 6, 24, 20, 0, tzinfo=UTC)
@@ -52,12 +65,14 @@ class TestBars:
     def test_marks_follow_live_schedule(self):
         marks = rs.intraday_marks(DAY)
         assert [m.hour for m in marks] == list(range(14, 21))
-        assert rs.intraday_marks(date(2026, 6, 27)) == []          # Saturday
+        assert rs.intraday_marks(date(2026, 6, 27)) == []  # Saturday
         assert rs.eod_mark(DAY) == datetime(2026, 6, 24, 21, 15, tzinfo=UTC)
 
 
 def test_market_rows_equal_live_pure_functions():
-    prior = [(datetime(2026, 5, 1, tzinfo=UTC) + timedelta(days=i), 90.0 + i * 0.3) for i in range(60)]
+    prior = [
+        (datetime(2026, 5, 1, tzinfo=UTC) + timedelta(days=i), 90.0 + i * 0.3) for i in range(60)
+    ]
     vols = [1000.0 + i for i in range(60)]
     bar = {"open": 100.0, "high": 109.0, "low": 99.0, "close": 107.0, "volume": 800.0}
     mark = datetime(2026, 6, 24, 16, tzinfo=UTC)
@@ -73,8 +88,17 @@ def test_market_rows_equal_live_pure_functions():
 
 
 def test_build_ticker_rows_uses_prior_days_only_and_respects_range():
-    daily = [{"start": datetime(2026, 6, d, tzinfo=UTC), "open": 1, "high": 2, "low": 0.5,
-              "close": 90.0 + d, "volume": 1000.0} for d in (22, 23, 24)]
+    daily = [
+        {
+            "start": datetime(2026, 6, d, tzinfo=UTC),
+            "open": 1,
+            "high": 2,
+            "low": 0.5,
+            "close": 90.0 + d,
+            "volume": 1000.0,
+        }
+        for d in (22, 23, 24)
+    ]
     start = datetime(2026, 6, 24, 15, tzinfo=UTC)
     end = datetime(2026, 6, 25, tzinfo=UTC)
     rows = rs.build_ticker_rows("AAPL", HOURLY, daily, start, end, eod=True)
@@ -84,24 +108,51 @@ def test_build_ticker_rows_uses_prior_days_only_and_respects_range():
     ret_1d = {r[5]: r[2] for r in rows if r[1] == "return_1d"}
     # 16:00 partial close 101 vs Jun 23 final close 113 (never a same-day value)
     import math
+
     assert ret_1d[datetime(2026, 6, 24, 16, tzinfo=UTC)] == round(math.log(101 / 113.0), 6)
     # EOD uses the full daily bar (close 114)
     assert ret_1d[rs.eod_mark(DAY)] == round(math.log(114 / 113.0), 6)
-    assert not rs.build_ticker_rows("AAPL", HOURLY, daily, start, end, eod=False)[-1][5].minute == 15
+    assert (
+        not rs.build_ticker_rows("AAPL", HOURLY, daily, start, end, eod=False)[-1][5].minute == 15
+    )
 
 
 def test_build_macro_rows_vix_and_etf():
     vix = [{**b, "close": 15.0 + i} for i, b in enumerate(HOURLY)]
-    etf_daily = {"XLK": [{"start": datetime(2026, 5, 1, tzinfo=UTC) + timedelta(days=i), "open": 1,
-                          "high": 2, "low": 0.5, "close": 100.0 + i, "volume": 1.0} for i in range(30)]
-                 + [{"start": datetime(2026, 6, 24, tzinfo=UTC), "open": 1, "high": 2, "low": 0.5,
-                     "close": 200.0, "volume": 1.0}]}
-    rows = rs.build_macro_rows(vix, {"XLK": HOURLY}, etf_daily,
-                               datetime(2026, 6, 24, tzinfo=UTC), datetime(2026, 6, 25, tzinfo=UTC))
+    etf_daily = {
+        "XLK": [
+            {
+                "start": datetime(2026, 5, 1, tzinfo=UTC) + timedelta(days=i),
+                "open": 1,
+                "high": 2,
+                "low": 0.5,
+                "close": 100.0 + i,
+                "volume": 1.0,
+            }
+            for i in range(30)
+        ]
+        + [
+            {
+                "start": datetime(2026, 6, 24, tzinfo=UTC),
+                "open": 1,
+                "high": 2,
+                "low": 0.5,
+                "close": 200.0,
+                "volume": 1.0,
+            }
+        ]
+    }
+    rows = rs.build_macro_rows(
+        vix,
+        {"XLK": HOURLY},
+        etf_daily,
+        datetime(2026, 6, 24, tzinfo=UTC),
+        datetime(2026, 6, 25, tzinfo=UTC),
+    )
     vix_rows = {r[5].hour: r[2] for r in rows if r[1] == "vix"}
-    assert vix_rows[16] == 16.0 and 14 not in vix_rows       # bars finished by 16:00: 13:30, 14:30
+    assert vix_rows[16] == 16.0 and 14 not in vix_rows  # bars finished by 16:00: 13:30, 14:30
     etf = [r for r in rows if r[1] == "sector_etf_return_20d"]
-    prior20 = 100.0 + 10            # 20th-from-last of the 30 prior closes
+    prior20 = 100.0 + 10  # 20th-from-last of the 30 prior closes
     # first mark with a finished bar is 15:00 (13:30 bar, close 100)
     assert etf[0][5].hour == 15 and etf[0][2] == round((100 - prior20) / prior20, 6)
 
@@ -109,6 +160,7 @@ def test_build_macro_rows_vix_and_etf():
 # ---------------------------------------------------------------------------
 # replay settings
 # ---------------------------------------------------------------------------
+
 
 def test_replay_settings_flags_set_env_and_import_leaves_env_alone(monkeypatch):
     for k in ("EMA_HALF_LIFE_HOURS", "ENABLE_NARRATIVE_SURPRISE", "ENABLE_POSITIONING_FEATURES"):
@@ -119,8 +171,18 @@ def test_replay_settings_flags_set_env_and_import_leaves_env_alone(monkeypatch):
     # flags via load_dotenv, but EMA_HALF_LIFE_HOURS is only ever set here).
     assert "EMA_HALF_LIFE_HOURS" not in os.environ
     assert rp.RUN_ID == "news-backfill-2026-10"
-    s = rp.apply_settings(["--run-id", "june-gap-2026-06", "--ema-half-life", "4",
-                           "--no-surprise", "--no-positioning", "--start", "2026-06-23T15:00"])
+    s = rp.apply_settings(
+        [
+            "--run-id",
+            "june-gap-2026-06",
+            "--ema-half-life",
+            "4",
+            "--no-surprise",
+            "--no-positioning",
+            "--start",
+            "2026-06-23T15:00",
+        ]
+    )
     assert s.run_id == "june-gap-2026-06"
     assert os.environ["EMA_HALF_LIFE_HOURS"] == "4.0"
     assert os.environ["ENABLE_NARRATIVE_SURPRISE"] == "0"
@@ -131,26 +193,54 @@ def test_replay_settings_flags_set_env_and_import_leaves_env_alone(monkeypatch):
 # news_backfill repair path
 # ---------------------------------------------------------------------------
 
+
 async def test_backfill_repairs_stored_unscored_articles_only():
     import scripts.backfill.news_backfill as nb
 
     t = datetime(2026, 6, 25, 12, tzinfo=UTC)
+
     def art(h, title):
-        return {"ticker": "AAPL", "title": title, "summary": "earnings beat expectations strongly",
-                "source": "finnhub", "source_url": f"u{h}", "published_at": t, "provider_sentiment": None,
-                "relevance_score": 1.0, "content_hash": h}
-    fetched = [art("new1", "Apple shares rise on strong iPhone demand"),
-               art("unscored", "Apple beats quarterly revenue estimates easily"),
-               art("scored", "Apple announces product event date today")]
-    stored = {"unscored": {"id": 11, "scored": False, "clustered": False},
-              "scored": {"id": 12, "scored": True, "clustered": True}}
-    stats = dict.fromkeys(["new", "already_stored", "repairable", "repaired", "inserted",
-                           "finbert_scored", "clustered", "failed_windows"], 0)
+        return {
+            "ticker": "AAPL",
+            "title": title,
+            "summary": "earnings beat expectations strongly",
+            "source": "finnhub",
+            "source_url": f"u{h}",
+            "published_at": t,
+            "provider_sentiment": None,
+            "relevance_score": 1.0,
+            "content_hash": h,
+        }
+
+    fetched = [
+        art("new1", "Apple shares rise on strong iPhone demand"),
+        art("unscored", "Apple beats quarterly revenue estimates easily"),
+        art("scored", "Apple announces product event date today"),
+    ]
+    stored = {
+        "unscored": {"id": 11, "scored": False, "clustered": False},
+        "scored": {"id": 12, "scored": True, "clustered": True},
+    }
+    stats = dict.fromkeys(
+        [
+            "new",
+            "already_stored",
+            "repairable",
+            "repaired",
+            "inserted",
+            "finbert_scored",
+            "clustered",
+            "failed_windows",
+        ],
+        0,
+    )
     stats["run_id"] = "june-gap-2026-06"
 
     def fake_scores(texts, batch_size=32):
-        return [{"finbert_score": 0.5, "finbert_pos": 0.6, "finbert_neg": 0.1, "finbert_neu": 0.3}
-                for _ in texts]
+        return [
+            {"finbert_score": 0.5, "finbert_pos": 0.6, "finbert_neg": 0.1, "finbert_neu": 0.3}
+            for _ in texts
+        ]
 
     with (
         patch.object(nb, "_fetch_ticker", new=AsyncMock(return_value=fetched)),
@@ -163,8 +253,14 @@ async def test_backfill_repairs_stored_unscored_articles_only():
         patch("pipeline.nlp.dedup._get_model") as model,
     ):
         model.return_value.encode.side_effect = lambda titles, **k: [[1.0, 0.0]] * len(titles)
-        await nb._backfill_ticker("AAPL", MagicMock(), t - timedelta(days=1), t + timedelta(days=1),
-                                  dry_run=False, stats=stats)
+        await nb._backfill_ticker(
+            "AAPL",
+            MagicMock(),
+            t - timedelta(days=1),
+            t + timedelta(days=1),
+            dry_run=False,
+            stats=stats,
+        )
 
     assert [a["content_hash"] for a in ins.call_args.args[0]] == ["new1"]
     assert ins.call_args.args[0][0]["ingest_run"] == "june-gap-2026-06"
@@ -174,8 +270,11 @@ async def test_backfill_repairs_stored_unscored_articles_only():
 
 async def test_eval_latency_counts_live_ingestion_only():
     import scripts.eval.data as d
+
     pool = MagicMock()
     pool.fetch = AsyncMock(return_value=[])
     with patch.object(d, "get_pool", new=AsyncMock(return_value=pool)):
-        await d.load_article_latency(datetime(2026, 9, 1, tzinfo=UTC), datetime(2026, 10, 1, tzinfo=UTC))
+        await d.load_article_latency(
+            datetime(2026, 9, 1, tzinfo=UTC), datetime(2026, 10, 1, tzinfo=UTC)
+        )
     assert "ingest_run IS NULL" in " ".join(pool.fetch.call_args.args[0].split())

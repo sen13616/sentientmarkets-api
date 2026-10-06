@@ -32,25 +32,26 @@ Usage
     })
     # stale == {"market": False, "news": True, ...}
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 # US equity market hours in UTC (9:30 am – 4:00 pm Eastern = 14:30 – 21:00 UTC)
-_MARKET_OPEN_UTC  = (14, 30)   # (hour, minute)
-_MARKET_CLOSE_UTC = (21,  0)
+_MARKET_OPEN_UTC = (14, 30)  # (hour, minute)
+_MARKET_CLOSE_UTC = (21, 0)
 
 # How long after the most-recent market close the end-of-day score is still fresh.
 # Set to 30 minutes so the EOD job at 21:15 UTC has plenty of margin.
 _EOD_GRACE = timedelta(minutes=30)
 
 STALENESS_THRESHOLDS: dict[str, timedelta] = {
-    "market":  timedelta(minutes=90),
-    "news":    timedelta(hours=6),
+    "market": timedelta(minutes=90),
+    "news": timedelta(hours=6),
     "analyst": timedelta(days=3),
     "insider": timedelta(days=30),
-    "macro":   timedelta(hours=72),
+    "macro": timedelta(hours=72),
 }
 
 
@@ -65,9 +66,9 @@ def is_market_hours(now: datetime) -> bool:
     # isoweekday: Monday=1 … Friday=5, Saturday=6, Sunday=7
     if now.isoweekday() > 5:
         return False
-    open_minutes  = _MARKET_OPEN_UTC[0]  * 60 + _MARKET_OPEN_UTC[1]
+    open_minutes = _MARKET_OPEN_UTC[0] * 60 + _MARKET_OPEN_UTC[1]
     close_minutes = _MARKET_CLOSE_UTC[0] * 60 + _MARKET_CLOSE_UTC[1]
-    now_minutes   = now.hour * 60 + now.minute
+    now_minutes = now.hour * 60 + now.minute
     return open_minutes <= now_minutes < close_minutes
 
 
@@ -82,16 +83,18 @@ def _last_market_close(now: datetime) -> datetime:
     if now.tzinfo is None:
         now = now.replace(tzinfo=timezone.utc)
 
-    close_today = now.replace(hour=_MARKET_CLOSE_UTC[0], minute=_MARKET_CLOSE_UTC[1],
-                               second=0, microsecond=0)
+    close_today = now.replace(
+        hour=_MARKET_CLOSE_UTC[0], minute=_MARKET_CLOSE_UTC[1], second=0, microsecond=0
+    )
 
     candidate = now if now >= close_today else now - timedelta(days=1)
     # Walk back until we land on a weekday
     while candidate.isoweekday() > 5:
         candidate -= timedelta(days=1)
 
-    return candidate.replace(hour=_MARKET_CLOSE_UTC[0], minute=_MARKET_CLOSE_UTC[1],
-                              second=0, microsecond=0)
+    return candidate.replace(
+        hour=_MARKET_CLOSE_UTC[0], minute=_MARKET_CLOSE_UTC[1], second=0, microsecond=0
+    )
 
 
 def _market_stale(ts: datetime, now: datetime) -> bool:
@@ -178,6 +181,7 @@ def stale_sources(
 # Per-signal-type staleness rules
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class SignalStalenessRule:
     """
@@ -195,6 +199,7 @@ class SignalStalenessRule:
                            produced.  Used for bid/ask quotes which are
                            not meaningful after the close.
     """
+
     max_age_minutes: int
     market_hours_aware: bool = True
     always_stale_outside: bool = False
@@ -202,30 +207,30 @@ class SignalStalenessRule:
 
 SIGNAL_STALENESS_RULES: dict[str, SignalStalenessRule] = {
     # ── OHLCV (yfinance primary, polygon fallback) ────────────────────────
-    "yf_open":              SignalStalenessRule(30),
-    "yf_high":              SignalStalenessRule(30),
-    "yf_low":               SignalStalenessRule(30),
-    "yf_close":             SignalStalenessRule(30),
-    "yf_volume":            SignalStalenessRule(30),
-    "ohlcv_open":           SignalStalenessRule(30),
-    "ohlcv_high":           SignalStalenessRule(30),
-    "ohlcv_low":            SignalStalenessRule(30),
-    "ohlcv_close":          SignalStalenessRule(30),
-    "ohlcv_volume":         SignalStalenessRule(30),
+    "yf_open": SignalStalenessRule(30),
+    "yf_high": SignalStalenessRule(30),
+    "yf_low": SignalStalenessRule(30),
+    "yf_close": SignalStalenessRule(30),
+    "yf_volume": SignalStalenessRule(30),
+    "ohlcv_open": SignalStalenessRule(30),
+    "ohlcv_high": SignalStalenessRule(30),
+    "ohlcv_low": SignalStalenessRule(30),
+    "ohlcv_close": SignalStalenessRule(30),
+    "ohlcv_volume": SignalStalenessRule(30),
     # ── RSI ───────────────────────────────────────────────────────────────
-    "rsi_14":               SignalStalenessRule(60),
+    "rsi_14": SignalStalenessRule(60),
     # ── Order flow (derived from OHLCV bar) ───────────────────────────────
     "order_flow_imbalance": SignalStalenessRule(30),
-    "buy_pressure":         SignalStalenessRule(30),
-    "sell_pressure":        SignalStalenessRule(30),
+    "buy_pressure": SignalStalenessRule(30),
+    "sell_pressure": SignalStalenessRule(30),
     # ── Bid-ask spread (only meaningful during market hours) ──────────────
     # Only bid_ask_spread_bps is persisted; raw bid/ask/bid_ask_spread stopped
     # being written 2026-07-20.
-    "bid_ask_spread_bps":   SignalStalenessRule(30, always_stale_outside=True),
+    "bid_ask_spread_bps": SignalStalenessRule(30, always_stale_outside=True),
     # ── FINRA short volume (daily cadence, published ~21:30 UTC) ─────────
     # market_hours_aware=False: these use a custom checker (_short_volume_stale)
     # that accounts for the daily publication schedule and weekends.
-    "short_volume_otc":       SignalStalenessRule(0, market_hours_aware=False),
+    "short_volume_otc": SignalStalenessRule(0, market_hours_aware=False),
     "short_volume_total_otc": SignalStalenessRule(0, market_hours_aware=False),
     "short_volume_ratio_otc": SignalStalenessRule(0, market_hours_aware=False),
 }
@@ -236,17 +241,19 @@ _DEFAULT_SIGNAL_RULE = SignalStalenessRule(90)
 
 
 # FINRA short volume signal types — use dedicated staleness logic
-_SHORT_VOLUME_TYPES = frozenset({
-    "short_volume_otc",
-    "short_volume_total_otc",
-    "short_volume_ratio_otc",
-})
+_SHORT_VOLUME_TYPES = frozenset(
+    {
+        "short_volume_otc",
+        "short_volume_total_otc",
+        "short_volume_ratio_otc",
+    }
+)
 
 # FINRA publishes daily short volume around 21:30 UTC.  The ingest job
 # runs at 21:30 UTC on weekdays.  We allow a 2-hour grace window past
 # the expected publication time (22:00 UTC) before flagging stale.
-_SV_EXPECTED_PUBLISH_UTC = (22, 0)   # hour, minute — when we expect data
-_SV_GRACE = timedelta(hours=2)       # grace window past expected publish
+_SV_EXPECTED_PUBLISH_UTC = (22, 0)  # hour, minute — when we expect data
+_SV_GRACE = timedelta(hours=2)  # grace window past expected publish
 
 
 def _short_volume_stale(ts: datetime, now: datetime) -> bool:
@@ -283,11 +290,15 @@ def _short_volume_stale(ts: datetime, now: datetime) -> bool:
     # Step 1: find "today" in terms of the expected-publish schedule.
     # If it's past the publish+grace time, the current calendar date is the
     # reference trading day.  Otherwise, the previous calendar date is.
-    publish_cutoff = now.replace(
-        hour=_SV_EXPECTED_PUBLISH_UTC[0],
-        minute=_SV_EXPECTED_PUBLISH_UTC[1],
-        second=0, microsecond=0,
-    ) + _SV_GRACE  # e.g. 00:00 next day
+    publish_cutoff = (
+        now.replace(
+            hour=_SV_EXPECTED_PUBLISH_UTC[0],
+            minute=_SV_EXPECTED_PUBLISH_UTC[1],
+            second=0,
+            microsecond=0,
+        )
+        + _SV_GRACE
+    )  # e.g. 00:00 next day
 
     if now >= publish_cutoff:
         ref_date = now
@@ -302,8 +313,10 @@ def _short_volume_stale(ts: datetime, now: datetime) -> bool:
     # timestamp should be at or after ref_date's market close (21:00 UTC)
     # minus a grace window (the EOD job may write signals a bit before close).
     expected_close = ref_date.replace(
-        hour=_MARKET_CLOSE_UTC[0], minute=_MARKET_CLOSE_UTC[1],
-        second=0, microsecond=0,
+        hour=_MARKET_CLOSE_UTC[0],
+        minute=_MARKET_CLOSE_UTC[1],
+        second=0,
+        microsecond=0,
     )
     freshness_cutoff = expected_close - _EOD_GRACE
     return ts < freshness_cutoff
@@ -357,10 +370,7 @@ def filter_stale_signals(raw: list[dict], now: datetime) -> list[dict]:
     """
     if now.tzinfo is None:
         now = now.replace(tzinfo=timezone.utc)
-    return [
-        row for row in raw
-        if not signal_is_stale(row["signal_type"], row["timestamp"], now)
-    ]
+    return [row for row in raw if not signal_is_stale(row["signal_type"], row["timestamp"], now)]
 
 
 def market_lookback_since(now: datetime) -> datetime:
@@ -380,7 +390,9 @@ def market_lookback_since(now: datetime) -> datetime:
     # Outside hours: need signals from the entire last trading session
     last_close = _last_market_close(now)
     last_open = last_close.replace(
-        hour=_MARKET_OPEN_UTC[0], minute=_MARKET_OPEN_UTC[1],
-        second=0, microsecond=0,
+        hour=_MARKET_OPEN_UTC[0],
+        minute=_MARKET_OPEN_UTC[1],
+        second=0,
+        microsecond=0,
     )
     return last_open

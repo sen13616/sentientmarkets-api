@@ -60,14 +60,21 @@ def snapshot_bars(snapshots: pd.DataFrame, freq: str = "15min") -> pd.DataFrame:
     return p.pivot(index="dt", columns="ticker", values="close").sort_index()
 
 
-def fetch_yf_intraday(tickers: list[str], interval: str = "15m", period: str = "60d") -> pd.DataFrame:
+def fetch_yf_intraday(
+    tickers: list[str], interval: str = "15m", period: str = "60d"
+) -> pd.DataFrame:
     """True exchange bars via yfinance (optional cross-check price source)."""
     import yfinance as yf
 
     yf_names = [t.replace(".", "-") for t in tickers]
     data = yf.download(
-        yf_names, interval=interval, period=period,
-        auto_adjust=True, progress=False, prepost=False, group_by="column",
+        yf_names,
+        interval=interval,
+        period=period,
+        auto_adjust=True,
+        progress=False,
+        prepost=False,
+        group_by="column",
     )
     closes = data["Close"] if "Close" in data else data
     closes.columns = [str(c).replace("-", ".") for c in closes.columns]
@@ -93,11 +100,7 @@ def build_long(
         g["ret"] = np.log(g["px"]).diff()
         g["date"] = g["dt"].dt.tz_convert("US/Eastern").dt.date
         g["ret"] = g["ret"].mask(g["date"] != g["date"].shift(1), np.nan)
-        st = (
-            sent[sent["ticker"] == tk][["dt"] + SIG_COLS]
-            .dropna(subset=["dt"])
-            .sort_values("dt")
-        )
+        st = sent[sent["ticker"] == tk][["dt"] + SIG_COLS].dropna(subset=["dt"]).sort_values("dt")
         if len(st) < 30:
             continue
         m = pd.merge_asof(g.sort_values("dt"), st, on="dt", direction="backward")
@@ -114,8 +117,10 @@ def build_long(
 
 def _utc_gaps(gaps: GapList) -> GapList:
     return [
-        (g0.tz_localize("UTC") if g0.tzinfo is None else g0,
-         g1.tz_localize("UTC") if g1.tzinfo is None else g1)
+        (
+            g0.tz_localize("UTC") if g0.tzinfo is None else g0,
+            g1.tz_localize("UTC") if g1.tzinfo is None else g1,
+        )
         for g0, g1 in gaps
     ]
 
@@ -148,9 +153,7 @@ def overnight(
             gg = gg.dropna(subset=[sig]).sort_values("dt")
             if len(gg) < 20:
                 continue
-            etdate = (
-                gg["dt"].dt.tz_convert("US/Eastern").dt.normalize().dt.tz_localize(None)
-            )
+            etdate = gg["dt"].dt.tz_convert("US/Eastern").dt.normalize().dt.tz_localize(None)
             last = gg.assign(etdate=etdate).groupby("etdate")[sig].last()
             chg = last.diff()
             for d, v in chg.dropna().items():

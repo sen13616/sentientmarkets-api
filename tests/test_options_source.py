@@ -1,5 +1,6 @@
 """Tests for the options snapshot source (parsing/derivation math, mocked
 chains — no network, no yfinance)."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -19,20 +20,30 @@ NOW = datetime(2026, 7, 22, 21, 20, tzinfo=timezone.utc)
 
 def _chain(strikes, ivs, volumes=None, ois=None):
     n = len(strikes)
-    return pd.DataFrame({
-        "strike": strikes,
-        "impliedVolatility": ivs,
-        "volume": volumes if volumes is not None else [100] * n,
-        "openInterest": ois if ois is not None else [1000] * n,
-    })
+    return pd.DataFrame(
+        {
+            "strike": strikes,
+            "impliedVolatility": ivs,
+            "volume": volumes if volumes is not None else [100] * n,
+            "openInterest": ois if ois is not None else [1000] * n,
+        }
+    )
 
 
 # Typical smile around spot=100: puts rich on the downside
 SPOT = 100.0
-CALLS = _chain([90, 95, 100, 105, 110], [0.32, 0.28, 0.25, 0.23, 0.22],
-               volumes=[50, 100, 400, 300, 150], ois=[500, 800, 4000, 3000, 1200])
-PUTS = _chain([90, 95, 100, 105, 110], [0.38, 0.33, 0.26, 0.24, 0.23],
-              volumes=[300, 500, 350, 80, 20], ois=[3500, 5200, 3800, 700, 150])
+CALLS = _chain(
+    [90, 95, 100, 105, 110],
+    [0.32, 0.28, 0.25, 0.23, 0.22],
+    volumes=[50, 100, 400, 300, 150],
+    ois=[500, 800, 4000, 3000, 1200],
+)
+PUTS = _chain(
+    [90, 95, 100, 105, 110],
+    [0.38, 0.33, 0.26, 0.24, 0.23],
+    volumes=[300, 500, 350, 80, 20],
+    ois=[3500, 5200, 3800, 700, 150],
+)
 
 
 class TestPickExpiry:
@@ -84,8 +95,8 @@ class TestDerivation:
         assert s["pcr_volume"] == pytest.approx(100 / 200)
 
     def test_insane_iv_rejected(self):
-        calls = _chain([100], [0.0])       # below floor
-        puts = _chain([100], [7.5])        # above cap
+        calls = _chain([100], [0.0])  # below floor
+        puts = _chain([100], [7.5])  # above cap
         s = derive_options_signals(calls, puts, SPOT)
         assert "atm_iv_30d" not in s
         assert "iv_skew_25d" not in s
@@ -118,7 +129,7 @@ class TestDerivation:
 
     def test_one_sided_zero_oi_omits_pcr_oi(self):
         calls = _chain([100], [0.25], ois=[5000])
-        puts = _chain([100], [0.30], ois=[0])   # after-hours artifact
+        puts = _chain([100], [0.30], ois=[0])  # after-hours artifact
         s = derive_options_signals(calls, puts, SPOT)
         assert "pcr_oi" not in s
 

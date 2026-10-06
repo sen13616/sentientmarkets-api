@@ -23,6 +23,7 @@ EMA updates a ticker has received.  It starts at 1 on cold-start and
 increments by 1 on every subsequent scoring tick.  It NEVER resets,
 regardless of gap length or any other condition.
 """
+
 from __future__ import annotations
 
 import math

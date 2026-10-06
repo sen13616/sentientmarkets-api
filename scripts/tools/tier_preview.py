@@ -8,6 +8,7 @@ pro-tier API responses assembled from the current DB / Redis state.
 Run from the project root:
     python3 -m scripts.tools.tier_preview
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -27,9 +28,9 @@ from scripts.db.queries.universe import is_supported_ticker
 from scripts.db.redis import close_redis, init_redis
 
 _HISTORY_LOOKBACKS = (
-    (1,  "raw"),
-    (1,  "hourly"),
-    (5,  "daily"),
+    (1, "raw"),
+    (1, "hourly"),
+    (5, "daily"),
     (30, "daily"),
 )
 
@@ -54,26 +55,28 @@ def _format_history_entry(row: dict) -> dict:
     display_score = smoothed if smoothed is not None else raw_score
     score = int(round(display_score))
     layer_values = {
-        "market":     row.get("market_index"),
-        "narrative":  row.get("narrative_index"),
+        "market": row.get("market_index"),
+        "narrative": row.get("narrative_index"),
         "influencer": row.get("influencer_index"),
-        "macro":      row.get("macro_index"),
+        "macro": row.get("macro_index"),
     }
     return {
-        "timestamp":      row["timestamp"],
-        "score":          score,
-        "score_raw":      int(round(raw_score)),
-        "label":          score_to_label(score),
-        "confidence":     int(row["confidence_score"]),
-        "sub_indices":    layer_values,
-        "missing_layers": [l for l, v in layer_values.items() if v is None],
+        "timestamp": row["timestamp"],
+        "score": score,
+        "score_raw": int(round(raw_score)),
+        "label": score_to_label(score),
+        "confidence": int(row["confidence_score"]),
+        "sub_indices": layer_values,
+        "missing_layers": [layer for layer, v in layer_values.items() if v is None],
     }
 
 
 async def _print_history(ticker: str, days: int, interval: str) -> None:
     rows = await get_history(ticker, days=days, interval=interval)
     entries = [_format_history_entry(r) for r in rows]
-    print(f"\n========== {ticker} — HISTORY ({days}d, {interval}, {len(entries)} entries) ==========")
+    print(
+        f"\n========== {ticker} — HISTORY ({days}d, {interval}, {len(entries)} entries) =========="
+    )
     print(json.dumps(entries, indent=2, default=_json_default))
 
 

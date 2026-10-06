@@ -6,11 +6,10 @@ verifying score computation S_i = P(pos) - P(neg) and batch handling.
 
 The actual ProsusAI/finbert model is NOT loaded in unit tests.
 """
+
 from __future__ import annotations
 
-from unittest.mock import patch, MagicMock
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 
 def _make_mock_model_and_tokenizer(probs_list):
@@ -37,7 +36,7 @@ def _make_mock_model_and_tokenizer(probs_list):
             batch = probs_list[idx:]
             # Determine batch size from input_ids
             batch_size = kwargs.get("input_ids", torch.zeros(1, 1)).shape[0]
-            batch = probs_list[idx:idx + batch_size]
+            batch = probs_list[idx : idx + batch_size]
             call_idx[0] += batch_size
         else:
             batch = [probs_list[-1]]
@@ -74,15 +73,19 @@ class TestFinBERTScoreComputation:
 
     def test_score_positive(self):
         """Positive article: P(pos) > P(neg) → positive score."""
-        from pipeline.nlp.finbert import score_text
         import torch
 
+        from pipeline.nlp.finbert import score_text
+
         # Mock the model to return known softmax outputs
-        with patch("pipeline.nlp.finbert._model", None), \
-             patch("pipeline.nlp.finbert._tokenizer", None):
+        with (
+            patch("pipeline.nlp.finbert._model", None),
+            patch("pipeline.nlp.finbert._tokenizer", None),
+        ):
 
             def mock_get_model():
                 import pipeline.nlp.finbert as fb
+
                 model = MagicMock()
                 tokenizer = MagicMock()
 
@@ -114,14 +117,18 @@ class TestFinBERTScoreComputation:
 
     def test_score_range(self):
         """finbert_score should be in [-1, +1]."""
-        from pipeline.nlp.finbert import score_text
         import torch
 
-        with patch("pipeline.nlp.finbert._model", None), \
-             patch("pipeline.nlp.finbert._tokenizer", None):
+        from pipeline.nlp.finbert import score_text
+
+        with (
+            patch("pipeline.nlp.finbert._model", None),
+            patch("pipeline.nlp.finbert._tokenizer", None),
+        ):
 
             def mock_get_model():
                 import pipeline.nlp.finbert as fb
+
                 model = MagicMock()
                 tokenizer = MagicMock()
 
@@ -146,14 +153,18 @@ class TestFinBERTScoreComputation:
 
     def test_probabilities_sum_approximately_one(self):
         """pos + neg + neu should sum to ~1.0 (softmax output)."""
-        from pipeline.nlp.finbert import score_text
         import torch
 
-        with patch("pipeline.nlp.finbert._model", None), \
-             patch("pipeline.nlp.finbert._tokenizer", None):
+        from pipeline.nlp.finbert import score_text
+
+        with (
+            patch("pipeline.nlp.finbert._model", None),
+            patch("pipeline.nlp.finbert._tokenizer", None),
+        ):
 
             def mock_get_model():
                 import pipeline.nlp.finbert as fb
+
                 model = MagicMock()
                 tokenizer = MagicMock()
 
@@ -184,18 +195,23 @@ class TestFinBERTBatch:
     def test_empty_batch(self):
         """Empty input → empty output."""
         from pipeline.nlp.finbert import score_batch
+
         assert score_batch([]) == []
 
     def test_batch_returns_correct_count(self):
         """Batch of N texts → N results."""
-        from pipeline.nlp.finbert import score_batch
         import torch
 
-        with patch("pipeline.nlp.finbert._model", None), \
-             patch("pipeline.nlp.finbert._tokenizer", None):
+        from pipeline.nlp.finbert import score_batch
+
+        with (
+            patch("pipeline.nlp.finbert._model", None),
+            patch("pipeline.nlp.finbert._tokenizer", None),
+        ):
 
             def mock_get_model():
                 import pipeline.nlp.finbert as fb
+
                 model = MagicMock()
                 tokenizer = MagicMock()
 
@@ -204,11 +220,13 @@ class TestFinBERTBatch:
                 model.parameters.return_value = iter([param])
 
                 # Return 3 sets of logits for 3 articles
-                logits = torch.tensor([
-                    [2.0, -1.0, 0.0],
-                    [-1.0, 2.0, 0.0],
-                    [0.0, 0.0, 2.0],
-                ])
+                logits = torch.tensor(
+                    [
+                        [2.0, -1.0, 0.0],
+                        [-1.0, 2.0, 0.0],
+                        [0.0, 0.0, 2.0],
+                    ]
+                )
                 model.return_value = MagicMock(logits=logits)
                 tokenizer.return_value = {
                     "input_ids": torch.zeros(3, 10, dtype=torch.long),
@@ -228,4 +246,9 @@ class TestFinBERTBatch:
             assert results[1]["finbert_score"] < 0
             # All have the required keys
             for r in results:
-                assert set(r.keys()) == {"finbert_score", "finbert_pos", "finbert_neg", "finbert_neu"}
+                assert set(r.keys()) == {
+                    "finbert_score",
+                    "finbert_pos",
+                    "finbert_neg",
+                    "finbert_neu",
+                }

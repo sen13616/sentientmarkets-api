@@ -1,446 +1,207 @@
 # SentientMarkets Sentiment API
 
-A four-channel sentiment scoring engine for US equities. A continuously running pipeline ingests market, narrative, influencer, and macroeconomic signals; normalizes them per the methodology below; and serves a single 0–100 composite score per ticker via a FastAPI read-only endpoint. The universe is the S&P 500 (502 tickers as of 2026-04-24).
+[![CI](https://github.com/sen13616/sentientmarkets-api/actions/workflows/ci.yml/badge.svg)](https://github.com/sen13616/sentientmarkets-api/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-This repository accompanies the research paper **"How to Quantify Stock Sentiment"** (target: SSRN). The paper describes the methodology — channel decomposition, per-event weight formula, FinBERT-based narrative scoring, z-score normalization, sub-index aggregation, and composite construction. This codebase is the reference implementation. The intent is that an academic reviewer can read the paper, open this repo, and verify that every formula, weight, and threshold the paper claims is actually present in the code.
+A four-channel sentiment scoring engine for US equities. A background pipeline ingests
+**market**, **narrative** (news), **influencer** (insider + analyst) and **macro** signals,
+normalizes them, and serves a 0–100 composite score per ticker through a read-only FastAPI
+service.
 
-**State as of 2026-07-22:** nowcasting-first (see the guiding statement in [`METHODOLOGY.md`](METHODOLOGY.md)) with a pre-registered research program layered on top ([`scripts/eval/EXPERIMENTS.md`](scripts/eval/EXPERIMENTS.md)). [`CHANGELOG.md`](CHANGELOG.md) records phase-by-phase history.
+This repository is the reference implementation for the research paper **"How to Quantify
+Stock Sentiment"**. Every formula, weight and threshold the paper describes is in this code.
+[`METHODOLOGY.md`](METHODOLOGY.md) maps them line by line.
+
+**Status (October 2026):** in production, scoring **586 tickers**: every current S&P 500
+member plus still-trading former names. Scores are recomputed every 15 minutes during US
+market hours and every 30 minutes otherwise. The research record runs continuously from
+2026-05-21. Outage periods were repaired offline and are tagged as such
+([METHODOLOGY §16.5](METHODOLOGY.md)).
 
 ---
 
-## How to Use
+## Contents
 
-SentientMarkets API is currently invite-only. To request access, reach out directly.
+- [Using the API](#using-the-api)
+- [How the score works](#how-the-score-works)
+- [Architecture](#architecture)
+- [Development](#development)
+- [Research and strategy testing](#research-and-strategy-testing)
+- [Repository layout](#repository-layout)
+- [Deployment](#deployment)
+- [Documentation map](#documentation-map)
 
-Once provisioned, you'll receive a Bearer token. Include it in the `Authorization` header on every request.
+---
 
-### Authentication
+## Using the API
+
+Access is invite-only. Requests carry a bearer token:
 
 ```bash
-curl -H "Authorization: Bearer sk-sm-prod-xxxxxxxxxxxx" \
+curl -H "Authorization: Bearer $SENTIMENT_API_KEY" \
   https://sentimentapi-p.up.railway.app/v1/sentiment/AAPL
 ```
 
-### Get sentiment for a ticker
-
-```bash
-GET /v1/sentiment/{ticker}
-```
-
-**Response (Free tier):**
 ```json
 {
   "ticker": "AAPL",
-  "score": 72,
-  "label": "Bullish",
-  "confidence": 81,
-  "timestamp": "2026-05-16T14:30:00Z",
-  "cache_age_seconds": 480,
-  "market_hours": { "is_open": true, "next_open": "...", "last_close": "..." }
+  "score": 54,
+  "score_raw": 55,
+  "label": "Neutral",
+  "confidence": 100,
+  "timestamp": "2026-10-03T02:00:00Z"
 }
 ```
 
-**Pro tier** (requires `?detail=full`) adds `score_raw`, `ema_obs_count`, `sub_indices`, `missing_layers`, `divergence`, `top_drivers`, `explanation`, `freshness`, and `confidence_flags`.
+| Endpoint | Tier | Returns |
+|---|---|---|
+| `GET /v1/sentiment/{ticker}` | free / pro | Latest score. Pro with `?detail=full` adds sub-indices, drivers, explanation and cross-sectional percentiles |
+| `GET /v1/sentiment/{ticker}/history` | pro | Score history (`days`, `interval=daily\|hourly\|raw`) |
+| `GET /v1/tickers` | free / pro | Active universe with company name, GICS sector and `in_sp500` |
+| `GET /v1/market/overview` | pro | Universe statistics, movers, sector breakdown |
+| `GET /v1/status` | free / pro | Pipeline job freshness |
+| `GET /health`, `GET /health/pipeline` | public | Liveness; pipeline freshness (503 when scoring or news is stale) |
 
-### Get sentiment history (Pro)
-
-```bash
-GET /v1/sentiment/{ticker}/history?days=30&interval=daily
-```
-
-**Response:**
-```json
-{
-  "ticker": "AAPL",
-  "history": [
-    { "date": "2026-04-16", "score": 68.5 },
-    { "date": "2026-04-17", "score": 70.1 }
-  ]
-}
-```
-
-### List all covered tickers
-
-```bash
-GET /v1/tickers
-```
-
-Returns all 502 S&P 500 tickers with company names and sectors.
-
-### Full API reference
-
-See [`docs/api/README.md`](docs/api/README.md) for complete endpoint documentation.
+Retired symbols (acquired, merged, renamed) return `status: "delisted"` with their last
+trading day and successor; their history stays available. Rate limits: free 10 req/min,
+pro 600 req/min. The full reference with field definitions is in [`docs/api/README.md`](docs/api/README.md).
 
 ---
 
-## Methodology
-
-### Four channels, weighted composite
+## How the score works
 
 ```
-Composite = 0.35 · Market
-          + 0.30 · Narrative
-          + 0.25 · Influencer
-          + 0.10 · Macro
+composite = 0.35·market + 0.30·narrative + 0.25·influencer + 0.10·macro
 ```
 
-If any layer is missing, its weight is redistributed proportionally across the remaining layers. Weights are defined at [`pipeline/scoring/composite.py:23-28`](pipeline/scoring/composite.py).
+1. **Signals** (prices, RSI, order flow, short volume; FinBERT-scored news; insider trades and
+   analyst revisions; VIX, Treasury yields, sector ETFs) are normalized to 0–100 with rolling
+   z-scores (parametric fallbacks while history accrues) and weighted by source credibility,
+   relevance, model confidence and exponential time decay.
+2. Each **layer** aggregates its signals into a sub-index. A missing layer's weight is
+   redistributed across the layers that are present.
+3. The **composite** is capped under extreme layer divergence and smoothed with a 2-hour-half-life
+   EMA. `score` is the smoothed value; `score_raw` is the unsmoothed one.
+4. **Confidence** starts at 100 and is reduced for missing layers, stale sources, low signal
+   volume and high divergence.
 
-### Per-signal weight formula
-
-Every individual signal — a news article, an insider trade, an RSI reading, a VIX print — enters its layer's sub-index with a weight:
-
-```
-w_i  =  w_src  ·  w_rel  ·  w_conf  ·  w_author  ·  e^(−λ · Δt_i)
-```
-
-- **`w_src`** — source-credibility weight. Source-keyed by default (`_SOURCE_WEIGHTS` in [`normalize.py`](pipeline/features/normalize.py)). For the influencer channel, the weight is **signal-channel-keyed** instead (insider / analyst-consensus / analyst-target / earnings-revisions), per paper §Event-Level Weighting — `_INFLUENCER_SIGNAL_WEIGHT` in `normalize.py`. The source-keyed `w_src` for the influencer layer falls through only when the signal type is not one of the four paper channels.
-- **`w_rel`** — relevance weight, narrative channel only. Articles below `relevance_score < 0.60` are excluded entirely (Sprint D, paper Stage 2).
-- **`w_conf`** — model confidence, narrative channel only. Computed from FinBERT class probabilities as `1 − (−Σ P_i ln P_i) / ln 3`; high entropy → low confidence. Set to `1.00` for all non-textual signals (paper: "Model confidence does not apply to non-textual signals"). Defined at [`normalize.py:_compute_w_conf`](pipeline/features/normalize.py).
-- **`w_author`** — author credibility. `1.00` uniformly today; scaffold for the deferred role-based hierarchy (CEO → CFO → Director …) that the paper places in Future Additions.
-- **`e^(−λ · Δt_i)`** — exponential time decay. Half-life depends on the (layer, source, signal-type) — see table below.
-
-### Source-credibility weights (`_SOURCE_WEIGHTS`)
-
-| Source | Weight | Used by |
-|---|---:|---|
-| `polygon` | 0.90 | Market OHLCV fallback |
-| `yfinance` | 0.90 | Market OHLCV primary, influencer target-price + earnings revisions |
-| `finra_regsho` | 0.90 | FINRA short-volume daily file |
-| `computed` | 0.85 | RSI (Wilder's), derived returns |
-| `alpha_vantage` | 0.75 | Narrative `NEWS_SENTIMENT` (text only, not provider sentiment scores anymore) |
-| `finnhub` | 0.65 | Narrative news fallback, influencer insider + analyst-consensus |
-
-Note: `sec_edgar` is no longer a wired source. The Form 4 primary path was removed in P3.4 (Finnhub is now the sole insider provider). Sprint C (EDGAR 8-K narrative source) was drafted but never merged; the source label was retracted in Phase 5 and 8-K filings moved to Future Additions.
-
-### Half-lives
-
-| Layer | Default half-life | Source-specific overrides | Signal-type overrides |
-|---|---|---|---|
-| Market | 1 h | — | — |
-| Narrative | 12 h | — | — |
-| Influencer | 72 h (analyst default) | — | `insider_net_shares` → 168 h |
-| Macro | 336 h (14 d) | — | — |
-
-The empty `_HALF_LIFE_OVERRIDE` dict at [`normalize.py`](pipeline/features/normalize.py) is retained as a stable extension point. Influencer signal-channel half-lives are in `_INFLUENCER_SIGNAL_HALF_LIFE_H`.
-
-### Influencer signal-channel weights
-
-Per paper §Event-Level Weighting, the influencer channel keys weights by signal type rather than provider:
-
-| Signal channel | `w_src` |
-|---|---:|
-| `insider_net_shares` | 1.00 |
-| `analyst_buy_pct` | 0.85 |
-| `analyst_target_price` | 0.85 |
-| `earnings_estimate_revision` | 0.80 |
-
-### Normalization
-
-Each numeric signal is scored to a direction-corrected `[0, 100]` value (50 = neutral, > 50 = bullish, < 50 = bearish). The primary path is **rolling z-score** with a per-signal-type window:
-
-```
-z = (x − μ) / max(σ, σ_floor)        clamped to [−3, +3]
-score = 50 + 50 · z / 3               (50 + 50·(−z)/3 for sign-inverted signals)
-```
-
-The window is **500 observations** for intraday market signals (`rsi_14`, `return_*`, `volume_ratio`, `order_flow_imbalance`, `bid_ask_spread_bps`) and **90 observations** for daily-cadence signals (short-volume, insider net-shares, analyst, VIX, sector ETF, FRED). When history is below the `fill_threshold` (default 50% of window), a parametric fallback (`_score_rsi`, `_score_vix`, `_score_treasury_*`, etc.) is used instead — see [`normalize.py`](pipeline/features/normalize.py).
-
-Sign-inverted signals (negated z before scaling): RSI (contrarian interpretation in the normalizer — see note in market sub-index below), VIX, bid-ask spread, short-volume ratio, all Treasury yields, TED-substitute spread.
-
-### Sub-index aggregation
-
-- **Generic layers (narrative, influencer):**
-  ```
-  raw   = Σ(w_i · score_i) / Σ(w_i)            volume-weighted average
-  value = 50 + min(1, n / 5) · (raw − 50)       shrinkage toward 50 when n < 5
-  ```
-- **Market layer:** a structured **6-component** aggregator [`compute_market_sub_index`](pipeline/scoring/subindices.py). Each component is mapped to `[−1, +1]` then weighted:
-
-  | Component | Weight | Signal type(s) |
-  |---|---:|---|
-  | Returns | 0.30 | mean of `return_1d`, `return_5d`, `return_20d` |
-  | Momentum | 0.15 | `rsi_14` as momentum (RSI 70 → +1 bullish) |
-  | Order flow | 0.20 | `order_flow_imbalance` (CLV) |
-  | Liquidity | 0.10 | `bid_ask_spread_bps` (wider → bearish) |
-  | Short volume | 0.15 | `short_volume_ratio_otc` z-score (already direction-corrected) |
-  | Volume | 0.10 | `volume_ratio` |
-
-  Missing components have their weight redistributed across present components. 5-of-6 missing → layer treated as missing entirely.
-
-  RSI sign convention: the market sub-index treats RSI as a momentum signal (RSI 70 → bullish); the contrarian interpretation (RSI 70 → bearish) lives in the parametric normalizer and surfaces in driver descriptions. Both are intentional.
-
-- **Macro layer:** a paper-direct weighted average [`compute_macro_sub_index`](pipeline/scoring/subindices.py) with **no shrinkage** (paper: "macro signals are market-wide state variables available at every scoring tick"). Per-signal weights (`_MACRO_SIGNAL_WEIGHTS`):
-
-  | Macro signal | Weight |
-  |---|---:|
-  | `sector_etf_return_20d` | 1.50 |
-  | `vix` | 1.00 |
-  | `treasury_yield_10y` | 1.00 |
-  | `ted_spread` (substitute = `T10Y2Y` 10y−2y slope) | 1.00 |
-  | `treasury_yield_2y` | 0.75 |
-
-  Missing signals are absorbed by re-normalizing against the sum of present weights.
-
-  The sector ETF component is **per-ticker**: each ticker is routed to its GICS sector ETF (XLK / XLV / XLE / …) via `ticker_universe.sector` (P4.2). Treasury yields and the TED-substitute come from FRED (P4.3); the original 3-month-LIBOR-based TED spread was discontinued in 2022, and `T10Y2Y` is the agreed substitute pending paper text reconciliation.
-
-### Composite EMA smoothing
-
-After the composite is computed, a variable-timestep EMA with a **2-hour half-life** (4 h before 2026-07-22; changed via the pre-registered experiment E004) is applied per ticker:
-
-```
-α = 1 − 0.5^(Δt / T½),   T½ = 2 h   (env-tunable: EMA_HALF_LIFE_HOURS)
-composite_smoothed = α · composite_raw + (1 − α) · composite_smoothed_prev
-```
-
-Cold-start seeds with the raw composite. The API's `score` field returns the smoothed value; `score_raw` (both tiers) returns the unsmoothed composite; `score_exo` (Pro) is the unsmoothed sentiment-only composite with the price-derived market layer excluded. Defined at [`pipeline/scoring/ema.py`](pipeline/scoring/ema.py) and [`composite.py`](pipeline/scoring/composite.py).
-
-### Label mapping
-
-| Score | Label |
-|---|---|
-| 0–20 | Strongly Bearish |
-| 21–40 | Bearish |
-| 41–60 | Neutral |
-| 61–80 | Bullish |
-| 81–100 | Strongly Bullish |
-
-### Research program (2026-07-22 →)
-
-The served score is a **nowcast**; anything predictive must first beat a pre-registered
-evaluation. The machinery lives in `scripts/eval/`:
-
-- **Frozen holdout split** ([`HOLDOUT.md`](scripts/eval/HOLDOUT.md)): candidates are developed on the research window only; the post-outage holdout is spent one evaluation per already-won candidate. Enforced by `run.py --window`.
-- **Experiment ledger** ([`EXPERIMENTS.md`](scripts/eval/EXPERIMENTS.md)): one row per configuration tried; pre-registration committed before results. E000 baseline → E001 dexo (rejected) → E002 latency audit → E003 positioning features (insider variant won-research) → E004 EMA half-life (shipped) → queued follow-ups.
-- **Replay scorer** (`replay.py`): counterfactual score series under candidate configs, identity-validated against stored history.
-- **Research-only data**: flag-gated features (`narrative_surprise`, `research_features`) and daily options snapshots accumulate in the DB but are never served — promotion requires winning on the pre-registered criteria first.
+The complete, code-accurate specification is [`METHODOLOGY.md`](METHODOLOGY.md).
 
 ---
 
 ## Architecture
 
-Two systems run side-by-side, separated by Redis as the read/write boundary.
-
 ```
-                        ┌──────────────────────────────────────┐
-   External APIs ────▶  │              SYSTEM A                │
-   (AV, Finnhub,        │      Background pipeline             │
-    yfinance,           │  ┌────────────────┐                  │
-    Polygon, FRED,      │  │ Ingestion jobs │ (write raw_*)    │
-    FINRA REGSHO)       │  │  (data only)   │                  │
-                        │  └──────┬─────────┘                  │
-                        │         ▼                            │
-                        │  ┌────────────────┐                  │
-                        │  │ scoring_tick   │ every 30 min     │
-                        │  │ (Layers 03–10) │                  │
-                        │  └──────┬─────────┘                  │
-                        │         ▼                            │
-                        │  ┌────────────┐   ┌────────────┐     │
-                        │  │   Redis    │   │ PostgreSQL │     │
-                        │  │ (current)  │   │ (history)  │     │
-                        │  └─────┬──────┘   └────────────┘     │
-                        └────────┼─────────────────────────────┘
-                                 │
-                        ┌────────┼─────────────────────────────┐
-                        │   ▼    │           SYSTEM B          │
-                        │  FastAPI read-only endpoints         │
-                        │   /v1/sentiment/{ticker}             │
-                        │   /v1/sentiment/{ticker}/history     │
-                        │   /v1/tickers   /v1/status   /health │
-                        └──────────────────────────────────────┘
+External APIs ──► Ingestion jobs (data only) ──► PostgreSQL (raw_signals, raw_articles)
+                                                        │
+                        scoring_tick_job (every 15/30 min, all tickers)
+                                                        │
+                              ┌─────────────────────────┴───────────┐
+                              ▼                                     ▼
+                       Redis (current state)            PostgreSQL (sentiment_history)
+                              │
+                     FastAPI read-only service (/v1/*)
 ```
 
-### Pipeline jobs (`pipeline/scheduler.py`)
-
-| Job | Schedule | Writes |
-|---|---|---|
-| `scoring_tick_job` | every 15 min market hours / 30 min off-hours | **the only scoring job** — recomputes all 4 layers for all 502 tickers from current DB state, then publishes per-tick universe stats to Redis |
-| `market_job` | weekdays 14:00–20:45 UTC, every 15 min | OHLCV (yfinance batch), per-ticker RSI / order flow / bid-ask |
-| `market_eod_job` | weekdays 21:15 UTC | definitive close prices |
-| `narrative_job` | every 30 min (24/7) | AV NEWS_SENTIMENT + Finnhub news → `raw_articles`; semantic dedup; FinBERT scoring |
-| `influencer_job` | 00:20/06:20/12:20/18:20 UTC | Finnhub insider + analyst consensus; yfinance target price + earnings-estimate revisions |
-| `macro_daily_job` | daily 02:00 UTC | FRED `DGS10`, `DGS2`, `T10Y2Y` |
-| `macro_intraday_job` | hourly weekdays 14:00–20:00 UTC | VIX, sector ETF closes / 20-day returns |
-| `short_volume_job` | weekdays 21:30 UTC | FINRA REGSHO daily short-volume file |
-| `options_job` | weekdays 21:20 UTC | yfinance option-chain snapshots (`pcr_volume`, `pcr_oi`, `atm_iv_30d`, `iv_skew_25d`) — **research-only, feeds no score** |
-| `retention_job` | daily 03:30 UTC | tiered purges + article text compaction — see retention policy below |
-
-Ingestion and scoring are decoupled: ingestion jobs are data-only; only `scoring_tick_job` runs the scoring pipeline. Concurrency is bounded by a `Semaphore(10)` to stay within the asyncpg pool limit.
-
-**Retention policy** (`retention_job`, daily 03:30 UTC):
-
-| Data | Kept for | Reason |
-|---|---|---|
-| `raw_signals` OHLCV (`yf_*`, `ohlcv_*`) | 365 days | longest scoring lookback is 50 trading days; 7× safety margin |
-| `raw_signals` derived intraday (`rsi_14`, `return_*`, `volume_ratio`, order-flow/pressure, `bid_ask_spread_bps`) | 45 days | z-score window is 500 observations ≈ 20 trading days; 2× margin |
-| `raw_signals` quote telemetry (`bid`, `ask`, `bid_ask_spread`) | 14 days | write-only, never read back — no longer written since 2026-07-20 |
-| `raw_signals` everything else | 90 days | analyst / insider / macro / short-volume z-windows |
-| `raw_signals` research-retained types | **never purged** | `short_volume_*`, `insider_net_shares`, `analyst_*`, and the four options snapshot types — unbackfillable research raw material (`RESEARCH_RETAIN_SIGNAL_TYPES`) |
-| `raw_articles` | 365 days | rows older than 30 days have `title`/`summary`/`source_url` blanked in place; tone scores, relevance, timestamps kept for research |
-| `sentiment_history.top_drivers` | verbose for 30 days | rows past 30 days are re-encoded in place to a compact array format (`description` dropped, scores untouched) — see `pipeline/scoring/driver_codec.py` |
-
-No rows are ever deleted from `sentiment_history` or `price_snapshots` (research time series); `ticker_universe` and `api_keys` are not touched. Since 2026-07-20, `price_snapshots` receives rows only during US market hours. Tune the windows via `OHLCV_RETENTION_DAYS` / `SIGNAL_RETENTION_DAYS` / `DERIVED_RETENTION_DAYS` / `QUOTE_RETENTION_DAYS` / `ARTICLE_RETENTION_DAYS` / `DRIVER_COMPACT_DAYS` in `pipeline/scheduler.py`; tier type lists live in `scripts/db/queries/raw_signals.py`.
-
-### Scoring pipeline (per tick, per ticker)
-
-1. **Fetch** — pull recent signals from `raw_signals` and `raw_articles`.
-2. **Filter staleness** — per-signal staleness rules (`pipeline/confidence/staleness.py`).
-3. **Normalize** — z-score (or parametric fallback) → direction-corrected `[0, 100]` score; apply `w = w_src · w_rel · w_conf · w_author · e^(−λΔt)`.
-4. **Aggregate** — per-layer sub-index (market 6-component, macro paper-table, narrative + influencer generic).
-5. **Composite** — weighted average of 4 sub-indices, missing-layer redistribution.
-6. **EMA smoothing** — 2h half-life over the composite (E004).
-7. **Confidence** — base 100 minus penalties for stale / missing / divergent signals.
-8. **Drivers + explanation** — top-N ranked drivers; template-based explanation.
-9. **Persist** — write `sentiment:{ticker}` to Redis (current state), append row to `sentiment_history` (immutable record).
-
-### Database
-
-PostgreSQL via `asyncpg`, Redis via `redis.asyncio`. The schema lives in the numbered migrations under `scripts/migrations/` (`000_initial_schema.sql` base; `005`–`012` additive — company name, EMA columns, FinBERT columns, GICS sector, key labels, `composite_score_exo`, `narrative_surprise`, `research_features`).
-
-A column-by-column data dictionary lives at [`docs/DATA_DICTIONARY.md`](docs/DATA_DICTIONARY.md).
+- **Pipeline** (`pipeline/`): APScheduler jobs. Ingestion and scoring are decoupled: only
+  `scoring_tick_job` computes scores, and nothing is scored in response to a request. Every job
+  has a hard timeout, and every DB query has a command timeout, so a stuck call can't stall the
+  pipeline.
+- **API** (`api/`): authenticated reads from Redis; per-key rate limiting via an atomic Redis script.
+- **Storage**: schema in numbered migrations ([`scripts/migrations/`](scripts/migrations/)), documented
+  column by column in [`docs/DATA_DICTIONARY.md`](docs/DATA_DICTIONARY.md). `sentiment_history`
+  is never purged; raw signals follow a tiered retention policy (METHODOLOGY §14).
 
 ---
 
-## Running locally
+## Development
 
-### Unit tests — no infrastructure required
-
-The unit-test suite has zero dependencies on a live database, Redis, or external API keys. Integration tests are marked `@pytest.mark.integration` and are auto-deselected by `conftest.py` unless explicitly requested.
+Requires Python 3.12.
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-pytest                          # ~31 unit-test files; should be green
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt
+
+pytest                      # unit tests; no database, Redis or API keys needed
+ruff check . && ruff format --check .
 ```
 
-This is the entry point reviewers can run on a clean clone to verify that the scoring math, normalization, EMA smoothing, sub-index aggregation, dedup, and FinBERT-batch chunking all behave as the paper specifies.
+Integration tests (`@pytest.mark.integration`) are deselected by default and need live
+infrastructure: `pytest -m integration`.
 
-### Full pipeline — production infrastructure required
-
-End-to-end runs require a PostgreSQL database with the schema applied, a Redis instance, and live API keys for Alpha Vantage, Finnhub, FRED, and (in production) the FinBERT model weights cached locally. There is no SQLite or in-memory replacement. The production deployment is on Railway; reviewers without Railway access cannot run the live pipeline.
+Running the full pipeline locally needs PostgreSQL, Redis and provider API keys. Copy
+[`.env.example`](.env.example) to `.env` and fill it in. Then:
 
 ```bash
-# Apply schema (psql)
-psql $DATABASE_URL < migrations.sql
-psql $DATABASE_URL < migrations/005_add_company_name.sql
-psql $DATABASE_URL < migrations/006_add_smoothed_score.sql
-psql $DATABASE_URL < migrations/007_finbert_columns.sql
-psql $DATABASE_URL < migrations/008_add_ticker_sector.sql
-
-# Seed reference data
-python3 tools/seed_company_names.py
-python3 tools/seed_sectors.py
-
-# Run dev server
+for f in scripts/migrations/0*.sql; do psql "$DATABASE_URL" < "$f"; done
+python3 scripts/tools/update_universe.py       # seed the ticker universe
 python3 -m uvicorn main:app --reload
 ```
 
-### Required environment variables
-
-A `.env.example` listing every variable is on the Phase-5 Group B to-do list. The full set in use today:
-
-| Variable | Required? | Used by |
-|---|---|---|
-| `DATABASE_URL` | yes | asyncpg pool (`db/connection.py`); strip the `+asyncpg` dialect — handled by the helper |
-| `REDIS_URL` | yes | Redis client (`db/redis.py`) |
-| `ALPHA_VANTAGE_KEY` | yes (live) | Narrative `NEWS_SENTIMENT` |
-| `FINNHUB_KEY` | yes (live) | Narrative fallback news, insider, analyst |
-| `FRED_API_KEY` | yes (live) | Treasury yields and TED-substitute |
-| `EMA_HALF_LIFE_HOURS` | optional | Smoothing half-life; production runs `2` (E004). Changing it changes served scores — gated by the eval process |
-| `ENABLE_NARRATIVE_SURPRISE` | optional | Research-only accumulation into `sentiment_history.narrative_surprise`; never served |
-| `ENABLE_POSITIONING_FEATURES` | optional | Research-only accumulation into `sentiment_history.research_features`; never served |
-| `LOG_LEVEL` | optional | Default `INFO` |
-| `LOG_FORMAT` | optional | `json` (Railway) or `text` (local) |
-
-API authentication uses bearer tokens (`Authorization: Bearer sk-sm-…`); keys are stored as SHA-256 hashes in the `api_keys` table. Tier is either `free` (10 req/min, basic fields) or `pro` (600 req/min, full breakdown via `?detail=full`: sub-indices + drivers + explanation + `score_raw`). Keys are minted via `python3 scripts/tools/generate_keys.py` — the plaintext key is printed once at creation and never recoverable from the DB.
+Changes that affect served scores must pass the evaluation gate before release; see
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ---
 
-## API contract
+## Research and strategy testing
 
-Auth is a bearer token in the `Authorization` header on every `/v1/*` endpoint. `/health` is the only unauthenticated endpoint.
+- **Evaluation harness** ([`scripts/eval/`](scripts/eval/)): the release gate, which compares a
+  scorecard of served scores (information coefficients, quintile spreads, lead-lag) against a
+  committed baseline. It also includes a pre-registered experiment ledger and a frozen holdout.
+- **Strategy toolkit** ([`research/`](research/README.md)): export a point-in-time snapshot,
+  write a strategy against a small interface, and backtest it with next-close execution, costs and
+  delisting handling. No look-ahead, and no production DB access needed.
 
+```bash
+python -m research.snapshot --start 2026-05-21 --end 2026-10-06
+python -m research.run --snapshot data/snapshots/2026-10-06 \
+    --strategy research.examples.quintile_ls:QuintileLongShort --cost-bps 15
 ```
-GET /v1/sentiment/{ticker}             — latest cached score
-GET /v1/sentiment/{ticker}/history     — history (Pro only)
-GET /v1/tickers                        — supported universe (502 tier-1)
-GET /v1/market/overview                — universe stats, movers, sectors (Pro only)
-GET /v1/status                         — last-run timestamps per job (authenticated)
-GET /health                            — liveness + tier echo (unauthenticated)
-```
-
-A free-tier response carries `ticker`, `score`, `score_raw`, `score_change_1d`(`_pct`), `label`, `confidence`, `timestamp`, `cache_age_seconds`, and `market_hours`. A pro-tier response (returned only when `?detail=full` is set on a Pro key — otherwise the summary body is served) also includes `sub_indices`, `missing_layers`, `divergence`, `top_drivers`, `explanation`, `freshness`, `confidence_flags`, `ema_obs_count`, `universe_percentile`, `score_raw_z`, `score_raw_percentile`, `sector_percentile`, `score_exo`, and `score_exo_percentile`. The full Pydantic schemas live in [`api/response/schemas.py`](api/response/schemas.py); the consumer contract with changelog is `INTEGRATION.md` (distributed to consumers, not tracked in git).
 
 ---
 
 ## Repository layout
 
 ```
-sentimentapi/
-├── api/                       System B — request-serving FastAPI
-│   ├── auth.py                Bearer → SHA-256 → Redis tier cache → api_keys row
-│   ├── rate_limit.py          Per-key fixed-window via atomic Redis Lua
-│   ├── routes/                sentiment, history, tickers, market, status, health
-│   └── response/              assembler, labels, schemas
-│
-├── pipeline/                  System A — background scoring engine
-│   ├── scheduler.py           APScheduler job registration (10 jobs)
-│   ├── orchestrator.py        Per-ticker single-tick scoring
-│   ├── rate_limits.py         Shared semaphores + guarded_get backoff
-│   ├── sources/               market, narrative, influencer, macro,
-│   │                          short_volume, fred, options (research-only)
-│   ├── nlp/                   dedup (cosine clustering), finbert (scoring)
-│   ├── features/              normalize (z-score + weight formula),
-│   │                          surprise + positioning (flag-gated research)
-│   ├── scoring/               subindices, composite, ema, divergence,
-│   │                          drivers, driver_codec, market_overview
-│   ├── confidence/            staleness, scorer
-│   ├── explanation/           templates
-│   └── persistence/           redis_writer, pg_writer
-│
-├── scripts/
-│   ├── db/                    asyncpg pool, redis client, queries/ per table
-│   ├── migrations/            Numbered SQL: 000 base, 005–012 additive
-│   ├── backfill/              One-time historical loaders (OHLCV, ETF, RSI, universe)
-│   ├── tools/                 Ops scripts: generate_keys, seeders, db_* utilities
-│   └── eval/                  Research harness: run (windowed release gate),
-│       │                      replay (counterfactual scorer), analyze, intraday,
-│       │                      scorecard, backfill_features, experiments/
-│       ├── EXPERIMENTS.md     Pre-registered experiment ledger (E000–…)
-│       ├── HOLDOUT.md         Frozen train/holdout split + evaluation log
-│       └── baselines/         Committed scorecards the release gate compares against
-│
-├── tests/                     ~50 unit-test files (770+ tests) + 2 integration
-├── main.py                    FastAPI app + lifespan (init pool → init redis → scheduler.start)
-├── railway.toml               nixpacks deployment config
-├── conftest.py                Auto-deselects @pytest.mark.integration
-├── pytest.ini                 asyncio_mode=auto, pythonpath=.
-├── requirements.txt
-├── METHODOLOGY.md             Complete code-accurate scoring methodology
-├── CHANGELOG.md               Phase-by-phase change log
-└── docs/                      Reviewer docs: DATA_DICTIONARY, REPRODUCIBILITY,
-                               CHANGES (nowcasting refactor), api/ (endpoint reference)
+api/                 FastAPI service: auth, rate limiting, routes, response assembly
+pipeline/            Scoring engine: scheduler, sources, nlp, features, scoring,
+                     confidence, explanation, persistence
+research/            Strategy-testing toolkit (snapshots, Strategy interface, backtester)
+scripts/
+  db/                asyncpg pool, Redis client, per-table query modules
+  migrations/        Numbered SQL schema migrations
+  eval/              Evaluation harness, experiment ledger, baselines
+  backfill/          Historical loaders and offline repair/replay tools
+  tools/             Operations tools (keys, universe, DB viewer); oneoff/ = finished migrations
+docs/                API reference, data dictionary, reproducibility notes, history
+tests/               Unit tests (integration tests marked and deselected by default)
+main.py              App entrypoint (DB pool → Redis → scheduler)
 ```
 
 ---
 
 ## Deployment
 
-Production runs on [Railway](https://railway.app/) with nixpacks (`railway.toml`). Postgres and Redis are Railway-managed; the app starts as `python3 -m uvicorn main:app --host 0.0.0.0 --port $PORT`. Health-check path is `/health`.
-
-Post-deploy steps for a fresh Railway environment:
-
-```bash
-for f in scripts/migrations/0*.sql; do psql $DATABASE_URL < "$f"; done
-
-DATABASE_URL=$RAILWAY_URL python3 scripts/tools/seed_company_names.py
-DATABASE_URL=$RAILWAY_URL python3 scripts/tools/seed_sectors.py
-DATABASE_URL=$RAILWAY_URL python3 scripts/tools/generate_keys.py  # prints plaintext keys once
-```
+Production runs on [Railway](https://railway.app/) (`railway.toml`, nixpacks) with managed
+PostgreSQL and Redis. `main` deploys automatically. **Apply any new migration before merging
+code that depends on it.** The health check is `/health`; monitor `/health/pipeline` for data
+freshness.
 
 ---
 
+## Documentation map
+
+| Document | For |
+|---|---|
+| [`METHODOLOGY.md`](METHODOLOGY.md) | The complete scoring specification, plus a dated log of data-quality events and method changes (§16.5) |
+| [`docs/api/README.md`](docs/api/README.md) | API reference |
+| [`docs/DATA_DICTIONARY.md`](docs/DATA_DICTIONARY.md) | Every table and column, and how to filter for research |
+| [`docs/REPRODUCIBILITY.md`](docs/REPRODUCIBILITY.md) | What a reviewer can reproduce, and how |
+| [`research/README.md`](research/README.md) | Strategy testing |
+| [`scripts/eval/EXPERIMENTS.md`](scripts/eval/EXPERIMENTS.md), [`HOLDOUT.md`](scripts/eval/HOLDOUT.md) | Research discipline |
+| [`CHANGELOG.md`](CHANGELOG.md) | Change history |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md), [`SECURITY.md`](SECURITY.md) | Working on the code; reporting vulnerabilities |
+
 ## License
 
-See [`LICENSE`](LICENSE).
+[MIT](LICENSE) © 2026 Aayudh Sen

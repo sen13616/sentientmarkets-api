@@ -9,6 +9,7 @@ later run:
   - every scheduled job is wrapped in a job-level timeout
   - GET /health/pipeline reports 503 when scoring/narrative go stale
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -18,12 +19,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
-
 # ---------------------------------------------------------------------------
 # DB pool command_timeout
 # ---------------------------------------------------------------------------
 
-async def test_init_pool_passes_command_timeout():
+
+async def test_init_pool_passes_command_timeout(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@localhost/db")
     import scripts.db.connection as conn
 
     with (
@@ -34,8 +36,9 @@ async def test_init_pool_passes_command_timeout():
     assert mock_create.call_args.kwargs["command_timeout"] == 42
 
 
-async def test_get_pool_auto_init_has_no_command_timeout():
+async def test_get_pool_auto_init_has_no_command_timeout(monkeypatch):
     """Scripts auto-init via get_pool(); long eval/backfill queries must not time out."""
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@localhost/db")
     import scripts.db.connection as conn
 
     with (
@@ -49,6 +52,7 @@ async def test_get_pool_auto_init_has_no_command_timeout():
 # ---------------------------------------------------------------------------
 # Per-ticker timeout in _score_all
 # ---------------------------------------------------------------------------
+
 
 async def test_score_all_skips_hung_ticker_and_completes(caplog):
     import pipeline.scheduler as sched
@@ -77,6 +81,7 @@ async def test_score_all_skips_hung_ticker_and_completes(caplog):
 # ---------------------------------------------------------------------------
 # Job-level timeout wrapper
 # ---------------------------------------------------------------------------
+
 
 async def test_with_timeout_cancels_hung_job(caplog):
     import pipeline.scheduler as sched
@@ -120,6 +125,7 @@ def test_every_registered_job_is_timeout_wrapped():
 # GET /health/pipeline
 # ---------------------------------------------------------------------------
 
+
 def _redis_with(last_runs: dict[str, datetime | None]) -> MagicMock:
     async def _get(key: str):
         ts = last_runs.get(key.rsplit(":", 1)[-1])
@@ -140,10 +146,14 @@ def _get_pipeline_health(redis_client) -> tuple[int, dict]:
 
 def test_health_pipeline_ok_when_fresh():
     now = datetime.now(timezone.utc)
-    status, body = _get_pipeline_health(_redis_with({
-        "scoring_tick": now - timedelta(minutes=10),
-        "narrative": now - timedelta(minutes=40),
-    }))
+    status, body = _get_pipeline_health(
+        _redis_with(
+            {
+                "scoring_tick": now - timedelta(minutes=10),
+                "narrative": now - timedelta(minutes=40),
+            }
+        )
+    )
     assert status == 200
     assert body["status"] == "ok"
     assert body["checks"]["scoring_tick"]["ok"] is True
@@ -151,10 +161,14 @@ def test_health_pipeline_ok_when_fresh():
 
 def test_health_pipeline_503_when_scoring_stale():
     now = datetime.now(timezone.utc)
-    status, body = _get_pipeline_health(_redis_with({
-        "scoring_tick": now - timedelta(minutes=90),
-        "narrative": now - timedelta(minutes=10),
-    }))
+    status, body = _get_pipeline_health(
+        _redis_with(
+            {
+                "scoring_tick": now - timedelta(minutes=90),
+                "narrative": now - timedelta(minutes=10),
+            }
+        )
+    )
     assert status == 503
     assert body["status"] == "stale"
     assert body["checks"]["scoring_tick"]["ok"] is False

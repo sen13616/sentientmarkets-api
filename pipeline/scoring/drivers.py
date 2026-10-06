@@ -33,6 +33,7 @@ Expected input per signal dict
     layer       : str   — "market" | "narrative" | "influencer" | "macro"
     ticker      : str   — (optional) ticker symbol, used in descriptions
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -42,28 +43,28 @@ from dataclasses import dataclass
 # ---------------------------------------------------------------------------
 
 _SIGNAL_LABELS: dict[str, str] = {
-    "rsi_14":                "RSI(14)",
-    "ohlcv_close":           "Price",
-    "ohlcv_volume":          "Volume",
-    "yf_close":              "Price",
-    "yf_volume":             "Volume",
-    "return_1d":             "Price momentum (1d)",
-    "return_5d":             "Price momentum (5d)",
-    "return_20d":            "Price momentum (20d)",
-    "volume_ratio":          "Volume surge",
+    "rsi_14": "RSI(14)",
+    "ohlcv_close": "Price",
+    "ohlcv_volume": "Volume",
+    "yf_close": "Price",
+    "yf_volume": "Volume",
+    "return_1d": "Price momentum (1d)",
+    "return_5d": "Price momentum (5d)",
+    "return_20d": "Price momentum (20d)",
+    "volume_ratio": "Volume surge",
     # Removed Stage 1 — put_call_ratio, short_interest_ratio, implied_volatility
     # excluded from paper's implemented methodology. See docs/SIGNAL_CATALOG.md.
-    "insider_net_shares":    "Insider transaction",
-    "analyst_buy_pct":       "Analyst consensus",
-    "analyst_target_price":  "Analyst price target",
-    "vix":                   "VIX",
+    "insider_net_shares": "Insider transaction",
+    "analyst_buy_pct": "Analyst consensus",
+    "analyst_target_price": "Analyst price target",
+    "vix": "VIX",
     "sector_etf_return_20d": "Sector trend (20d)",
-    "order_flow_imbalance":  "Order flow",
-    "buy_pressure":          "Buy pressure",
-    "sell_pressure":         "Sell pressure",
-    "bid_ask_spread_bps":    "Bid-ask spread",
+    "order_flow_imbalance": "Order flow",
+    "buy_pressure": "Buy pressure",
+    "sell_pressure": "Sell pressure",
+    "bid_ask_spread_bps": "Bid-ask spread",
     "short_volume_ratio_otc": "Short volume ratio",
-    "finbert_sentiment":     "News sentiment",
+    "finbert_sentiment": "News sentiment",
 }
 
 
@@ -134,29 +135,31 @@ def _describe(signal_type: str, value: float, ticker: str = "") -> str:
 # Driver record
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class DriverRecord:
-    signal:       str
-    description:  str
-    direction:    str    # "bullish" | "bearish" | "neutral"
-    magnitude:    float  # 0–1
+    signal: str
+    description: str
+    direction: str  # "bullish" | "bearish" | "neutral"
+    magnitude: float  # 0–1
     source_layer: str
-    confidence:   float  # 0–1
+    confidence: float  # 0–1
 
     def to_dict(self) -> dict:
         return {
-            "signal":       self.signal,
-            "description":  self.description,
-            "direction":    self.direction,
-            "magnitude":    self.magnitude,
+            "signal": self.signal,
+            "description": self.description,
+            "direction": self.direction,
+            "magnitude": self.magnitude,
             "source_layer": self.source_layer,
-            "confidence":   self.confidence,
+            "confidence": self.confidence,
         }
 
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def extract_drivers(
     signals: list[dict],
@@ -193,7 +196,7 @@ def extract_drivers(
     scored: list[tuple[float, dict]] = []
     for sig in signals:
         weight = sig.get("weight") or 0
-        score  = sig.get("score", 50.0)
+        score = sig.get("score", 50.0)
         if weight <= 0:
             continue
         importance = weight * abs(score - 50.0) / 50.0
@@ -212,13 +215,13 @@ def extract_drivers(
         deduped.append((importance, sig))
 
     drivers: list[DriverRecord] = []
-    for importance, sig in deduped[:top_n]:
-        score   = sig.get("score", 50.0)
-        weight  = sig.get("weight", 0.0)
+    for _importance, sig in deduped[:top_n]:
+        score = sig.get("score", 50.0)
+        weight = sig.get("weight", 0.0)
         sig_type = sig.get("signal_type", "unknown")
-        value   = sig.get("value", 0.0)
-        layer   = sig.get("layer", "")
-        ticker  = sig.get("ticker", "")
+        value = sig.get("value", 0.0)
+        layer = sig.get("layer", "")
+        ticker = sig.get("ticker", "")
 
         if score > 52:
             direction = "bullish"
@@ -227,16 +230,18 @@ def extract_drivers(
         else:
             direction = "neutral"
 
-        magnitude  = round(abs(score - 50.0) / 50.0, 4)
+        magnitude = round(abs(score - 50.0) / 50.0, 4)
         confidence = round(min(1.0, weight), 4)
 
-        drivers.append(DriverRecord(
-            signal       = _label(sig_type),
-            description  = _describe(sig_type, value, ticker),
-            direction    = direction,
-            magnitude    = magnitude,
-            source_layer = layer,
-            confidence   = confidence,
-        ))
+        drivers.append(
+            DriverRecord(
+                signal=_label(sig_type),
+                description=_describe(sig_type, value, ticker),
+                direction=direction,
+                magnitude=magnitude,
+                source_layer=layer,
+                confidence=confidence,
+            )
+        )
 
     return drivers

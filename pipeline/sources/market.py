@@ -22,6 +22,7 @@ order_flow_imbalance / buy_pressure / sell_pressure
 return_1d / return_5d / return_20d / volume_ratio
   Computed: from DB close/volume history vs current live close/volume
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -30,26 +31,27 @@ import math
 import os
 from datetime import datetime, timedelta, timezone
 
-_log = logging.getLogger(__name__)
-
 import httpx
 from dotenv import load_dotenv
 
+from pipeline.confidence.staleness import is_market_hours
+from pipeline.rate_limits import (
+    POLYGON_DELAY,
+    POLYGON_SEM,
+    YF_INFO_SEM,
+    guarded_get,
+)
 from scripts.db.queries.raw_signals import (
     get_close_history,
     get_volume_history,
     insert_signals,
 )
-from pipeline.confidence.staleness import is_market_hours
-from pipeline.rate_limits import (
-    POLYGON_SEM, POLYGON_DELAY,
-    YF_INFO_SEM,
-    guarded_get,
-)
+
+_log = logging.getLogger(__name__)
 
 load_dotenv(override=False)
 
-_POLYGON_KEY  = os.environ.get("POLYGON_KEY", "")
+_POLYGON_KEY = os.environ.get("POLYGON_KEY", "")
 _POLYGON_BASE = "https://api.polygon.io"
 
 
@@ -57,12 +59,16 @@ _POLYGON_BASE = "https://api.polygon.io"
 # OHLCV helpers
 # ---------------------------------------------------------------------------
 
+
 async def _ohlcv_polygon(ticker: str, client: httpx.AsyncClient) -> dict | None:
     """Polygon /v2/aggs/ticker/{ticker}/prev fallback."""
     resp = await guarded_get(
-        client, f"{_POLYGON_BASE}/v2/aggs/ticker/{ticker}/prev",
+        client,
+        f"{_POLYGON_BASE}/v2/aggs/ticker/{ticker}/prev",
         params={"adjusted": "true", "apiKey": _POLYGON_KEY},
-        sem=POLYGON_SEM, delay=POLYGON_DELAY, label=f"Polygon prev-day {ticker}",
+        sem=POLYGON_SEM,
+        delay=POLYGON_DELAY,
+        label=f"Polygon prev-day {ticker}",
     )
     if resp is None or resp.status_code != 200:
         return None
@@ -81,13 +87,13 @@ async def _ohlcv_polygon(ticker: str, client: httpx.AsyncClient) -> dict | None:
         r = results[0]
         ts = datetime.fromtimestamp(r["t"] / 1000, tz=timezone.utc)
         return {
-            "open":      float(r["o"]),
-            "high":      float(r["h"]),
-            "low":       float(r["l"]),
-            "close":     float(r["c"]),
-            "volume":    float(r["v"]),
+            "open": float(r["o"]),
+            "high": float(r["h"]),
+            "low": float(r["l"]),
+            "close": float(r["c"]),
+            "volume": float(r["v"]),
             "timestamp": ts,
-            "source":    "polygon",
+            "source": "polygon",
         }
     except (KeyError, ValueError) as exc:
         _log.warning("Polygon prev-day parse error for %s: %s", ticker, exc)
@@ -97,6 +103,7 @@ async def _ohlcv_polygon(ticker: str, client: httpx.AsyncClient) -> dict | None:
 # ---------------------------------------------------------------------------
 # Yahoo symbol mapping
 # ---------------------------------------------------------------------------
+
 
 def to_yahoo_symbol(ticker: str) -> str:
     """
@@ -112,6 +119,7 @@ def to_yahoo_symbol(ticker: str) -> str:
 # ---------------------------------------------------------------------------
 # Bid-ask spread (yfinance Ticker.info)
 # ---------------------------------------------------------------------------
+
 
 def _fetch_bid_ask_spread(ticker: str) -> dict | None:
     """
@@ -145,11 +153,11 @@ def _fetch_bid_ask_spread(ticker: str) -> dict | None:
     spread_bps = ((ask - bid) / midpoint) * 10_000
 
     return {
-        "bid":        round(bid, 4),
-        "ask":        round(ask, 4),
-        "spread":     round(ask - bid, 4),
+        "bid": round(bid, 4),
+        "ask": round(ask, 4),
+        "spread": round(ask - bid, 4),
         "spread_bps": round(spread_bps, 2),
-        "midpoint":   round(midpoint, 4),
+        "midpoint": round(midpoint, 4),
     }
 
 
@@ -204,6 +212,7 @@ def _compute_rsi(closes: list[float], period: int = 14) -> float | None:
 # Order flow (Lee-Ready OHLCV proxy)
 # ---------------------------------------------------------------------------
 
+
 def _compute_order_flow(ohlcv: dict) -> list[tuple[str, float]]:
     """
     Estimate buy/sell pressure from a single OHLCV bar using the Close
@@ -220,9 +229,9 @@ def _compute_order_flow(ohlcv: dict) -> list[tuple[str, float]]:
     sell_pressure.  Empty list if the bar is degenerate (zero volume or
     high == low).
     """
-    high   = ohlcv["high"]
-    low    = ohlcv["low"]
-    close  = ohlcv["close"]
+    high = ohlcv["high"]
+    low = ohlcv["low"]
+    close = ohlcv["close"]
     volume = ohlcv["volume"]
 
     if volume <= 0 or high == low:
@@ -233,14 +242,15 @@ def _compute_order_flow(ohlcv: dict) -> list[tuple[str, float]]:
 
     return [
         ("order_flow_imbalance", round(clv, 4)),
-        ("buy_pressure",         round(buy_frac, 4)),
-        ("sell_pressure",        round(1.0 - buy_frac, 4)),
+        ("buy_pressure", round(buy_frac, 4)),
+        ("sell_pressure", round(1.0 - buy_frac, 4)),
     ]
 
 
 # ---------------------------------------------------------------------------
 # Computed signals (returns, volume ratio)
 # ---------------------------------------------------------------------------
+
 
 def _compute_returns(
     current_close: float,
@@ -286,6 +296,7 @@ def _compute_volume_ratio(
 # Public entry point
 # ---------------------------------------------------------------------------
 
+
 async def _run_market(
     ticker: str,
     client: httpx.AsyncClient,
@@ -313,16 +324,18 @@ async def _run_market(
 
     if ohlcv:
         src = ohlcv["source"]
-        ts  = ohlcv["timestamp"]
+        ts = ohlcv["timestamp"]
         # yfinance data → yf_* signal types; Polygon fallback → ohlcv_*
         pfx = "yf" if src == "yfinance" else "ohlcv"
-        rows.extend([
-            (ticker, f"{pfx}_open",   ohlcv["open"],   src, "live", ts),
-            (ticker, f"{pfx}_high",   ohlcv["high"],   src, "live", ts),
-            (ticker, f"{pfx}_low",    ohlcv["low"],    src, "live", ts),
-            (ticker, f"{pfx}_close",  ohlcv["close"],  src, "live", ts),
-            (ticker, f"{pfx}_volume", ohlcv["volume"], src, "live", ts),
-        ])
+        rows.extend(
+            [
+                (ticker, f"{pfx}_open", ohlcv["open"], src, "live", ts),
+                (ticker, f"{pfx}_high", ohlcv["high"], src, "live", ts),
+                (ticker, f"{pfx}_low", ohlcv["low"], src, "live", ts),
+                (ticker, f"{pfx}_close", ohlcv["close"], src, "live", ts),
+                (ticker, f"{pfx}_volume", ohlcv["volume"], src, "live", ts),
+            ]
+        )
 
     # --- Bid-ask spread (yfinance .info, market hours only) ---
     if is_market_hours(now):

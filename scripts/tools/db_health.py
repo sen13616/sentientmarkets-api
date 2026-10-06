@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
 """
-tools/db_health.py
+scripts/tools/db_health.py
 
 Database query functions for the Pipeline Health and Data Quality screens.
 
 All SQL lives here — db_viewer.py calls these functions and renders the results.
 Every function is async and accepts an asyncpg Connection.
 """
+
 from __future__ import annotations
 
 import asyncpg
 
-
 # ---------------------------------------------------------------------------
 # PIPELINE HEALTH queries
 # ---------------------------------------------------------------------------
+
 
 async def query_scoring_activity_24h(conn: asyncpg.Connection) -> dict:
     """Scoring activity in the last 24 hours: row count, ticker count, time range, avg confidence."""
@@ -84,6 +85,7 @@ async def query_missing_layer_breakdown_24h(conn: asyncpg.Connection) -> dict:
 # ---------------------------------------------------------------------------
 # DATA QUALITY queries
 # ---------------------------------------------------------------------------
+
 
 async def query_ticker_coverage(conn: asyncpg.Connection) -> dict:
     """Universe size, scored in last 24h, scored in last 7d, coverage percentage."""
@@ -160,18 +162,24 @@ async def query_null_rate_audit_24h(conn: asyncpg.Connection) -> list[dict]:
         return []
     total = row["total"]
     columns = [
-        "market_index", "narrative_index", "influencer_index",
-        "macro_index", "top_drivers", "confidence_flags",
+        "market_index",
+        "narrative_index",
+        "influencer_index",
+        "macro_index",
+        "top_drivers",
+        "confidence_flags",
     ]
     results = []
     for col in columns:
         null_count = row[f"{col}_null"]
-        results.append({
-            "column": col,
-            "null_count": null_count,
-            "total": total,
-            "null_pct": (null_count / total * 100) if total > 0 else 0,
-        })
+        results.append(
+            {
+                "column": col,
+                "null_count": null_count,
+                "total": total,
+                "null_pct": (null_count / total * 100) if total > 0 else 0,
+            }
+        )
     return results
 
 

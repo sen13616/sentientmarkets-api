@@ -41,6 +41,7 @@ Required keys
 Required (either primary or alias must be present)
     composite_score / score
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -97,7 +98,7 @@ def history_row_from_state(state: dict) -> tuple[dict, object, object]:
     ValueError
         If neither composite_score nor score is present.
     """
-    ticker    = state["ticker"]
+    ticker = state["ticker"]
     timestamp = _as_datetime(state["timestamp"])
 
     # ── composite score ─────────────────────────────────────────────────────────
@@ -106,9 +107,7 @@ def history_row_from_state(state: dict) -> tuple[dict, object, object]:
     # column "composite_score" stores the RAW value to preserve backward
     # compatibility with existing data.
     _composite_raw = (
-        state.get("composite_score_raw")
-        or state.get("composite_score")
-        or state.get("score")
+        state.get("composite_score_raw") or state.get("composite_score") or state.get("score")
     )
     if _composite_raw is None:
         raise ValueError("state must contain 'composite_score_raw', 'composite_score', or 'score'")
@@ -132,53 +131,61 @@ def history_row_from_state(state: dict) -> tuple[dict, object, object]:
 
     # ── sub-indices: flat keys take priority, nested sub_indices as fallback ───
     sub_indices = state.get("sub_indices") or {}
-    market_index     = _first_not_none(state.get("market_index"),     _sub_value(sub_indices, "market"))
-    narrative_index  = _first_not_none(state.get("narrative_index"),  _sub_value(sub_indices, "narrative"))
-    influencer_index = _first_not_none(state.get("influencer_index"), _sub_value(sub_indices, "influencer"))
-    macro_index      = _first_not_none(state.get("macro_index"),      _sub_value(sub_indices, "macro"))
+    market_index = _first_not_none(state.get("market_index"), _sub_value(sub_indices, "market"))
+    narrative_index = _first_not_none(
+        state.get("narrative_index"), _sub_value(sub_indices, "narrative")
+    )
+    influencer_index = _first_not_none(
+        state.get("influencer_index"), _sub_value(sub_indices, "influencer")
+    )
+    macro_index = _first_not_none(state.get("macro_index"), _sub_value(sub_indices, "macro"))
 
     # ── confidence: flat keys take priority, nested confidence dict as fallback ─
-    confidence       = state.get("confidence") or {}
-    conf_score: int  = int(_first_not_none(state.get("confidence_score"), confidence.get("score"), 0))
-    conf_flags       = list(state.get("confidence_flags") or confidence.get("flags") or [])
+    confidence = state.get("confidence") or {}
+    conf_score: int = int(
+        _first_not_none(state.get("confidence_score"), confidence.get("score"), 0)
+    )
+    conf_flags = list(state.get("confidence_flags") or confidence.get("flags") or [])
 
     # ── freshness timestamps: flat keys take priority, nested freshness as fallback
-    freshness        = state.get("freshness") or {}
-    market_as_of     = _as_datetime(state.get("market_as_of")     or freshness.get("market_as_of"))
-    narrative_as_of  = _as_datetime(state.get("narrative_as_of")  or freshness.get("narrative_as_of"))
-    influencer_as_of = _as_datetime(state.get("influencer_as_of") or freshness.get("influencer_as_of"))
-    macro_as_of      = _as_datetime(state.get("macro_as_of")      or freshness.get("macro_as_of"))
+    freshness = state.get("freshness") or {}
+    market_as_of = _as_datetime(state.get("market_as_of") or freshness.get("market_as_of"))
+    narrative_as_of = _as_datetime(state.get("narrative_as_of") or freshness.get("narrative_as_of"))
+    influencer_as_of = _as_datetime(
+        state.get("influencer_as_of") or freshness.get("influencer_as_of")
+    )
+    macro_as_of = _as_datetime(state.get("macro_as_of") or freshness.get("macro_as_of"))
 
     # ── other fields ───────────────────────────────────────────────────────────
     top_drivers = state.get("top_drivers") or []
-    divergence  = state.get("divergence")
+    divergence = state.get("divergence")
 
     # ── price snapshot: flat keys take priority, nested price dict as fallback ─
-    price_info  = state.get("price") or {}
-    close       = _first_not_none(state.get("close_price"), price_info.get("close"))
-    volume_raw  = _first_not_none(state.get("volume"),      price_info.get("volume"))
+    price_info = state.get("price") or {}
+    close = _first_not_none(state.get("close_price"), price_info.get("close"))
+    volume_raw = _first_not_none(state.get("volume"), price_info.get("volume"))
 
     row = dict(
-        ticker                   = ticker,
-        composite_score          = composite,
-        market_index             = market_index,
-        narrative_index          = narrative_index,
-        influencer_index         = influencer_index,
-        macro_index              = macro_index,
-        confidence_score         = conf_score,
-        confidence_flags         = conf_flags,
-        top_drivers              = top_drivers,
-        divergence               = divergence,
-        market_as_of             = market_as_of,
-        narrative_as_of          = narrative_as_of,
-        influencer_as_of         = influencer_as_of,
-        macro_as_of              = macro_as_of,
-        timestamp                = timestamp,
-        composite_score_smoothed = composite_smoothed,
-        ema_obs_count            = ema_obs_count,
-        composite_score_exo      = composite_exo,
-        narrative_surprise       = narrative_surprise,
-        research_features        = research_features,
+        ticker=ticker,
+        composite_score=composite,
+        market_index=market_index,
+        narrative_index=narrative_index,
+        influencer_index=influencer_index,
+        macro_index=macro_index,
+        confidence_score=conf_score,
+        confidence_flags=conf_flags,
+        top_drivers=top_drivers,
+        divergence=divergence,
+        market_as_of=market_as_of,
+        narrative_as_of=narrative_as_of,
+        influencer_as_of=influencer_as_of,
+        macro_as_of=macro_as_of,
+        timestamp=timestamp,
+        composite_score_smoothed=composite_smoothed,
+        ema_obs_count=ema_obs_count,
+        composite_score_exo=composite_exo,
+        narrative_surprise=narrative_surprise,
+        research_features=research_features,
     )
     return row, close, volume_raw
 
@@ -211,10 +218,10 @@ async def persist_scored_state(state: dict) -> None:
             if close is not None and is_market_hours(timestamp):
                 await ps_queries.insert_row(
                     conn,
-                    ticker    = row["ticker"],
-                    close     = float(close),
-                    volume    = int(volume_raw) if volume_raw is not None else None,
-                    timestamp = timestamp,
+                    ticker=row["ticker"],
+                    close=float(close),
+                    volume=int(volume_raw) if volume_raw is not None else None,
+                    timestamp=timestamp,
                 )
 
 

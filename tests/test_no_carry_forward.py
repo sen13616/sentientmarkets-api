@@ -5,9 +5,9 @@ of _carry_forward_layer.
 Sprint 3 removed _carry_forward_layer from orchestrator.py.  This test
 ensures the function is never silently re-introduced.
 """
+
 from __future__ import annotations
 
-import importlib
 import inspect
 
 

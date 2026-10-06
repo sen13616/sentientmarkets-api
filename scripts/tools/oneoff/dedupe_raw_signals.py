@@ -1,5 +1,5 @@
 """
-scripts/tools/dedupe_raw_signals.py
+scripts/tools/oneoff/dedupe_raw_signals.py
 
 One-off cleanup of historical duplicate rows in raw_signals.
 
@@ -16,6 +16,7 @@ Usage:
 The delete is aborted unless the archived row count exactly matches the
 duplicate count found in the database.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,7 +31,9 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 # Add project root to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(
+    0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+)
 
 load_dotenv(override=True)
 
@@ -122,7 +125,11 @@ async def dedupe(batch_size: int, out_path: str, dry_run: bool) -> None:
             _log.info("  deleted %d/%d", deleted, total)
 
         if deleted != archived:
-            _log.error("Deleted %d rows but archived %d — investigate before re-running.", deleted, archived)
+            _log.error(
+                "Deleted %d rows but archived %d — investigate before re-running.",
+                deleted,
+                archived,
+            )
             sys.exit(1)
         _log.info("Done: %d duplicate rows archived to %s and deleted.", deleted, out_path)
     finally:

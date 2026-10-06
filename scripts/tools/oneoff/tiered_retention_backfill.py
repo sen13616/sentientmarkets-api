@@ -1,5 +1,5 @@
 """
-scripts/tools/tiered_retention_backfill.py
+scripts/tools/oneoff/tiered_retention_backfill.py
 
 One-off backfill for the tiered raw_signals retention introduced 2026-07-20:
 archive then delete the backlog that the new shorter tiers cover —
@@ -17,6 +17,7 @@ Usage:
     python3 scripts/tools/tiered_retention_backfill.py --dry-run
     python3 scripts/tools/tiered_retention_backfill.py [--out PATH]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -31,7 +32,9 @@ from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 
 # Add project root to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(
+    0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+)
 
 load_dotenv(override=True)
 
@@ -57,7 +60,7 @@ async def backfill(out_path: str, dry_run: bool) -> None:
 
     now = datetime.now(timezone.utc)
     derived_cutoff = now - timedelta(days=DERIVED_RETENTION_DAYS)
-    quote_cutoff   = now - timedelta(days=QUOTE_RETENTION_DAYS)
+    quote_cutoff = now - timedelta(days=QUOTE_RETENTION_DAYS)
     args = (DERIVED_INTRADAY_SIGNAL_TYPES, derived_cutoff, QUOTE_SIGNAL_TYPES, quote_cutoff)
 
     dsn = os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://")
@@ -74,7 +77,8 @@ async def backfill(out_path: str, dry_run: bool) -> None:
         matched = sum(r["n"] for r in per_type)
         _log.info(
             "Backlog past tiers (derived <%s, quotes <%s):",
-            derived_cutoff.date(), quote_cutoff.date(),
+            derived_cutoff.date(),
+            quote_cutoff.date(),
         )
         for r in per_type:
             _log.info("  %-24s %10d", r["signal_type"], r["n"])
@@ -134,7 +138,8 @@ async def backfill(out_path: str, dry_run: bool) -> None:
     if deleted != archived:
         _log.error(
             "Deleted %d rows but archived %d — counts differ; investigate before re-running.",
-            deleted, archived,
+            deleted,
+            archived,
         )
         sys.exit(1)
     _log.info("Done: %d rows archived to %s and deleted.", deleted, out_path)

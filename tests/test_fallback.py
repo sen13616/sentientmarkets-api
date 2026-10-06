@@ -8,22 +8,22 @@ required.  These tests verify that the composite score is still computed
 correctly when one or more layers are missing, and that the confidence
 scorer applies the right penalties.
 """
-from __future__ import annotations
 
-import pytest
+from __future__ import annotations
 
 from pipeline.confidence.scorer import PENALTIES, compute_confidence
 from pipeline.scoring.composite import LAYER_WEIGHTS, compute_composite
 from pipeline.scoring.divergence import compute_divergence
 
-
 # ---------------------------------------------------------------------------
 # Helper — lightweight SubIndexResult stand-in (has a .value attribute)
 # ---------------------------------------------------------------------------
 
+
 def _si(v: float):
     class _R:
         value = v
+
     return _R()
 
 
@@ -31,14 +31,14 @@ def _si(v: float):
 # Composite — weight redistribution when one or more layers are missing
 # ===========================================================================
 
-class TestCompositeFallback:
 
+class TestCompositeFallback:
     def test_market_missing_weights_sum_to_one(self):
         sub = {
-            "market":     None,
-            "narrative":  _si(60.0),
+            "market": None,
+            "narrative": _si(60.0),
             "influencer": _si(65.0),
-            "macro":      _si(55.0),
+            "macro": _si(55.0),
         }
         r = compute_composite(sub)
         assert abs(sum(r.weights_used.values()) - 1.0) < 1e-9
@@ -46,10 +46,10 @@ class TestCompositeFallback:
     def test_market_missing_score_uses_remaining_three(self):
         """Score must equal the normalised weighted average of the three present layers."""
         sub = {
-            "market":     None,
-            "narrative":  _si(60.0),
+            "market": None,
+            "narrative": _si(60.0),
             "influencer": _si(65.0),
-            "macro":      _si(55.0),
+            "macro": _si(55.0),
         }
         r = compute_composite(sub)
         # Remaining raw weights: narrative 0.30, influencer 0.25, macro 0.10 → total 0.65
@@ -63,10 +63,10 @@ class TestCompositeFallback:
 
     def test_two_layers_missing_weights_sum_to_one(self):
         sub = {
-            "market":     None,
-            "narrative":  None,
+            "market": None,
+            "narrative": None,
             "influencer": _si(70.0),
-            "macro":      _si(50.0),
+            "macro": _si(50.0),
         }
         r = compute_composite(sub)
         assert abs(sum(r.weights_used.values()) - 1.0) < 1e-9
@@ -74,10 +74,10 @@ class TestCompositeFallback:
 
     def test_two_layers_missing_score_correct(self):
         sub = {
-            "market":     None,
-            "narrative":  None,
+            "market": None,
+            "narrative": None,
             "influencer": _si(70.0),
-            "macro":      _si(50.0),
+            "macro": _si(50.0),
         }
         r = compute_composite(sub)
         # Remaining: influencer 0.25, macro 0.10 → total 0.35
@@ -95,6 +95,7 @@ class TestCompositeFallback:
 # Confidence — missing-layer and divergence penalties
 # ===========================================================================
 
+
 class TestConfidenceFallback:
     """
     Isolate specific penalty types by holding all other factors neutral:
@@ -106,20 +107,20 @@ class TestConfidenceFallback:
     def _conf(
         self,
         missing: list[str] | None = None,
-        stale:   list[str] | None = None,
-        n:       int = 10,
-        div:     str = "aligned",
+        stale: list[str] | None = None,
+        n: int = 10,
+        div: str = "aligned",
     ):
         return compute_confidence(
-            missing_layers  = missing or [],
-            stale_sources   = stale   or [],
-            n_signals       = n,
-            divergence_flag = div,
+            missing_layers=missing or [],
+            stale_sources=stale or [],
+            n_signals=n,
+            divergence_flag=div,
         )
 
     def test_one_missing_layer_subtracts_15(self):
         r = self._conf(missing=["market"])
-        assert r.score == 100 - PENALTIES["missing_layer"]   # 85
+        assert r.score == 100 - PENALTIES["missing_layer"]  # 85
 
     def test_two_missing_layers_subtract_30(self):
         r = self._conf(missing=["market", "narrative"])
@@ -132,7 +133,7 @@ class TestConfidenceFallback:
 
     def test_high_divergence_subtracts_15(self):
         r = self._conf(div="high_divergence")
-        assert r.score == 100 - PENALTIES["high_divergence"]   # 85
+        assert r.score == 100 - PENALTIES["high_divergence"]  # 85
         assert "high_divergence" in r.flags
 
     def test_moderate_divergence_no_penalty(self):
@@ -145,10 +146,10 @@ class TestConfidenceFallback:
         # low_signal_volume × 20 = 20  → 90
         # high_divergence  × 15 = 15  → 105 total penalties > 100 → clips to 0
         r = self._conf(
-            missing = ["market", "narrative", "influencer", "macro"],
-            stale   = ["market"],
-            div     = "high_divergence",
-            n       = 1,
+            missing=["market", "narrative", "influencer", "macro"],
+            stale=["market"],
+            div="high_divergence",
+            n=1,
         )
         assert r.score == 0
 
@@ -157,8 +158,8 @@ class TestConfidenceFallback:
 # Divergence — spread threshold logic
 # ===========================================================================
 
-class TestDivergenceFallback:
 
+class TestDivergenceFallback:
     def test_spread_over_40_is_high_divergence(self):
         # market=80, narrative=30 → spread=50
         result, _ = compute_divergence({"market": 80.0, "narrative": 30.0}, 55.0)

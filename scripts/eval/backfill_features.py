@@ -42,12 +42,12 @@ from dotenv import load_dotenv
 # stale DATABASE_URL may be exported in the shell — .env must win in scripts
 load_dotenv(override=True)
 
-from scripts.db.connection import close_pool, get_pool  # noqa: E402
 from pipeline.features.positioning import (  # noqa: E402
     WINDOW,
     insider_net_z_from_daily,
     short_vol_z_from_series,
 )
+from scripts.db.connection import close_pool, get_pool  # noqa: E402
 
 
 async def _target_rows(conn, ticker: str) -> list[dict]:
@@ -103,7 +103,7 @@ def compute_features_for_ticker(
         # short_vol_z: series of ratio values with ts <= t, last WINDOW+1
         hi = bisect.bisect_right(sv_ts, t)
         if hi >= 2:
-            z = short_vol_z_from_series(sv_vals[max(0, hi - (WINDOW + 1)):hi])
+            z = short_vol_z_from_series(sv_vals[max(0, hi - (WINDOW + 1)) : hi])
             if z is not None:
                 feats["short_vol_z"] = z
 
@@ -154,20 +154,25 @@ async def _run(tickers_arg: str | None, dry_run: bool) -> int:
             total_rows += len(updates)
             total_tickers += 1 if updates else 0
             if i % 50 == 0 or i == len(tickers):
-                print(f"[{i}/{len(tickers)}] {ticker}: cumulative "
-                      f"{total_rows} rows across {total_tickers} tickers"
-                      f"{' (dry-run)' if dry_run else ''}")
+                print(
+                    f"[{i}/{len(tickers)}] {ticker}: cumulative "
+                    f"{total_rows} rows across {total_tickers} tickers"
+                    f"{' (dry-run)' if dry_run else ''}"
+                )
 
-    print(f"done: {total_rows} sentiment_history rows "
-          f"{'would be ' if dry_run else ''}updated across {total_tickers} tickers")
+    print(
+        f"done: {total_rows} sentiment_history rows "
+        f"{'would be ' if dry_run else ''}updated across {total_tickers} tickers"
+    )
     return 0
 
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--tickers", help="comma-separated subset (default: all)")
-    p.add_argument("--dry-run", action="store_true",
-                   help="compute and report counts without writing")
+    p.add_argument(
+        "--dry-run", action="store_true", help="compute and report counts without writing"
+    )
     args = p.parse_args(argv)
 
     async def _main() -> int:

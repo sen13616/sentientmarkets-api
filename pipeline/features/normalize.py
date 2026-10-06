@@ -80,6 +80,7 @@ Scoring conventions
   50%) use adaptive z-score via `RollingZScorer`; others fall back to fixed
   parametric scorers.
 """
+
 from __future__ import annotations
 
 import logging
@@ -93,16 +94,16 @@ _log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _SOURCE_WEIGHTS: dict[str, float] = {
-    "alpha_vantage": 0.75,   # Paper §Event-Level Weighting (Sprint A)
-    "polygon":       0.9,
-    "finnhub":       0.65,   # Paper §Event-Level Weighting (Sprint A)
-    "computed":      0.85,
+    "alpha_vantage": 0.75,  # Paper §Event-Level Weighting (Sprint A)
+    "polygon": 0.9,
+    "finnhub": 0.65,  # Paper §Event-Level Weighting (Sprint A)
+    "computed": 0.85,
     # Removed Stage 1 — "newsapi" excluded from paper's implemented methodology. See docs/SIGNAL_CATALOG.md.
     # Removed Phase 5 retraction — "sec_edgar" entry dropped 2026-05-16; Sprint C (EDGAR 8-K narrative source)
     # never merged to main. 8-K filings move to Future Additions; the source label is no longer written by
     # any active ingester (Form 4 was removed in P3.4; insider data now comes solely from Finnhub).
-    "yfinance":      0.9,
-    "finra_regsho":  0.9,
+    "yfinance": 0.9,
+    "finra_regsho": 0.9,
 }
 
 # ---------------------------------------------------------------------------
@@ -114,10 +115,10 @@ _SOURCE_WEIGHTS: dict[str, float] = {
 # ---------------------------------------------------------------------------
 
 _LAYER_HALF_LIFE_H: dict[str, float] = {
-    "market":     1.0,      # 60 min
-    "narrative":  12.0,     # 12 hours
-    "influencer": 72.0,     # 3 days (analyst default)
-    "macro":      336.0,    # 14 days
+    "market": 1.0,  # 60 min
+    "narrative": 12.0,  # 12 hours
+    "influencer": 72.0,  # 3 days (analyst default)
+    "macro": 336.0,  # 14 days
 }
 
 # Overrides for specific (layer, source) combinations.
@@ -134,7 +135,7 @@ _HALF_LIFE_OVERRIDE: dict[tuple[str, str], float] = {}
 # Paper specifies half-life by *signal channel*, not data provider. Takes precedence
 # over the (layer, source) table above.
 _INFLUENCER_SIGNAL_HALF_LIFE_H: dict[str, float] = {
-    "insider_net_shares": 168.0,   # Paper: insider transactions = 7 days regardless of provider
+    "insider_net_shares": 168.0,  # Paper: insider transactions = 7 days regardless of provider
     # analyst_buy_pct, analyst_target_price, earnings_estimate_revision use 72h layer default
 }
 
@@ -169,10 +170,10 @@ def _source_weight(source: str) -> float:
 # earnings-revisions), not by data provider. Takes precedence over `_SOURCE_WEIGHTS`
 # when layer == "influencer".
 _INFLUENCER_SIGNAL_WEIGHT: dict[str, float] = {
-    "insider_net_shares":         1.00,   # Paper: insider transactions
-    "analyst_buy_pct":            0.85,   # Paper: analyst consensus
-    "analyst_target_price":       0.85,   # Paper: analyst target price
-    "earnings_estimate_revision": 0.80,   # Paper: earnings revisions (signal lands in P3.3)
+    "insider_net_shares": 1.00,  # Paper: insider transactions
+    "analyst_buy_pct": 0.85,  # Paper: analyst consensus
+    "analyst_target_price": 0.85,  # Paper: analyst target price
+    "earnings_estimate_revision": 0.80,  # Paper: earnings revisions (signal lands in P3.3)
 }
 
 # Influencer event-weight scaffolds (Sprint P3.1, paper §Event-Level Weighting).
@@ -182,7 +183,7 @@ _INFLUENCER_SIGNAL_WEIGHT: dict[str, float] = {
 # confidence w_conf does not apply to non-textual signals and is set to 1.00
 # throughout".
 _INFLUENCER_W_AUTHOR: float = 1.0
-_INFLUENCER_W_CONF:   float = 1.0
+_INFLUENCER_W_CONF: float = 1.0
 
 
 def _get_signal_weight(layer: str, source: str, signal_type: str) -> float:
@@ -202,6 +203,7 @@ def _get_signal_weight(layer: str, source: str, signal_type: str) -> float:
 # ---------------------------------------------------------------------------
 # Rolling z-score normalizer (Sprint 4, G-C1)
 # ---------------------------------------------------------------------------
+
 
 class RollingZScorer:
     """
@@ -243,11 +245,10 @@ class RollingZScorer:
     def effective_min_obs(self) -> int:
         """Minimum observations considering both min_obs and fill_threshold."""
         import math
+
         return max(self.min_obs, math.ceil(self.window * self.fill_threshold))
 
-    def score_from_history(
-        self, history: list[float], current_value: float
-    ) -> float | None:
+    def score_from_history(self, history: list[float], current_value: float) -> float | None:
         """
         Pure z-score computation from a pre-fetched history list.
 
@@ -266,7 +267,7 @@ class RollingZScorer:
         n = len(history)
         mean = sum(history) / n
         variance = sum((x - mean) ** 2 for x in history) / n
-        std = variance ** 0.5
+        std = variance**0.5
 
         if std < self.sigma_floor:
             return None
@@ -284,32 +285,32 @@ class RollingZScorer:
 # Signals not listed here use parametric scorers only.
 _ZSCORE_CONFIG: dict[str, RollingZScorer] = {
     # Intra-day market signals: window=500 observations
-    "rsi_14":               RollingZScorer(window=500, negate=True),
-    "return_1d":            RollingZScorer(window=500),
-    "return_5d":            RollingZScorer(window=500),
-    "return_20d":           RollingZScorer(window=500),
-    "volume_ratio":         RollingZScorer(window=500),
+    "rsi_14": RollingZScorer(window=500, negate=True),
+    "return_1d": RollingZScorer(window=500),
+    "return_5d": RollingZScorer(window=500),
+    "return_20d": RollingZScorer(window=500),
+    "volume_ratio": RollingZScorer(window=500),
     "order_flow_imbalance": RollingZScorer(window=500),
-    "bid_ask_spread_bps":   RollingZScorer(window=500, negate=True),
+    "bid_ask_spread_bps": RollingZScorer(window=500, negate=True),
     # Daily-cadence signals: window=90 observations
     "short_volume_ratio_otc": RollingZScorer(window=90, negate=True),
-    "insider_net_shares":     RollingZScorer(window=90),
-    "analyst_buy_pct":        RollingZScorer(window=90),
-    "analyst_target_price":   RollingZScorer(window=90, fill_threshold=0.5),
+    "insider_net_shares": RollingZScorer(window=90),
+    "analyst_buy_pct": RollingZScorer(window=90),
+    "analyst_target_price": RollingZScorer(window=90, fill_threshold=0.5),
     "earnings_estimate_revision": RollingZScorer(window=90),
-    "vix":                    RollingZScorer(window=90, negate=True),
+    "vix": RollingZScorer(window=90, negate=True),
     # Sprint P4.2: per-ETF rolling z-score; history is keyed under the ETF
     # symbol (XLK, XLE, …), not the ticker being scored. ~22 daily obs per
     # ETF today → parametric fallback runs for ~3 more weeks.
-    "sector_etf_return_20d":  RollingZScorer(window=90),
+    "sector_etf_return_20d": RollingZScorer(window=90),
     # Sprint P4.3: FRED Treasury / yield-curve signals. Stored under `_MACRO_`
     # alongside VIX, so history lookup uses the same ticker. The two YIELDS are
     # sign-inverted (rising yields are bearish for equities). `ted_spread` is
     # the 10y-2y SLOPE, NOT a yield: a positive/steep slope is bullish and an
     # inversion is bearish, so it is NOT negated — matching _score_ted_spread.
-    "treasury_yield_10y":     RollingZScorer(window=90, negate=True),
-    "treasury_yield_2y":      RollingZScorer(window=90, negate=True),
-    "ted_spread":             RollingZScorer(window=90),
+    "treasury_yield_10y": RollingZScorer(window=90, negate=True),
+    "treasury_yield_2y": RollingZScorer(window=90, negate=True),
+    "ted_spread": RollingZScorer(window=90),
 }
 
 
@@ -340,7 +341,9 @@ def log_scoring_telemetry() -> None:
         c = _scoring_method_counts[sig_type]
         _log.debug(
             "[telemetry] %s: zscore=%d parametric_fallback=%d",
-            sig_type, c["zscore"], c["parametric_fallback"],
+            sig_type,
+            c["zscore"],
+            c["parametric_fallback"],
         )
 
 
@@ -350,6 +353,7 @@ def log_scoring_telemetry() -> None:
 # These are the FALLBACK path when z-score has insufficient history (< 30 obs).
 # Do not delete — they remain active until enough data accumulates per signal.
 # ---------------------------------------------------------------------------
+
 
 def _score_rsi(rsi: float) -> float:
     """RSI 30 → 75 (bullish), 50 → 50 (neutral), 70 → 25 (bearish)."""
@@ -457,31 +461,32 @@ def _score_ted_spread(slope_pct: float) -> float:
 
 # Lookup table for simple (single-argument) scorers
 _SIMPLE_SCORERS: dict[str, object] = {
-    "rsi_14":               _score_rsi,
-    "return_1d":            lambda v: _score_return(v, 0.02),
-    "return_5d":            lambda v: _score_return(v, 0.05),
-    "return_20d":           lambda v: _score_return(v, 0.10),
-    "volume_ratio":         _score_volume_ratio,
+    "rsi_14": _score_rsi,
+    "return_1d": lambda v: _score_return(v, 0.02),
+    "return_5d": lambda v: _score_return(v, 0.05),
+    "return_20d": lambda v: _score_return(v, 0.10),
+    "volume_ratio": _score_volume_ratio,
     # Removed Stage 1 — put_call_ratio, short_interest_ratio, implied_volatility
     # excluded from paper's implemented methodology. See docs/SIGNAL_CATALOG.md.
     "order_flow_imbalance": _score_order_flow_imbalance,
-    "buy_pressure":         _score_buy_pressure,
-    "sell_pressure":        _score_sell_pressure,
-    "bid_ask_spread_bps":   _score_bid_ask_spread_bps,
-    "insider_net_shares":   _score_insider_shares,
-    "analyst_buy_pct":      _score_analyst_buy_pct,
-    "vix":                  _score_vix,
+    "buy_pressure": _score_buy_pressure,
+    "sell_pressure": _score_sell_pressure,
+    "bid_ask_spread_bps": _score_bid_ask_spread_bps,
+    "insider_net_shares": _score_insider_shares,
+    "analyst_buy_pct": _score_analyst_buy_pct,
+    "vix": _score_vix,
     "sector_etf_return_20d": lambda v: _score_return(v, 0.10),
     # Sprint P4.3 — FRED Treasury / yield-curve signals
-    "treasury_yield_10y":   _score_treasury_10y,
-    "treasury_yield_2y":    _score_treasury_2y,
-    "ted_spread":           _score_ted_spread,
+    "treasury_yield_10y": _score_treasury_10y,
+    "treasury_yield_2y": _score_treasury_2y,
+    "ted_spread": _score_ted_spread,
 }
 
 
 # ---------------------------------------------------------------------------
 # Signal dict builder
 # ---------------------------------------------------------------------------
+
 
 def _build(
     signal_type: str,
@@ -502,18 +507,19 @@ def _build(
         w = w * _INFLUENCER_W_AUTHOR * _INFLUENCER_W_CONF
     return {
         "signal_type": signal_type,
-        "value":       value,
-        "score":       round(score, 2),
-        "weight":      round(max(w, 1e-6), 6),
-        "source":      source,
-        "layer":       layer,
-        "ticker":      ticker,
+        "value": value,
+        "score": round(score, 2),
+        "weight": round(max(w, 1e-6), 6),
+        "source": source,
+        "layer": layer,
+        "ticker": ticker,
     }
 
 
 # ---------------------------------------------------------------------------
 # Public scoring functions — one per layer
 # ---------------------------------------------------------------------------
+
 
 async def score_market_signals(
     ticker: str,
@@ -574,11 +580,18 @@ async def score_market_signals(
                 continue
 
             _record_method(sig_type, method)
-            result.append(_build(
-                sig_type, value, score,
-                row.get("source", "unknown"), row["timestamp"],
-                "market", ticker, now,
-            ))
+            result.append(
+                _build(
+                    sig_type,
+                    value,
+                    score,
+                    row.get("source", "unknown"),
+                    row["timestamp"],
+                    "market",
+                    ticker,
+                    now,
+                )
+            )
 
     return result
 
@@ -647,10 +660,10 @@ def score_narrative_signals(
         relevance = float(relevance_raw)
         if relevance < 0.6:
             continue  # Paper Stage 2: direct narrative threshold
-        source    = art.get("source", "news")
+        source = art.get("source", "news")
         published = art["published_at"]
 
-        score  = max(0.0, min(100.0, 50.0 + 50.0 * sent_f))
+        score = max(0.0, min(100.0, 50.0 + 50.0 * sent_f))
         half_life = _get_half_life("narrative", source)
         w_time = _time_weight(published, now, half_life)
 
@@ -666,15 +679,17 @@ def score_narrative_signals(
         # Paper formula: w_i = w_src · w_rel · w_conf · e^(−λΔt_i)
         weight = _source_weight(source) * w_time * relevance * w_conf
 
-        result.append({
-            "signal_type": "finbert_sentiment",
-            "value":       float(sentiment),
-            "score":       round(score, 2),
-            "weight":      round(max(weight, 1e-6), 6),
-            "source":      source,
-            "layer":       "narrative",
-            "ticker":      ticker,
-        })
+        result.append(
+            {
+                "signal_type": "finbert_sentiment",
+                "value": float(sentiment),
+                "score": round(score, 2),
+                "weight": round(max(weight, 1e-6), 6),
+                "source": source,
+                "layer": "narrative",
+                "ticker": ticker,
+            }
+        )
     return result
 
 
@@ -712,7 +727,7 @@ async def score_influencer_signals(
 
         zscore_cfg = _ZSCORE_CONFIG.get(sig_type)
         parametric = _SIMPLE_SCORERS.get(sig_type)
-        is_target = (sig_type == "analyst_target_price")
+        is_target = sig_type == "analyst_target_price"
 
         if zscore_cfg is None and parametric is None and not is_target:
             continue
@@ -741,8 +756,12 @@ async def score_influencer_signals(
 
             if is_target:
                 # Z-score upside if we have enough history and a current_price.
-                if (zscore_cfg is not None and upside_history is not None
-                        and current_price is not None and current_price > 0):
+                if (
+                    zscore_cfg is not None
+                    and upside_history is not None
+                    and current_price is not None
+                    and current_price > 0
+                ):
                     upside_now = (value - current_price) / current_price
                     score = zscore_cfg.score_from_history(upside_history, upside_now)
                     if score is not None:
@@ -778,7 +797,9 @@ async def score_influencer_signals(
         latest_val = float(latest["value"])
         if not (math.isnan(latest_val) or math.isinf(latest_val)):
             eps_history = await get_signal_history(
-                ticker, "analyst_eps_estimate_mean", limit=120,
+                ticker,
+                "analyst_eps_estimate_mean",
+                limit=120,
             )
             # Need ≥2 obs in history for a period-over-period delta.
             if len(eps_history) >= 2:
@@ -804,11 +825,18 @@ async def score_influencer_signals(
                         score = _score_earnings_revision_delta(delta)
                     if score is not None:
                         _record_method("earnings_estimate_revision", method)
-                        result.append(_build(
-                            "earnings_estimate_revision", delta, score,
-                            latest.get("source", "unknown"), latest["timestamp"],
-                            "influencer", ticker, now,
-                        ))
+                        result.append(
+                            _build(
+                                "earnings_estimate_revision",
+                                delta,
+                                score,
+                                latest.get("source", "unknown"),
+                                latest["timestamp"],
+                                "influencer",
+                                ticker,
+                                now,
+                            )
+                        )
 
     return result
 
@@ -816,18 +844,22 @@ async def score_influencer_signals(
 #: Macro signals stored as global rows under '_MACRO_'. Their z-score
 #: history lookup uses '_MACRO_' regardless of which ticker is being
 #: scored. Updated for Sprint P4.3 (FRED Treasury + yield-curve signals).
-_MACRO_GLOBAL_TYPES: frozenset[str] = frozenset({
-    "vix",
-    "treasury_yield_10y",
-    "treasury_yield_2y",
-    "ted_spread",
-})
+_MACRO_GLOBAL_TYPES: frozenset[str] = frozenset(
+    {
+        "vix",
+        "treasury_yield_10y",
+        "treasury_yield_2y",
+        "ted_spread",
+    }
+)
 
 #: All signal types that the macro scoring path recognises. Anything else
 #: in the raw row list is silently ignored.
-_MACRO_RECOGNISED_TYPES: frozenset[str] = _MACRO_GLOBAL_TYPES | frozenset({
-    "sector_etf_return_20d",
-})
+_MACRO_RECOGNISED_TYPES: frozenset[str] = _MACRO_GLOBAL_TYPES | frozenset(
+    {
+        "sector_etf_return_20d",
+    }
+)
 
 
 async def score_macro_signals(
@@ -856,8 +888,8 @@ async def score_macro_signals(
              corresponding to the ticker's sector
     now    : scoring tick wall-clock time
     """
-    from scripts.db.queries.raw_signals import get_signal_history
     from pipeline.sources.macro import SECTOR_ETFS
+    from scripts.db.queries.raw_signals import get_signal_history
 
     result: list[dict] = []
 
@@ -887,7 +919,9 @@ async def score_macro_signals(
                 history_ticker = SECTOR_ETFS.get(sector)
             if history_ticker is not None:
                 history = await get_signal_history(
-                    history_ticker, sig_type, limit=zscore_cfg.window,
+                    history_ticker,
+                    sig_type,
+                    limit=zscore_cfg.window,
                 )
 
         for row in rows:
@@ -910,12 +944,17 @@ async def score_macro_signals(
                 continue
 
             _record_method(sig_type, method)
-            result.append(_build(
-                sig_type, value, score,
-                row.get("source", "alpha_vantage"), row["timestamp"],
-                "macro", ticker, now,
-            ))
+            result.append(
+                _build(
+                    sig_type,
+                    value,
+                    score,
+                    row.get("source", "alpha_vantage"),
+                    row["timestamp"],
+                    "macro",
+                    ticker,
+                    now,
+                )
+            )
 
     return result
-
-

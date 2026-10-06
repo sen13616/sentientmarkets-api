@@ -1,5 +1,5 @@
 """
-db/queries/sentiment_history.py
+scripts/db/queries/sentiment_history.py
 
 All sentiment_history table operations.
 
@@ -8,6 +8,7 @@ multiple inserts in a single transaction (see pipeline/persistence/pg_writer.py)
 Read-only functions (get_latest, get_history) acquire their own connection
 from the pool.
 """
+
 from __future__ import annotations
 
 import json
@@ -141,7 +142,7 @@ async def get_history(
                'raw'    (every scoring tick).
     """
     days = min(max(1, days), 365)
-    pool  = await get_pool()
+    pool = await get_pool()
     async with pool.acquire() as conn:
         if interval == "daily":
             rows = await conn.fetch(

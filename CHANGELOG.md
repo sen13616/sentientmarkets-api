@@ -1,5 +1,39 @@
 # Changelog
 
+## Phase 8 — Reliability, data repair and research tooling (October 2026)
+
+### 2026-10-06 — Repository cleanup and strategy-testing toolkit
+`pyproject.toml` with ruff + pytest config; codebase linted and formatted (formatting-only commit listed in
+`.git-blame-ignore-revs`); runtime vs dev requirements split; finished one-off migration scripts moved to
+`scripts/tools/oneoff/`; README rewritten as a front page, docs consolidated under `docs/`; CI (lint, tests,
+secret scan), `CONTRIBUTING.md`, `SECURITY.md`. New `research/` package: point-in-time Parquet snapshots, a
+`Strategy` interface and a no-look-ahead daily backtester (cross-checked against the eval harness).
+
+### 2026-10-03 → 10-06 — Universe update, June gap fill, scheduling and tagging
+- **Universe** (migration 015): 28 symbols retired with their last trading day and successor (acquisitions,
+  take-privates, mergers, ticker changes; PARA's symbol was reused by an unrelated company and its rows from
+  2026-08-07 removed), all 503 current S&P 500 members present (112 added, warm-started), 83 still-trading
+  former names kept, `in_sp500` flag, 13 GICS sectors re-synced. Active universe: 586. API returns
+  `status: "delisted"` for retired symbols.
+- **June gap** (2026-06-23 → 07-03) filled offline as run `june-gap-2026-06` (hourly, 478 tickers).
+- `narrative_job` anchored to :05/:35 (deploys no longer reset its interval).
+- Migration 016: `raw_articles.ingest_run` tags backfilled articles; eval latency counts live ingestion only.
+
+### 2026-10-03 — Market history fix
+`get_close_history` / `get_volume_history` picked arbitrary same-day intraday rows (timestamp ties), so
+intraday `return_1d` was noise and `volume_ratio` ~2× inflated. Fixed to the latest-written row per prior
+session; the 25-day derived history was rebuilt so z-scores are consistent from the fix. Served market-layer
+values before this date used the contaminated history (METHODOLOGY.md §16.5).
+
+### 2026-10-02 — Hang protection and outage repair
+- Production outage diagnosed: the news job hung from 2026-08-10 and scoring from 2026-09-17 (a dead DB
+  connection inside a job with `max_instances=1` blocked every later run).
+- Fix: per-query DB `command_timeout`, per-ticker scoring timeout, job-level timeouts, and
+  `/health/pipeline` (503 when scoring or news is stale).
+- Repair (migration 014, `replay_run`): news backfilled for 08-07 → 10-02; the 1.1M news-less rows of
+  08-10 → 09-17 rebuilt with the narrative layer; the empty 09-17 → 10-02 gap scored "as of" each hour.
+  Alpha Vantage `Note`/`Information` responses now log a warning instead of failing silently.
+
 ## Phase 7 — Nowcasting-first + the research program
 
 ### 2026-07-22 — Research program day one (E000–E004) + options collection
@@ -8,17 +42,17 @@ Frozen holdout split (research window 2026-04-24→06-22; post-outage holdout co
 
 ### 2026-07-21 — Nowcasting refactor (commits 21e459c…0ec151b)
 
-Response to the external backtest study (`docs/SUMMARYOFTESTING.md` findings: scores coincident-to-lagging, no predictive lead). All additive — the headline score byte-identical: eval harness ported from the study as a release gate (`scripts/eval/`, committed baseline), per-consumer API keys (migration 009), cross-sectional calibration fields (`score_raw_z`/percentiles, migration 010's `score_exo`), information-time stamping, and flag-gated `narrative_surprise` (migration 011). Full mapping in [`docs/CHANGES.md`](docs/CHANGES.md).
+Response to the July 2026 external backtest study, which found the scores coincident-to-lagging with no predictive lead. All additive — the headline score byte-identical: eval harness ported from the study as a release gate (`scripts/eval/`, committed baseline), per-consumer API keys (migration 009), cross-sectional calibration fields (`score_raw_z`/percentiles, migration 010's `score_exo`), information-time stamping, and flag-gated `narrative_surprise` (migration 011). Full mapping in [`docs/history/nowcasting-refactor-2026-07.md`](docs/history/nowcasting-refactor-2026-07.md).
 
 ## Phase 6
 
 ### Sprint P6.2 — Tiered raw_signals retention (2026-07-20)
 
-raw_signals (1,306 MB, 9.47M rows post-P6.1; 56% derived signals rewritten every 15 min, 72% of rows in the 30–90d band) moved from blanket 90-day retention to tiers matched to actual read depth: OHLCV 365d (unchanged); **derived intraday 45d** (`rsi_14`, `return_1d/5d/20d`, `volume_ratio`, `order_flow_imbalance`, `buy_pressure`, `sell_pressure`, `bid_ask_spread_bps` — deepest read is the RollingZScorer `window=500` ≈ 20 trading days, 2× margin); **quote telemetry 14d** (`bid`, `ask`, `bid_ask_spread` — proven write-only, no DB reader exists); everything else 90d (unchanged). New list constants `DERIVED_INTRADAY_SIGNAL_TYPES` / `QUOTE_SIGNAL_TYPES` in `scripts/db/queries/raw_signals.py`; `retention_job` now runs four tiered `purge_signals_before` calls with the catch-all's exclude list widened accordingly. `market_job` also **stops writing** the three raw quote types (market.py — only `bid_ask_spread_bps` is persisted), cutting ~15% of daily row volume at the source. Backlog drained by one-off `scripts/tools/tiered_retention_backfill.py` — all affected rows archived to `exports/raw_signals_tiered_20260720.csv.gz` before deletion (the 30–90d band includes the paper's backtest window May 21–Jun 23; order-flow/pressure/spread inputs there are not recomputable), delete gated on exact count match. Expected: ~4.5–5M rows removed, table → ~550–650 MB after `VACUUM FULL`, DB → ~2.6 GB.
+raw_signals (1,306 MB, 9.47M rows post-P6.1; 56% derived signals rewritten every 15 min, 72% of rows in the 30–90d band) moved from blanket 90-day retention to tiers matched to actual read depth: OHLCV 365d (unchanged); **derived intraday 45d** (`rsi_14`, `return_1d/5d/20d`, `volume_ratio`, `order_flow_imbalance`, `buy_pressure`, `sell_pressure`, `bid_ask_spread_bps` — deepest read is the RollingZScorer `window=500` ≈ 20 trading days, 2× margin); **quote telemetry 14d** (`bid`, `ask`, `bid_ask_spread` — proven write-only, no DB reader exists); everything else 90d (unchanged). New list constants `DERIVED_INTRADAY_SIGNAL_TYPES` / `QUOTE_SIGNAL_TYPES` in `scripts/db/queries/raw_signals.py`; `retention_job` now runs four tiered `purge_signals_before` calls with the catch-all's exclude list widened accordingly. `market_job` also **stops writing** the three raw quote types (market.py — only `bid_ask_spread_bps` is persisted), cutting ~15% of daily row volume at the source. Backlog drained by one-off `scripts/tools/oneoff/tiered_retention_backfill.py` — all affected rows archived to `exports/raw_signals_tiered_20260720.csv.gz` before deletion (the 30–90d band includes the paper's backtest window May 21–Jun 23; order-flow/pressure/spread inputs there are not recomputable), delete gated on exact count match. Expected: ~4.5–5M rows removed, table → ~550–650 MB after `VACUUM FULL`, DB → ~2.6 GB.
 
 ### Sprint P6.1 — Storage reclaim + compact driver encoding (2026-07-20)
 
-Two-part storage overhaul of the production database (5,475 MB → ~3.0 GB expected). **Part A — reclaim:** deleted 3,452,964 historical natural-key duplicate rows from `raw_signals` (27% of the table — pre-guard insider/yfinance/ETF re-inserts; every row archived to `exports/raw_signals_dupes_20260720.csv.gz` first via new `scripts/tools/dedupe_raw_signals.py`); dropped three never-read indexes (`raw_signals_pkey`, `price_snapshots_pkey`, `idx_price_snapshots_ticker_ts` — ~450 MB; `id` columns retained, nothing queries by them); `VACUUM FULL` on both big tables; `price_snapshots` writes are now market-hours-only (`is_market_hours` guard in `pg_writer.persist_scored_state` — off-hours rows were 98% exact repeats of the prior close). TOAST compression on `sentiment_history` was investigated and proven impossible: rows (~1.2 KB) never reach PostgreSQL's compile-time ~2 KB toast trigger, which `toast_tuple_target` cannot lower. **Part B — compact driver encoding:** `sentiment_history.top_drivers` (981 of every 1,203-byte row; ~5 driver objects with repeated JSON keys) is now re-encoded for rows older than 30 days to fixed-order arrays `[signal, direction, magnitude, confidence, source_layer]` — `description` dropped after archiving originals to `exports/top_drivers_verbose_20260720.csv.gz` (descriptions embed raw signal values stored nowhere else, so the archive is the permanent record). New `pipeline/scoring/driver_codec.py` (compact/expand/is_compact), `compact_drivers_before()` in `scripts/db/queries/sentiment_history.py` (id-cursor batched, idempotent via `jsonb_typeof` guard), a fourth `retention_job` phase (`DRIVER_COMPACT_DAYS = 30`, daily 03:30 UTC), one-off `scripts/tools/compact_drivers_backfill.py`, and export normalization in `db_exports` (compact rows re-expand with `description: null`). API responses are unaffected — endpoints only serve the latest tick, which stays verbose. No `sentiment_history`/`price_snapshots` rows are ever deleted; scores are never modified.
+Two-part storage overhaul of the production database (5,475 MB → ~3.0 GB expected). **Part A — reclaim:** deleted 3,452,964 historical natural-key duplicate rows from `raw_signals` (27% of the table — pre-guard insider/yfinance/ETF re-inserts; every row archived to `exports/raw_signals_dupes_20260720.csv.gz` first via new `scripts/tools/oneoff/dedupe_raw_signals.py`); dropped three never-read indexes (`raw_signals_pkey`, `price_snapshots_pkey`, `idx_price_snapshots_ticker_ts` — ~450 MB; `id` columns retained, nothing queries by them); `VACUUM FULL` on both big tables; `price_snapshots` writes are now market-hours-only (`is_market_hours` guard in `pg_writer.persist_scored_state` — off-hours rows were 98% exact repeats of the prior close). TOAST compression on `sentiment_history` was investigated and proven impossible: rows (~1.2 KB) never reach PostgreSQL's compile-time ~2 KB toast trigger, which `toast_tuple_target` cannot lower. **Part B — compact driver encoding:** `sentiment_history.top_drivers` (981 of every 1,203-byte row; ~5 driver objects with repeated JSON keys) is now re-encoded for rows older than 30 days to fixed-order arrays `[signal, direction, magnitude, confidence, source_layer]` — `description` dropped after archiving originals to `exports/top_drivers_verbose_20260720.csv.gz` (descriptions embed raw signal values stored nowhere else, so the archive is the permanent record). New `pipeline/scoring/driver_codec.py` (compact/expand/is_compact), `compact_drivers_before()` in `scripts/db/queries/sentiment_history.py` (id-cursor batched, idempotent via `jsonb_typeof` guard), a fourth `retention_job` phase (`DRIVER_COMPACT_DAYS = 30`, daily 03:30 UTC), one-off `scripts/tools/oneoff/compact_drivers_backfill.py`, and export normalization in `db_exports` (compact rows re-expand with `description: null`). API responses are unaffected — endpoints only serve the latest tick, which stays verbose. No `sentiment_history`/`price_snapshots` rows are ever deleted; scores are never modified.
 
 ## Phase 5
 
@@ -42,7 +76,7 @@ The macro layer was previously global (one sub-index applied to every ticker). P
 
 ### Sprint P4.1 — GICS sector column on ticker_universe (2026-05-15)
 
-Schema migration 008 adds `ticker_universe.sector VARCHAR(50)` (idempotent via `IF NOT EXISTS`). Seeded via `tools/seed_sectors.py` from `tools/sector_map.py` (502 S&P 500 tickers, 2026-05-15 point-in-time snapshot). 19 renamed / acquired / delisted tickers have their sector backfilled from a hand-curated `_FALLBACK_SECTORS` table in `tools/generate_sector_map.py`. API schemas (`api/response/schemas.py`), the `/v1/tickers` route, and test fixtures updated to surface the new column.
+Schema migration 008 adds `ticker_universe.sector VARCHAR(50)` (idempotent via `IF NOT EXISTS`). Seeded via `tools/seed_sectors.py` from `tools/sector_map.py` (502 S&P 500 tickers, 2026-05-15 point-in-time snapshot). 19 renamed / acquired / delisted tickers have their sector backfilled from a hand-curated `_FALLBACK_SECTORS` table in `tools/oneoff/generate_sector_map.py`. API schemas (`api/response/schemas.py`), the `/v1/tickers` route, and test fixtures updated to surface the new column.
 
 ## Phase 3
 

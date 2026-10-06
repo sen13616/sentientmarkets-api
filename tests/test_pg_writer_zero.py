@@ -1,28 +1,30 @@
 """
 tests/test_pg_writer_zero.py — Verify that 0.0 values are persisted, not replaced by fallbacks.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from pipeline.persistence.pg_writer import _first_not_none
-
 
 # ---------------------------------------------------------------------------
 # Unit tests for _first_not_none helper
 # ---------------------------------------------------------------------------
 
+
 def test_first_not_none_returns_zero():
     assert _first_not_none(0.0, 99.0) == 0.0
+
 
 def test_first_not_none_skips_none():
     assert _first_not_none(None, 42.0) == 42.0
 
+
 def test_first_not_none_all_none():
     assert _first_not_none(None, None) is None
+
 
 def test_first_not_none_zero_int():
     assert _first_not_none(0, 99) == 0
@@ -31,6 +33,7 @@ def test_first_not_none_zero_int():
 # ---------------------------------------------------------------------------
 # Integration-level tests: full persist_scored_state with 0.0 values
 # ---------------------------------------------------------------------------
+
 
 def _mock_pool():
     """Build an asyncpg-like mock pool with acquire() → conn context manager."""
@@ -154,7 +157,9 @@ async def test_score_exo_persisted_and_zero_safe():
         pool, conn = _mock_pool()
         mock_sh_insert = AsyncMock()
         with (
-            patch("pipeline.persistence.pg_writer.get_pool", new_callable=AsyncMock, return_value=pool),
+            patch(
+                "pipeline.persistence.pg_writer.get_pool", new_callable=AsyncMock, return_value=pool
+            ),
             patch("pipeline.persistence.pg_writer.sh_queries") as mock_sh,
             patch("pipeline.persistence.pg_writer.ps_queries"),
         ):

@@ -134,7 +134,5 @@ async def load_article_latency(start: datetime, end: datetime) -> pd.DataFrame:
     rows = await pool.fetch(query, start, end)
     df = _to_frame(rows)
     if not df.empty:
-        df["latency_minutes"] = (
-            df["created_at"] - df["published_at"]
-        ).dt.total_seconds() / 60.0
+        df["latency_minutes"] = (df["created_at"] - df["published_at"]).dt.total_seconds() / 60.0
     return df

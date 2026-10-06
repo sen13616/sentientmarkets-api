@@ -3,15 +3,13 @@ tests/test_language_detection.py — Language detection at ingestion.
 
 Sprint A: langdetect filters non-English articles before FinBERT scoring.
 """
-from __future__ import annotations
 
-import pytest
+from __future__ import annotations
 
 from pipeline.sources.narrative import _detect_language
 
 
 class TestDetectLanguage:
-
     def test_english_detected(self):
         """Standard English financial text detected as 'en'."""
         text = "Apple reported strong quarterly earnings beating analyst expectations"

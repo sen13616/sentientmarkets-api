@@ -6,6 +6,7 @@ Checks:
   3. Sentiment-history coverage of macro_sub_index over the last 24h.
   4. A few sample tickers' latest macro_sub_index.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -21,7 +22,6 @@ load_dotenv(override=True)
 
 from scripts.db.connection import close_pool, get_pool
 from scripts.db.redis import close_redis, get_redis, init_redis
-
 
 MACRO_SIGNALS_GLOBAL = ["vix", "treasury_yield_10y", "treasury_yield_2y", "ted_spread"]
 SECTOR_ETFS = ["XLK", "XLV", "XLF", "XLY", "XLP", "XLE", "XLI", "XLB", "XLU", "XLRE", "XLC"]
@@ -64,7 +64,9 @@ async def main() -> None:
                 print(f"  {sig:22s}  NO ROWS")
             else:
                 age = now - row["timestamp"]
-                print(f"  {sig:22s}  value={row['value']:>10.4f}  source={row['source']:<14s}  ts={row['timestamp'].isoformat()}  (age: {age})")
+                print(
+                    f"  {sig:22s}  value={row['value']:>10.4f}  source={row['source']:<14s}  ts={row['timestamp'].isoformat()}  (age: {age})"
+                )
 
         print("\n=== raw_signals: latest sector-ETF closes (signal_type='ohlcv_close') ===")
         for etf in SECTOR_ETFS:
@@ -78,7 +80,9 @@ async def main() -> None:
                 print(f"  {etf:6s}  NO ROWS")
             else:
                 age = now - row["timestamp"]
-                print(f"  {etf:6s}  value={row['value']:>10.4f}  source={row['source']:<14s}  ts={row['timestamp'].isoformat()}  (age: {age})")
+                print(
+                    f"  {etf:6s}  value={row['value']:>10.4f}  source={row['source']:<14s}  ts={row['timestamp'].isoformat()}  (age: {age})"
+                )
 
         # --- 3. Discover sentiment_history columns ---------------------------
         print("\n=== sentiment_history: columns ===")
@@ -96,14 +100,20 @@ async def main() -> None:
             None,
         )
         macro_col = next(
-            (c for c in ("macro_sub_index", "macro_index", "macro_score", "macro") if c in col_names),
+            (
+                c
+                for c in ("macro_sub_index", "macro_index", "macro_score", "macro")
+                if c in col_names
+            ),
             None,
         )
         market_col = next(
             (c for c in ("market_sub_index", "market_index", "market_score") if c in col_names),
             None,
         )
-        print(f"\n  using time_col={time_col!r}  macro_col={macro_col!r}  market_col={market_col!r}")
+        print(
+            f"\n  using time_col={time_col!r}  macro_col={macro_col!r}  market_col={market_col!r}"
+        )
 
         if time_col and macro_col:
             print("\n=== sentiment_history: macro coverage (last 24h) ===")
@@ -138,7 +148,9 @@ async def main() -> None:
                 else:
                     m = row["macro"]
                     mk = row["market"] if market_col else "?"
-                    print(f"  {ticker:6s}  macro={str(m):>8s}  market={str(mk):>8s}  ts={row['ts'].isoformat()}")
+                    print(
+                        f"  {ticker:6s}  macro={str(m):>8s}  market={str(mk):>8s}  ts={row['ts'].isoformat()}"
+                    )
 
     await close_pool()
     await close_redis()
