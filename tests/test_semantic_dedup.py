@@ -458,6 +458,12 @@ class TestNarrativeJobClustering:
                 new_callable=AsyncMock,
                 return_value=0,
             ),
+            # Phase 3 (FinBERT) must not reach a real database.
+            patch(
+                "scripts.db.queries.raw_articles.get_unscored_articles",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
             patch(
                 "pipeline.scheduler._get_cluster_telemetry",
                 new_callable=AsyncMock,
@@ -501,6 +507,12 @@ class TestNarrativeJobClustering:
                 "scripts.db.queries.raw_articles.count_unclustered_articles",
                 new_callable=AsyncMock,
                 return_value=0,
+            ),
+            # Phase 3 (FinBERT) must not reach a real database.
+            patch(
+                "scripts.db.queries.raw_articles.get_unscored_articles",
+                new_callable=AsyncMock,
+                return_value=[],
             ),
             patch(
                 "pipeline.scheduler._get_cluster_telemetry",
@@ -564,6 +576,11 @@ class TestDedupTelemetry:
                     "same_source_clusters": 0,
                     "largest_cluster_size": 0,
                 },
+            ),
+            patch(
+                "scripts.db.queries.raw_articles.get_unscored_articles",
+                new_callable=AsyncMock,
+                return_value=[],
             ),
             patch("pipeline.scheduler._log") as mock_log,
         ):
