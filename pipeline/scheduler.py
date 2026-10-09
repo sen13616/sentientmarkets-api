@@ -7,23 +7,32 @@ Architecture (Sprint 3: global scoring tick)
 ---------------------------------------------
 Ingestion jobs fetch data from external APIs and write to the database.
 They do NOT score.  A dedicated ``scoring_tick_job`` runs every 15 minutes
-during market hours (weekdays 14:30-21:00 UTC) and every 30 minutes outside
-market hours, recomputing all four layers for every ticker from current DB
-state.
+during market hours and every 30 minutes outside them, recomputing all four
+layers for every ticker from current DB state.  All times UTC; the hour-13-20
+windows cover the session in both DST regimes (EDT 13:30-20:00, EST
+14:30-21:00).
 
 Ingestion jobs:
 
-    market_job       — weekdays 14:30–21:00 UTC, every 15 minutes (data only)
-    market_eod_job   — weekdays 21:15 UTC (data only, captures closing prices)
-    narrative_job    — every 30 minutes (data only)
-    influencer_job   — daily at 00:20/06:20/12:20/18:20 UTC (data only)
-    macro_daily_job    — daily at 02:00 UTC (FRED Treasury signals, data only)
-    macro_intraday_job — hourly weekdays 14:00–20:00 UTC (VIX + sector ETFs, data only)
-    short_volume_job — weekdays at 21:30 UTC (FINRA REGSHO, data only)
+    market_job         — weekdays, hours 13-20, every 15 minutes (data only)
+    market_eod_job     — weekdays 21:15 (data only, captures closing prices)
+    narrative_job      — :05/:35 every hour, 24/7 (data only)
+    influencer_job     — 00:20/06:20/12:20/18:20 (data only)
+    macro_daily_job    — daily 02:00 (FRED Treasury signals, data only)
+    macro_intraday_job — weekdays hourly 13:00-20:00 (VIX + sector ETFs, data only)
+    short_volume_job   — weekdays 21:30 (FINRA REGSHO, data only)
+    options_job        — weekdays 21:20 (research-only option snapshots)
 
 Scoring job:
 
-    scoring_tick_job — every 15 min in market hours / 30 min off-hours; recomputes composite scores for all tickers
+    scoring_tick_job — :00/:30 always, plus :15/:45 weekdays 13-20
+
+Housekeeping: retention_job (03:30), demo_key_cleanup_job (hourly at :50).
+
+Run records (Redis, read by /v1/status and /health/pipeline):
+``pipeline:last_start:{job}`` when a run starts; ``pipeline:last_run:{job}``
+(+ ``pipeline:last_run_counts:{job}`` for per-ticker jobs) only after a run
+SUCCEEDS; ``pipeline:last_tick`` summary at the end of every scoring tick.
 
 Usage
 -----
@@ -128,13 +137,45 @@ async def _get_cluster_telemetry(since_hours: float = 48.0) -> dict:
     }
 
 
-async def _record_run(job_id: str) -> None:
-    """Write the current UTC timestamp to Redis for /v1/status."""
+async def _record_run(
+    job_id: str,
+    *,
+    tickers_ok: int | None = None,
+    tickers_total: int | None = None,
+) -> None:
+    """Record a SUCCESSFUL run (/v1/status, /health/pipeline).
+
+    Call only after the job's work succeeded: a hung or failed run must not
+    advance ``pipeline:last_run:{job}`` — a frozen timestamp is how
+    /health/pipeline detects it. Per-ticker fetch jobs also store their
+    success/total counts under ``pipeline:last_run_counts:{job}``.
+    """
     try:
         now = datetime.now(timezone.utc).isoformat()
-        await get_redis().set(f"pipeline:last_run:{job_id}", now, ex=_RUN_KEY_TTL)
+        pipe = get_redis().pipeline(transaction=True)
+        pipe.set(f"pipeline:last_run:{job_id}", now, ex=_RUN_KEY_TTL)
+        if tickers_ok is not None and tickers_total is not None:
+            pipe.set(
+                f"pipeline:last_run_counts:{job_id}",
+                json.dumps({"tickers_ok": tickers_ok, "tickers_total": tickers_total}),
+                ex=_RUN_KEY_TTL,
+            )
+        await pipe.execute()
     except Exception as exc:
         _log.warning("_record_run failed for %s: %s", job_id, exc)
+
+
+async def _record_start(job_id: str) -> None:
+    """Record that a run started (``pipeline:last_start:{job}``). Best-effort."""
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        await get_redis().set(f"pipeline:last_start:{job_id}", now, ex=_RUN_KEY_TTL)
+    except Exception as exc:
+        _log.debug("_record_start failed for %s: %s", job_id, exc)
+
+
+#: Per-tick summary read by /health/pipeline (written at the end of _score_all).
+TICK_SUMMARY_KEY = "pipeline:last_tick"
 
 
 # ---------------------------------------------------------------------------
@@ -147,13 +188,16 @@ async def _fetch_all_tickers(
     tickers: list[str],
     client: httpx.AsyncClient,
     job_name: str = "",
-) -> None:
+) -> tuple[int, int]:
     """
     Fetch signals for all tickers in parallel, throttled by per-source semaphores.
 
     A tqdm progress bar (written to stderr) shows live completion count, elapsed
     time, ETA, and rate-limit / network-error skip counts from job_counters.
+
+    Returns (tickers_ok, tickers_total), where ok = the fetcher did not raise.
     """
+    ok = 0
     desc = f"[{job_name}] fetch" if job_name else "fetch"
     pbar = _atqdm(
         total=len(tickers),
@@ -165,8 +209,10 @@ async def _fetch_all_tickers(
     )
 
     async def _tracked(ticker: str) -> None:
+        nonlocal ok
         try:
             await fetcher(ticker, client)
+            ok += 1
         except Exception as exc:
             _log.warning("fetch error for %s: %s", ticker, exc)
         finally:
@@ -178,6 +224,7 @@ async def _fetch_all_tickers(
 
     await asyncio.gather(*[_tracked(t) for t in tickers])
     pbar.close()
+    return ok, len(tickers)
 
 
 _SCORE_SEM = asyncio.Semaphore(10)  # bound concurrent DB connections (asyncpg default pool=10)
@@ -265,8 +312,28 @@ async def _score_all(
     pbar.close()
 
     await _publish_universe_stats(results, sector_map or {})
+    await _publish_tick_summary(results, n_active=len(tickers))
 
     return fetched, total_layers
+
+
+async def _publish_tick_summary(results: dict[str, ScoreResult], n_active: int) -> None:
+    """
+    Write the end-of-tick health summary (TICK_SUMMARY_KEY) for
+    /health/pipeline: tick time, tickers scored, active-universe size, and
+    how many scored tickers had no narrative sub-index. Written even when
+    nothing scored, so a bad tick is visible. Best-effort.
+    """
+    summary = {
+        "at": datetime.now(timezone.utc).isoformat(),
+        "tickers_scored": len(results),
+        "active_universe": n_active,
+        "missing_narrative": sum(1 for r in results.values() if not r.narrative_present),
+    }
+    try:
+        await get_redis().set(TICK_SUMMARY_KEY, json.dumps(summary), ex=_RUN_KEY_TTL)
+    except Exception as exc:
+        _log.warning("_publish_tick_summary: Redis write failed: %s", exc)
 
 
 async def _publish_universe_stats(
@@ -421,9 +488,12 @@ async def market_job() -> None:
         await fetch_market_signals(ticker, client, ohlcv_batch=ohlcv_batch)
 
     async with httpx.AsyncClient(timeout=30) as client:
-        await _fetch_all_tickers(_market_fetcher, tickers, client, job_name="MARKET")
+        n_ok, _ = await _fetch_all_tickers(_market_fetcher, tickers, client, job_name="MARKET")
 
-    await _record_run("market")
+    if n_ok:
+        await _record_run("market", tickers_ok=n_ok, tickers_total=n)
+    else:
+        _log.error("market_job: every ticker fetch failed — not recorded as a success")
 
     elapsed = time.monotonic() - t_start
     _log.info(
@@ -457,9 +527,12 @@ async def market_eod_job() -> None:
         await fetch_market_signals(ticker, client, ohlcv_batch=ohlcv_batch)
 
     async with httpx.AsyncClient(timeout=30) as client:
-        await _fetch_all_tickers(_market_fetcher, tickers, client, job_name="MARKET_EOD")
+        n_ok, _ = await _fetch_all_tickers(_market_fetcher, tickers, client, job_name="MARKET_EOD")
 
-    await _record_run("market_eod")
+    if n_ok:
+        await _record_run("market_eod", tickers_ok=n_ok, tickers_total=n)
+    else:
+        _log.error("market_eod_job: every ticker fetch failed — not recorded as a success")
 
     elapsed = time.monotonic() - t_start
     _log.info(
@@ -490,7 +563,9 @@ async def narrative_job() -> None:
 
     # ── Phase 1: Fetch articles ────────────────────────────────────────────
     async with httpx.AsyncClient(timeout=30) as client:
-        await _fetch_all_tickers(fetch_narrative_signals, tickers, client, job_name="NARRATIVE")
+        n_ok, _ = await _fetch_all_tickers(
+            fetch_narrative_signals, tickers, client, job_name="NARRATIVE"
+        )
 
     fetch_elapsed = time.monotonic() - t_start
 
@@ -539,6 +614,7 @@ async def narrative_job() -> None:
 
     t_finbert_start = time.monotonic()
     n_scored = 0
+    finbert_failed = False
 
     try:
         unscored = await get_unscored_articles(since_hours=48.0, language="en", limit=500)
@@ -555,6 +631,7 @@ async def narrative_job() -> None:
             n_scored = len(rows)
     except Exception as exc:
         _log.warning("narrative_job: FinBERT scoring failed: %s", exc, exc_info=True)
+        finbert_failed = True
 
     finbert_elapsed = time.monotonic() - t_finbert_start
     _log.info(
@@ -563,7 +640,15 @@ async def narrative_job() -> None:
         finbert_elapsed,
     )
 
-    await _record_run("narrative")
+    if n_ok and not finbert_failed:
+        await _record_run("narrative", tickers_ok=n_ok, tickers_total=n)
+    else:
+        _log.error(
+            "narrative_job: not recorded as a success (fetch ok %d/%d, finbert_failed=%s)",
+            n_ok,
+            n,
+            finbert_failed,
+        )
 
     elapsed = time.monotonic() - t_start
     _log.info(
@@ -596,9 +681,14 @@ async def influencer_job() -> None:
     n = len(tickers)
 
     async with httpx.AsyncClient(timeout=30) as client:
-        await _fetch_all_tickers(fetch_influencer_signals, tickers, client, job_name="INFLUENCER")
+        n_ok, _ = await _fetch_all_tickers(
+            fetch_influencer_signals, tickers, client, job_name="INFLUENCER"
+        )
 
-    await _record_run("influencer")
+    if n_ok:
+        await _record_run("influencer", tickers_ok=n_ok, tickers_total=n)
+    else:
+        _log.error("influencer_job: every ticker fetch failed — not recorded as a success")
 
     elapsed = time.monotonic() - t_start
     _log.info(
@@ -630,8 +720,8 @@ async def macro_daily_job() -> None:
             n_rows = await fetch_fred_signals(client)
         except Exception as exc:
             _log.warning("macro_daily_job: FRED fetch failed: %s", exc, exc_info=True)
-
-    await _record_run("macro_daily")
+        else:
+            await _record_run("macro_daily")
 
     elapsed = time.monotonic() - t_start
     _log.info("macro_daily_job complete: %d FRED rows in %.1fs", n_rows, elapsed)
@@ -656,8 +746,8 @@ async def macro_intraday_job() -> None:
             await fetch_macro_signals(client)
         except Exception as exc:
             _log.warning("macro_intraday_job: macro fetch failed: %s", exc, exc_info=True)
-
-    await _record_run("macro_intraday")
+        else:
+            await _record_run("macro_intraday")
 
     elapsed = time.monotonic() - t_start
     _log.info("macro_intraday_job complete in %.1fs", elapsed)
@@ -684,7 +774,15 @@ async def short_volume_job() -> None:
         _log.warning("short_volume_job: failed: %s", exc, exc_info=True)
         n_tickers = 0
 
-    await _record_run("short_volume")
+    if n_tickers:
+        try:
+            n_total = len(await get_active_tickers())
+        except Exception as exc:
+            _log.warning("short_volume_job: universe size lookup failed: %s", exc)
+            n_total = None
+        await _record_run("short_volume", tickers_ok=n_tickers, tickers_total=n_total)
+    else:
+        _log.error("short_volume_job: 0 tickers ingested — not recorded as a success")
 
     elapsed = time.monotonic() - t_start
     _log.info("short_volume_job complete: %d tickers in %.1fs", n_tickers, elapsed)
@@ -760,7 +858,10 @@ async def scoring_tick_job() -> None:
 
     fetched, total_layers = await _score_all(tickers, "SCORING_TICK", sector_map=sector_map)
     log_scoring_telemetry()
-    await _record_run("scoring_tick")
+    if fetched:
+        await _record_run("scoring_tick")
+    else:
+        _log.error("scoring_tick_job: 0/%d tickers scored — not recorded as a success", n)
 
     elapsed = time.monotonic() - t_start
     avg = total_layers / fetched if fetched else 0
@@ -961,6 +1062,7 @@ def _with_timeout(job_id: str, fn):
 
     @functools.wraps(fn)
     async def _run() -> None:
+        await _record_start(job_id)
         try:
             await asyncio.wait_for(fn(), timeout=timeout)
         except TimeoutError:

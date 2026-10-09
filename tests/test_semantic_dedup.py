@@ -450,7 +450,11 @@ class TestNarrativeJobClustering:
                 new_callable=AsyncMock,
                 return_value=mock_tickers,
             ),
-            patch("pipeline.scheduler._fetch_all_tickers", new_callable=AsyncMock),
+            patch(
+                "pipeline.scheduler._fetch_all_tickers",
+                new_callable=AsyncMock,
+                return_value=(3, 3),
+            ),
             patch("pipeline.scheduler.cluster_articles", side_effect=_mock_cluster),
             patch("pipeline.scheduler._record_run", new_callable=AsyncMock),
             patch(
@@ -500,7 +504,11 @@ class TestNarrativeJobClustering:
                 new_callable=AsyncMock,
                 return_value=mock_tickers,
             ),
-            patch("pipeline.scheduler._fetch_all_tickers", new_callable=AsyncMock),
+            patch(
+                "pipeline.scheduler._fetch_all_tickers",
+                new_callable=AsyncMock,
+                return_value=(3, 3),
+            ),
             patch("pipeline.scheduler.cluster_articles", side_effect=_mock_cluster),
             patch("pipeline.scheduler._record_run", new_callable=AsyncMock),
             patch(
@@ -560,7 +568,11 @@ class TestDedupTelemetry:
                 new_callable=AsyncMock,
                 return_value=mock_tickers,
             ),
-            patch("pipeline.scheduler._fetch_all_tickers", new_callable=AsyncMock),
+            patch(
+                "pipeline.scheduler._fetch_all_tickers",
+                new_callable=AsyncMock,
+                return_value=(3, 3),
+            ),
             patch("pipeline.scheduler.cluster_articles", side_effect=_mock_cluster),
             patch("pipeline.scheduler._record_run", new_callable=AsyncMock),
             patch(

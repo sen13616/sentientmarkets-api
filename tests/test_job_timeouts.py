@@ -7,14 +7,14 @@ later run:
   - app DB pool gets a per-query command_timeout
   - _score_all skips a ticker that exceeds SCORE_TICKER_TIMEOUT_S
   - every scheduled job is wrapped in a job-level timeout
-  - GET /health/pipeline reports 503 when scoring/narrative go stale
+  (GET /health/pipeline, which reports stale jobs, is tested in
+  tests/test_pipeline_health.py)
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
@@ -122,78 +122,14 @@ def test_every_registered_job_is_timeout_wrapped():
 
 
 # ---------------------------------------------------------------------------
-# GET /health/pipeline
+# /health stays independent of pipeline state
 # ---------------------------------------------------------------------------
-
-
-def _redis_with(last_runs: dict[str, datetime | None]) -> MagicMock:
-    async def _get(key: str):
-        ts = last_runs.get(key.rsplit(":", 1)[-1])
-        return ts.isoformat() if ts else None
-
-    client = MagicMock()
-    client.get = AsyncMock(side_effect=_get)
-    return client
-
-
-def _get_pipeline_health(redis_client) -> tuple[int, dict]:
-    from main import app
-
-    with patch("api.routes.health.get_redis", return_value=redis_client):
-        r = TestClient(app).get("/health/pipeline")
-    return r.status_code, r.json()
-
-
-def test_health_pipeline_ok_when_fresh():
-    now = datetime.now(timezone.utc)
-    status, body = _get_pipeline_health(
-        _redis_with(
-            {
-                "scoring_tick": now - timedelta(minutes=10),
-                "narrative": now - timedelta(minutes=40),
-            }
-        )
-    )
-    assert status == 200
-    assert body["status"] == "ok"
-    assert body["checks"]["scoring_tick"]["ok"] is True
-
-
-def test_health_pipeline_503_when_scoring_stale():
-    now = datetime.now(timezone.utc)
-    status, body = _get_pipeline_health(
-        _redis_with(
-            {
-                "scoring_tick": now - timedelta(minutes=90),
-                "narrative": now - timedelta(minutes=10),
-            }
-        )
-    )
-    assert status == 503
-    assert body["status"] == "stale"
-    assert body["checks"]["scoring_tick"]["ok"] is False
-    assert body["checks"]["narrative"]["ok"] is True
-
-
-def test_health_pipeline_503_when_never_run():
-    status, body = _get_pipeline_health(_redis_with({}))
-    assert status == 503
-    assert body["checks"]["narrative"]["last_run"] is None
-
-
-def test_health_pipeline_503_when_redis_down():
-    client = MagicMock()
-    client.get = AsyncMock(side_effect=ConnectionError("redis down"))
-    status, body = _get_pipeline_health(client)
-    assert status == 503
-    assert body["status"] == "stale"
 
 
 def test_plain_health_unaffected_by_stale_pipeline():
     """Railway gates deploys on /health — it must stay 200 regardless."""
     from main import app
 
-    with patch("api.routes.health.get_redis", return_value=_redis_with({})):
-        r = TestClient(app).get("/health")
+    r = TestClient(app).get("/health")
     assert r.status_code == 200
     assert r.json() == {"status": "ok"}

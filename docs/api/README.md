@@ -283,19 +283,42 @@ curl https://sentimentapi-p.up.railway.app/health
 
 ### GET /health/pipeline
 
-Data-freshness check for uptime monitors. No authentication required. Returns **200** when the
-scoring tick ran within the last 60 minutes and the news job within the last 120 minutes,
-otherwise **503**.
+Pipeline health for monitors: is every job running on schedule, and are fresh scores being
+produced? No authentication required; limited to 30 requests/minute per IP; responses are cached
+for 60 seconds. Returns **200** when `status` is `ok`, **503** when it is `degraded` or `down`.
 
 ```json
 {
   "status": "ok",
-  "checks": {
-    "scoring_tick": { "last_run": "2026-10-06T02:00:24Z", "age_minutes": 25.8, "max_age_minutes": 60, "ok": true },
-    "narrative":    { "last_run": "2026-10-06T01:58:35Z", "age_minutes": 27.6, "max_age_minutes": 120, "ok": true }
-  }
+  "checked_at": "2026-10-09T00:55:03Z",
+  "market_open": false,
+  "jobs": {
+    "scoring_tick": {"last_success": "2026-10-09T00:30:41Z", "last_start": "2026-10-09T00:30:00Z", "minutes_since": 24, "limit_minutes": 75, "stale": false},
+    "narrative":    {"last_success": "...", "last_start": "...", "minutes_since": 20, "limit_minutes": 90, "stale": false, "tickers_ok": 586, "tickers_total": 586},
+    "market":       {"last_success": "...", "last_start": "...", "minutes_since": null, "limit_minutes": 45, "stale": false, "note": "market closed", "tickers_ok": 581, "tickers_total": 586},
+    "market_eod":   {"last_success": "...", "last_start": "...", "stale": false, "tickers_ok": 581, "tickers_total": 586},
+    "short_volume": {"last_success": "...", "last_start": "...", "stale": false, "tickers_ok": 580, "tickers_total": 586},
+    "influencer":   {"last_success": "...", "last_start": "...", "minutes_since": 275, "limit_minutes": 420, "stale": false, "tickers_ok": 586, "tickers_total": 586},
+    "macro_daily":  {"last_success": "...", "last_start": "...", "minutes_since": 1375, "limit_minutes": 1560, "stale": false},
+    "macro_intraday": {"last_success": "...", "last_start": "...", "minutes_since": null, "limit_minutes": 90, "stale": false, "note": "market closed"}
+  },
+  "latest_tick": {"at": "2026-10-09T00:30:41Z", "tickers_scored": 586, "active_universe": 586, "share_missing_narrative": 0.01},
+  "reasons": []
 }
 ```
+
+| Status | When |
+|---|---|
+| `down` | scoring tick or newest score more than 2 h old, or the state store (Redis) unreachable |
+| `degraded` | any job past its limit; latest tick scored < 95% of the active universe; > 20% of the latest tick missing the narrative channel |
+| `ok` | anything else |
+
+Limits: scoring tick 45 min in session / 75 min outside; narrative 90 min; market and macro
+intraday 45 / 90 min, in session only; influencer 7 h; macro daily 26 h. End-of-day market and
+short volume must have succeeded after the most recent NYSE session close, checked from the later
+of close + 60 min and 21:45 / 22:30 UTC. Sessions follow the NYSE calendar (holidays and early
+closes). `last_success` advances only when a run succeeds; `last_start` when one begins. `reasons`
+lists every failed condition in plain words.
 
 ---
 
