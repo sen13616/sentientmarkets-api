@@ -397,6 +397,7 @@ class ScoreResult(NamedTuple):
     score_change_1d_pct: float | None  # same basis, as % of the baseline
     raw_score: float | None = None  # divergence-capped raw composite (cross-sectional stats)
     exo_score: float | None = None  # exogenous sentiment-only composite (no market layer)
+    narrative_present: bool = True  # narrative sub-index non-null (tick health summary)
 
 
 async def _score_and_write(
@@ -658,6 +659,7 @@ async def compute_scored_state(
         score_change_1d_pct=score_change_1d_pct,
         raw_score=round(effective_score, 2),
         exo_score=score_exo,
+        narrative_present=narrative_si is not None,
     )
 
 

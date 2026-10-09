@@ -60,7 +60,7 @@ curl -H "Authorization: Bearer $SENTIMENT_API_KEY" \
 | `GET /v1/tickers` | free / pro | Active universe with company name, GICS sector and `in_sp500` |
 | `GET /v1/market/overview` | pro | Universe statistics, movers, sector breakdown |
 | `GET /v1/status` | free / pro | Pipeline job freshness |
-| `GET /health`, `GET /health/pipeline` | public | Liveness; pipeline freshness (503 when scoring or news is stale) |
+| `GET /health`, `GET /health/pipeline` | public | Liveness; pipeline health — every job on schedule, fresh scores (`ok` 200 / `degraded`·`down` 503; 30 req/min per IP) |
 
 Retired symbols (acquired, merged, renamed) return `status: "delisted"` with their last
 trading day and successor; their history stays available. Rate limits: free 10 req/min,
@@ -184,8 +184,8 @@ main.py              App entrypoint (DB pool → Redis → scheduler)
 
 Production runs on [Railway](https://railway.app/) (`railway.toml`, nixpacks) with managed
 PostgreSQL and Redis. `main` deploys automatically. **Apply any new migration before merging
-code that depends on it.** The health check is `/health`; monitor `/health/pipeline` for data
-freshness.
+code that depends on it.** The deploy health check is `/health`; monitor `/health/pipeline` for job schedules and
+score freshness.
 
 ---
 

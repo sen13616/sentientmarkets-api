@@ -2,6 +2,19 @@
 
 ## Phase 8 — Reliability, data repair and research tooling (October 2026)
 
+### 2026-10-09 — Public pipeline-health endpoint
+- **Breaking change to `GET /health/pipeline`:** the response is now
+  `{status, checked_at, market_open, jobs, latest_tick, reasons}` with `status` `ok` (HTTP 200),
+  `degraded` or `down` (both HTTP 503). The old `checks` / `ok` / `"stale"` fields are gone. It now covers
+  every scheduled job (scoring tick, narrative, market, market EOD, short volume, influencer, macro daily,
+  macro intraday) against the NYSE calendar (holidays, early closes), the latest tick's coverage and
+  narrative share, and reports per-ticker success counts. Reads Redis only; cached 60 s; 30 req/min per IP.
+- Job run records: `pipeline:last_run:{job}` is now written only after a run **succeeds** (failed FRED/VIX
+  fetches, 0-ticker short-volume runs, FinBERT failures, all-ticker fetch failures and 0-ticker scoring
+  ticks used to record success too — `/v1/status` timestamps change accordingly). New keys:
+  `pipeline:last_start:{job}`, `pipeline:last_run_counts:{job}`, `pipeline:last_tick` (per-tick summary).
+- New `pipeline/market_calendar.py` (NYSE holidays + early closes 2025–2027); the short-volume backfill uses it.
+
 ### 2026-10-06 — Diagnostics fixes (from the 2026-07-24 review)
 - **Security:** the demo-key per-IP cap keys off the proxy-appended `X-Forwarded-For` hop (the leftmost hop
   was client-controlled); `*.up.railway.app` removed from the default CORS/mint allowlist (shared domain);

@@ -15,7 +15,16 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routes import demo_key, health, history, market, sentiment, status, tickers
+from api.routes import (
+    demo_key,
+    health,
+    history,
+    market,
+    pipeline_health,
+    sentiment,
+    status,
+    tickers,
+)
 from api.routes.demo_key import CORS_ORIGIN_REGEX, EXACT_ORIGINS
 from pipeline.scheduler import scheduler
 from scripts.db.connection import APP_COMMAND_TIMEOUT_S, close_pool, init_pool
@@ -63,6 +72,7 @@ app.add_middleware(
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 app.include_router(health.router)
+app.include_router(pipeline_health.router)
 app.include_router(sentiment.router, prefix="/v1")
 app.include_router(history.router, prefix="/v1")
 app.include_router(market.router, prefix="/v1")

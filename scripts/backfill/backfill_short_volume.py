@@ -37,54 +37,17 @@ _project_root = str(Path(__file__).resolve().parent.parent.parent)
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
+from pipeline.market_calendar import is_session_day
 from pipeline.sources.short_volume import fetch_short_volume_for_date
 from scripts.db.connection import close_pool, get_pool, init_pool
 from scripts.db.queries.raw_signals import insert_signals
 
 _log = logging.getLogger(__name__)
 
-# US market holidays in 2025 (dates when FINRA does not publish files).
-# This is a minimal list covering the backfill window; extend as needed.
-US_MARKET_HOLIDAYS_2025 = frozenset(
-    {
-        date(2025, 1, 1),  # New Year's Day
-        date(2025, 1, 20),  # MLK Day
-        date(2025, 2, 17),  # Presidents' Day
-        date(2025, 4, 18),  # Good Friday
-        date(2025, 5, 26),  # Memorial Day
-        date(2025, 6, 19),  # Juneteenth
-        date(2025, 7, 4),  # Independence Day
-        date(2025, 9, 1),  # Labor Day
-        date(2025, 11, 27),  # Thanksgiving
-        date(2025, 12, 25),  # Christmas Day
-    }
-)
-
-
-# NYSE holidays 2026 (for the June-gap backfill, 2026-06-22 → 07-02).
-US_MARKET_HOLIDAYS_2026 = frozenset(
-    {
-        date(2026, 1, 1),  # New Year's Day
-        date(2026, 1, 19),  # MLK Day
-        date(2026, 2, 16),  # Presidents' Day
-        date(2026, 4, 3),  # Good Friday
-        date(2026, 5, 25),  # Memorial Day
-        date(2026, 6, 19),  # Juneteenth
-        date(2026, 7, 3),  # Independence Day (observed)
-        date(2026, 9, 7),  # Labor Day
-        date(2026, 11, 26),  # Thanksgiving
-        date(2026, 12, 25),  # Christmas Day
-    }
-)
-
 
 def is_trading_day(d: date) -> bool:
-    """Return True if d is a weekday and not a known US market holiday."""
-    if d.isoweekday() > 5:
-        return False
-    if d in US_MARKET_HOLIDAYS_2025 or d in US_MARKET_HOLIDAYS_2026:
-        return False
-    return True
+    """Return True if d is an NYSE trading day (FINRA publishes no file otherwise)."""
+    return is_session_day(d)
 
 
 def trading_days_back(ref_date: date, n: int) -> list[date]:
